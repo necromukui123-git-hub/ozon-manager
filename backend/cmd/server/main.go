@@ -92,6 +92,7 @@ func main() {
 			// 认证相关
 			authenticated.POST("/auth/logout", authHandler.Logout)
 			authenticated.GET("/auth/me", authHandler.GetCurrentUser)
+			authenticated.PUT("/auth/password", userHandler.ChangePassword)
 
 			// 店铺管理（所有认证用户可访问）
 			shops := authenticated.Group("/shops")

@@ -40,6 +40,11 @@ type UpdateUserPasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=6"`
 }
 
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+
 type UpdateUserShopsRequest struct {
 	ShopIDs []uint `json:"shop_ids" binding:"required"`
 }

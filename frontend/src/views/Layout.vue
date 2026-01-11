@@ -80,6 +80,10 @@
             </div>
             <template #dropdown>
               <el-dropdown-menu>
+                <el-dropdown-item command="changePassword">
+                  <el-icon><Lock /></el-icon>
+                  修改密码
+                </el-dropdown-item>
                 <el-dropdown-item command="logout">
                   <el-icon><SwitchButton /></el-icon>
                   退出登录
@@ -98,15 +102,53 @@
         </router-view>
       </div>
     </main>
+
+    <!-- 修改密码对话框 -->
+    <el-dialog v-model="passwordDialogVisible" title="修改密码" width="400px">
+      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="80px">
+        <el-form-item label="原密码" prop="old_password">
+          <el-input
+            v-model="passwordForm.old_password"
+            type="password"
+            show-password
+            placeholder="请输入原密码"
+          />
+        </el-form-item>
+        <el-form-item label="新密码" prop="new_password">
+          <el-input
+            v-model="passwordForm.new_password"
+            type="password"
+            show-password
+            placeholder="请输入新密码（至少6位）"
+          />
+        </el-form-item>
+        <el-form-item label="确认密码" prop="confirm_password">
+          <el-input
+            v-model="passwordForm.confirm_password"
+            type="password"
+            show-password
+            placeholder="请再次输入新密码"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="passwordDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="passwordLoading" @click="handleChangePassword">
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getShops } from '@/api/shop'
-import { DataLine, Goods, Promotion, Setting, User, Shop, SwitchButton } from '@element-plus/icons-vue'
+import { changePassword } from '@/api/user'
+import { ElMessage } from 'element-plus'
+import { DataLine, Goods, Promotion, Setting, User, Shop, SwitchButton, Lock } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -115,6 +157,36 @@ const userStore = useUserStore()
 const shops = ref([])
 const currentShopId = ref(userStore.currentShopId)
 const currentRoute = computed(() => route.path)
+
+// 修改密码相关
+const passwordDialogVisible = ref(false)
+const passwordLoading = ref(false)
+const passwordFormRef = ref(null)
+const passwordForm = reactive({
+  old_password: '',
+  new_password: '',
+  confirm_password: ''
+})
+
+const validateConfirmPassword = (rule, value, callback) => {
+  if (value !== passwordForm.new_password) {
+    callback(new Error('两次输入的密码不一致'))
+  } else {
+    callback()
+  }
+}
+
+const passwordRules = {
+  old_password: [{ required: true, message: '请输入原密码', trigger: 'blur' }],
+  new_password: [
+    { required: true, message: '请输入新密码', trigger: 'blur' },
+    { min: 6, message: '密码长度至少为6位', trigger: 'blur' }
+  ],
+  confirm_password: [
+    { required: true, message: '请确认新密码', trigger: 'blur' },
+    { validator: validateConfirmPassword, trigger: 'blur' }
+  ]
+}
 
 onMounted(async () => {
   await fetchShops()
@@ -142,7 +214,31 @@ function handleCommand(command) {
   if (command === 'logout') {
     userStore.doLogout()
     router.push('/login')
+  } else if (command === 'changePassword') {
+    passwordForm.old_password = ''
+    passwordForm.new_password = ''
+    passwordForm.confirm_password = ''
+    passwordDialogVisible.value = true
   }
+}
+
+async function handleChangePassword() {
+  if (!passwordFormRef.value) return
+
+  await passwordFormRef.value.validate(async (valid) => {
+    if (!valid) return
+
+    passwordLoading.value = true
+    try {
+      await changePassword(passwordForm.old_password, passwordForm.new_password)
+      ElMessage.success('密码修改成功')
+      passwordDialogVisible.value = false
+    } catch (error) {
+      console.error(error)
+    } finally {
+      passwordLoading.value = false
+    }
+  })
 }
 </script>
 

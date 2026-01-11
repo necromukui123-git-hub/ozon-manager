@@ -220,3 +220,36 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		Data:    user,
 	})
 }
+
+// ChangePassword 用户修改自己的密码
+// PUT /api/v1/auth/password
+func (h *UserHandler) ChangePassword(c *gin.Context) {
+	var req dto.ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "请求参数错误: " + err.Error(),
+		})
+		return
+	}
+
+	userID := middleware.GetCurrentUserID(c)
+	if err := h.userService.ChangePassword(userID, req.OldPassword, req.NewPassword); err != nil {
+		statusCode := http.StatusInternalServerError
+		if err == service.ErrUserNotFound {
+			statusCode = http.StatusNotFound
+		} else if err == service.ErrWrongPassword {
+			statusCode = http.StatusBadRequest
+		}
+		c.JSON(statusCode, dto.Response{
+			Code:    statusCode,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Response{
+		Code:    200,
+		Message: "密码修改成功",
+	})
+}

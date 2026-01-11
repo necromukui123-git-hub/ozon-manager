@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	ErrUsernameExists = errors.New("用户名已存在")
+	ErrUsernameExists    = errors.New("用户名已存在")
 	ErrCannotModifyAdmin = errors.New("不能修改管理员账号")
+	ErrWrongPassword     = errors.New("原密码错误")
 )
 
 type UserService struct {
@@ -207,4 +208,25 @@ func (s *UserService) CanAccessShop(userID, shopID uint) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// ChangePassword 用户修改自己的密码
+func (s *UserService) ChangePassword(userID uint, oldPassword, newPassword string) error {
+	user, err := s.userRepo.FindByID(userID)
+	if err != nil {
+		return ErrUserNotFound
+	}
+
+	// 验证旧密码
+	if !CheckPassword(oldPassword, user.PasswordHash) {
+		return ErrWrongPassword
+	}
+
+	// 生成新密码哈希
+	passwordHash, err := HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	return s.userRepo.UpdatePassword(userID, passwordHash)
 }
