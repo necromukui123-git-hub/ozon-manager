@@ -1,0 +1,22 @@
+# 配置文件模板
+# 复制此文件为 config.yaml 并填写实际配置
+
+server:
+  port: 8080
+  mode: debug  # debug / release
+
+database:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: "<YOUR_POSTGRES_PASSWORD>"  # 请填写你的 PostgreSQL 密码
+  dbname: ozon_manager
+  sslmode: disable
+
+jwt:
+  secret: "<YOUR_JWT_SECRET>"  # 请填写一个随机字符串，用于 JWT 签名（建议32位以上）
+  expire_hours: 24
+
+log:
+  level: debug  # debug / info / warn / error
+  format: console  # console / json

@@ -1,0 +1,29 @@
+# 配置文件（包含敏感信息）
+config/config.yaml
+
+# 二进制文件
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# 测试文件
+*.test
+
+# 输出目录
+/bin/
+/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 日志文件
+*.log
+
+# 临时文件
+tmp/
+temp/
