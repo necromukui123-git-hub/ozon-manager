@@ -1,95 +1,156 @@
 <template>
   <div class="dashboard">
-    <h2>仪表盘</h2>
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <h2 class="gradient">数据概览</h2>
+      <div class="header-actions">
+        <el-button @click="fetchStats" :loading="loading">
+          <el-icon><Refresh /></el-icon>
+          刷新数据
+        </el-button>
+      </div>
+    </div>
 
-    <el-row :gutter="20" class="stats-row">
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-value">{{ stats.totalProducts }}</div>
-          <div class="stat-label">商品总数</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card">
-          <div class="stat-value">{{ stats.promotedProducts }}</div>
-          <div class="stat-label">已推广商品</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card warning">
-          <div class="stat-value">{{ stats.lossProducts }}</div>
-          <div class="stat-label">亏损商品</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="stat-card success">
-          <div class="stat-value">{{ stats.promotableProducts }}</div>
-          <div class="stat-label">可推广商品</div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <!-- 统计卡片 -->
+    <div class="stat-cards">
+      <div class="stat-card">
+        <div class="stat-icon primary">
+          <el-icon><Goods /></el-icon>
+        </div>
+        <div class="stat-value">{{ stats.totalProducts }}</div>
+        <div class="stat-label">商品总数</div>
+      </div>
 
-    <el-row :gutter="20" class="action-row">
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>快捷操作</span>
-          </template>
+      <div class="stat-card">
+        <div class="stat-icon accent">
+          <el-icon><TrendCharts /></el-icon>
+        </div>
+        <div class="stat-value">{{ stats.promotedProducts }}</div>
+        <div class="stat-label">已推广商品</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon warning">
+          <el-icon><WarningFilled /></el-icon>
+        </div>
+        <div class="stat-value">{{ stats.lossProducts }}</div>
+        <div class="stat-label">亏损商品</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-icon success">
+          <el-icon><CircleCheckFilled /></el-icon>
+        </div>
+        <div class="stat-value">{{ stats.promotableProducts }}</div>
+        <div class="stat-label">可推广商品</div>
+      </div>
+    </div>
+
+    <!-- 内容区 -->
+    <div class="dashboard-grid">
+      <!-- 快捷操作 -->
+      <div class="glass-card">
+        <div class="card-header">
+          <span class="card-title">快捷操作</span>
+        </div>
+        <div class="card-body">
           <div class="quick-actions">
-            <el-button type="primary" @click="$router.push('/promotions/batch-enroll')">
-              批量报名促销
-            </el-button>
-            <el-button type="warning" @click="$router.push('/promotions/loss-process')">
-              处理亏损商品
-            </el-button>
-            <el-button type="success" @click="$router.push('/promotions/reprice')">
-              改价推广
-            </el-button>
-            <el-button @click="handleExport">
-              导出可推广商品
-            </el-button>
+            <div class="action-btn" @click="$router.push('/promotions/batch-enroll')">
+              <div class="action-icon primary">
+                <el-icon><Upload /></el-icon>
+              </div>
+              <span class="action-text">批量报名</span>
+            </div>
+            <div class="action-btn" @click="$router.push('/promotions/loss-process')">
+              <div class="action-icon warning">
+                <el-icon><Edit /></el-icon>
+              </div>
+              <span class="action-text">亏损处理</span>
+            </div>
+            <div class="action-btn" @click="$router.push('/promotions/reprice')">
+              <div class="action-icon success">
+                <el-icon><PriceTag /></el-icon>
+              </div>
+              <span class="action-text">改价推广</span>
+            </div>
+            <div class="action-btn" @click="handleExport">
+              <div class="action-icon accent">
+                <el-icon><Download /></el-icon>
+              </div>
+              <span class="action-text">导出数据</span>
+            </div>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>最近操作</span>
-          </template>
-          <el-table :data="recentLogs" size="small" max-height="300">
+        </div>
+      </div>
+
+      <!-- 最近操作 -->
+      <div class="glass-card">
+        <div class="card-header">
+          <span class="card-title">最近操作</span>
+          <el-button text size="small" @click="$router.push('/admin/logs')">
+            查看全部
+          </el-button>
+        </div>
+        <div class="card-body">
+          <el-table :data="recentLogs" size="small" max-height="280">
             <el-table-column prop="operation_type" label="操作类型" width="120">
               <template #default="{ row }">
-                {{ formatOperationType(row.operation_type) }}
+                <el-tag size="small" :type="getOperationTagType(row.operation_type)">
+                  {{ formatOperationType(row.operation_type) }}
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="affected_count" label="影响数量" width="80" />
-            <el-table-column prop="status" label="状态" width="80">
+            <el-table-column prop="affected_count" label="数量" width="80" align="center" />
+            <el-table-column prop="status" label="状态" width="80" align="center">
               <template #default="{ row }">
-                <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">
-                  {{ row.status === 'success' ? '成功' : '失败' }}
-                </el-tag>
+                <el-icon v-if="row.status === 'success'" class="status-icon success">
+                  <CircleCheckFilled />
+                </el-icon>
+                <el-icon v-else class="status-icon danger">
+                  <CircleCloseFilled />
+                </el-icon>
               </template>
             </el-table-column>
             <el-table-column prop="created_at" label="时间">
               <template #default="{ row }">
-                {{ formatTime(row.created_at) }}
+                <span class="time-text">{{ formatTime(row.created_at) }}</span>
               </template>
             </el-table-column>
           </el-table>
-        </el-card>
-      </el-col>
-    </el-row>
+
+          <div v-if="recentLogs.length === 0" class="empty-state">
+            <el-icon><DocumentDelete /></el-icon>
+            <p>暂无操作记录</p>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getProducts } from '@/api/product'
 import { exportPromotable } from '@/api/promotion'
+import {
+  Goods,
+  TrendCharts,
+  WarningFilled,
+  CircleCheckFilled,
+  CircleCloseFilled,
+  Upload,
+  Edit,
+  PriceTag,
+  Download,
+  Refresh,
+  DocumentDelete
+} from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
+
+const loading = ref(false)
 
 const stats = ref({
   totalProducts: 0,
@@ -100,31 +161,34 @@ const stats = ref({
 
 const recentLogs = ref([])
 
+watch(() => userStore.currentShopId, () => {
+  fetchStats()
+})
+
 onMounted(async () => {
   await fetchStats()
 })
 
 async function fetchStats() {
   try {
+    loading.value = true
     const shopId = userStore.currentShopId
     if (!shopId) return
 
-    // 获取商品统计
     const res = await getProducts({ shop_id: shopId, page_size: 1 })
     stats.value.totalProducts = res.data.total
 
-    // 获取已推广商品数
     const promotedRes = await getProducts({ shop_id: shopId, is_promoted: true, page_size: 1 })
     stats.value.promotedProducts = promotedRes.data.total
 
-    // 获取亏损商品数
     const lossRes = await getProducts({ shop_id: shopId, is_loss: true, page_size: 1 })
     stats.value.lossProducts = lossRes.data.total
 
-    // 可推广 = 总数 - 已推广 - 亏损
     stats.value.promotableProducts = stats.value.totalProducts - stats.value.promotedProducts - stats.value.lossProducts
   } catch (error) {
     console.error(error)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -137,7 +201,6 @@ async function handleExport() {
     }
 
     const res = await exportPromotable(shopId)
-    // 处理文件下载
     const blob = new Blob([res], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -155,11 +218,21 @@ async function handleExport() {
 function formatOperationType(type) {
   const map = {
     'batch_enroll': '批量报名',
-    'process_loss': '处理亏损',
+    'process_loss': '亏损处理',
     'remove_reprice_promote': '改价推广',
     'sync_products': '同步商品'
   }
   return map[type] || type
+}
+
+function getOperationTagType(type) {
+  const map = {
+    'batch_enroll': 'primary',
+    'process_loss': 'warning',
+    'remove_reprice_promote': 'success',
+    'sync_products': 'info'
+  }
+  return map[type] || ''
 }
 
 function formatTime(time) {
@@ -170,44 +243,59 @@ function formatTime(time) {
 
 <style scoped>
 .dashboard {
-  padding: 20px;
+  min-height: 100%;
 }
 
-.stats-row {
-  margin-bottom: 20px;
-}
-
-.stat-card {
-  text-align: center;
-  padding: 20px;
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: bold;
-  color: #409EFF;
-}
-
-.stat-card.warning .stat-value {
-  color: #E6A23C;
-}
-
-.stat-card.success .stat-value {
-  color: #67C23A;
-}
-
-.stat-label {
-  margin-top: 10px;
-  color: #909399;
-}
-
-.action-row {
-  margin-top: 20px;
-}
-
-.quick-actions {
+.header-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  gap: 12px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+@media (max-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.status-icon {
+  font-size: 18px;
+
+  &.success {
+    color: var(--success);
+  }
+
+  &.danger {
+    color: var(--danger);
+  }
+}
+
+.time-text {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+
+  .el-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.5;
+  }
+
+  p {
+    font-size: 14px;
+  }
 }
 </style>

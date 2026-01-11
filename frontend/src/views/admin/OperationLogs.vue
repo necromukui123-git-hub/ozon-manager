@@ -1,106 +1,126 @@
 <template>
   <div class="operation-logs">
-    <h2>操作日志</h2>
+    <div class="page-header">
+      <h2 class="gradient">操作日志</h2>
+    </div>
 
-    <el-card class="filter-card">
-      <el-form :inline="true" :model="filters">
-        <el-form-item label="操作人">
-          <el-select v-model="filters.user_id" placeholder="全部" clearable>
-            <el-option
-              v-for="user in users"
-              :key="user.id"
-              :label="user.display_name"
-              :value="user.id"
+    <div class="glass-card filter-card">
+      <div class="card-body">
+        <el-form :inline="true" :model="filters" class="filter-form">
+          <el-form-item label="操作人">
+            <el-select v-model="filters.user_id" placeholder="全部" clearable style="width: 140px">
+              <el-option
+                v-for="user in users"
+                :key="user.id"
+                :label="user.display_name"
+                :value="user.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="店铺">
+            <el-select v-model="filters.shop_id" placeholder="全部" clearable style="width: 140px">
+              <el-option
+                v-for="shop in shops"
+                :key="shop.id"
+                :label="shop.name"
+                :value="shop.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="操作类型">
+            <el-select v-model="filters.operation_type" placeholder="全部" clearable style="width: 140px">
+              <el-option label="批量报名" value="batch_enroll" />
+              <el-option label="处理亏损" value="process_loss" />
+              <el-option label="改价推广" value="remove_reprice_promote" />
+              <el-option label="同步商品" value="sync_products" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="时间范围">
+            <el-date-picker
+              v-model="filters.date_range"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              style="width: 240px"
             />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="店铺">
-          <el-select v-model="filters.shop_id" placeholder="全部" clearable>
-            <el-option
-              v-for="shop in shops"
-              :key="shop.id"
-              :label="shop.name"
-              :value="shop.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="操作类型">
-          <el-select v-model="filters.operation_type" placeholder="全部" clearable>
-            <el-option label="批量报名" value="batch_enroll" />
-            <el-option label="处理亏损" value="process_loss" />
-            <el-option label="改价推广" value="remove_reprice_promote" />
-            <el-option label="同步商品" value="sync_products" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="时间范围">
-          <el-date-picker
-            v-model="filters.date_range"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <el-card>
-      <el-table :data="logs" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column label="操作人" width="120">
-          <template #default="{ row }">
-            {{ row.user?.display_name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="店铺" width="120">
-          <template #default="{ row }">
-            {{ row.shop?.name || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作类型" width="120">
-          <template #default="{ row }">
-            {{ formatOperationType(row.operation_type) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="affected_count" label="影响数量" width="100" />
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)" size="small">
-              {{ formatStatus(row.status) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="ip_address" label="IP地址" width="140" />
-        <el-table-column prop="created_at" label="操作时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="80">
-          <template #default="{ row }">
-            <el-button type="primary" size="small" text @click="showDetail(row)">
-              详情
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="handleSearch">
+              <el-icon><Search /></el-icon>
+              搜索
             </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+            <el-button @click="handleReset">
+              <el-icon><RefreshLeft /></el-icon>
+              重置
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </div>
+    </div>
 
-      <el-pagination
-        class="pagination"
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.page_size"
-        :total="pagination.total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @size-change="handleSizeChange"
-        @current-change="handlePageChange"
-      />
-    </el-card>
+    <div class="glass-card">
+      <div class="card-body table-wrapper">
+        <el-table :data="logs" v-loading="loading">
+          <el-table-column prop="id" label="ID" width="80" />
+          <el-table-column label="操作人" width="120">
+            <template #default="{ row }">
+              {{ row.user?.display_name || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="店铺" width="120">
+            <template #default="{ row }">
+              {{ row.shop?.name || '-' }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作类型" width="120">
+            <template #default="{ row }">
+              <el-tag size="small" :type="getOperationTagType(row.operation_type)">
+                {{ formatOperationType(row.operation_type) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="affected_count" label="影响数量" width="100" align="center" />
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="getStatusType(row.status)" effect="dark" size="small">
+                {{ formatStatus(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="ip_address" label="IP 地址" width="140">
+            <template #default="{ row }">
+              <span class="code-text">{{ row.ip_address }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="操作时间" width="180">
+            <template #default="{ row }">
+              <span class="time-text">{{ formatTime(row.created_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="80" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" text @click="showDetail(row)">
+                详情
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div class="table-footer">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.page_size"
+            :total="pagination.total"
+            :page-sizes="[20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="handleSizeChange"
+            @current-change="handlePageChange"
+          />
+        </div>
+      </div>
+    </div>
 
     <el-dialog v-model="detailVisible" title="操作详情" width="600px">
       <el-descriptions :column="2" border>
@@ -117,12 +137,12 @@
           {{ currentLog?.affected_count }}
         </el-descriptions-item>
         <el-descriptions-item label="状态">
-          <el-tag :type="getStatusType(currentLog?.status)">
+          <el-tag :type="getStatusType(currentLog?.status)" effect="dark">
             {{ formatStatus(currentLog?.status) }}
           </el-tag>
         </el-descriptions-item>
-        <el-descriptions-item label="IP地址">
-          {{ currentLog?.ip_address }}
+        <el-descriptions-item label="IP 地址">
+          <span class="code-text">{{ currentLog?.ip_address }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="操作时间" :span="2">
           {{ formatTime(currentLog?.created_at) }}
@@ -142,6 +162,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { Search, RefreshLeft } from '@element-plus/icons-vue'
 import { getOperationLogs } from '@/api/log'
 import { getUsers } from '@/api/user'
 import { getShops } from '@/api/shop'
@@ -259,6 +280,16 @@ function formatOperationType(type) {
   return map[type] || type
 }
 
+function getOperationTagType(type) {
+  const map = {
+    'batch_enroll': 'primary',
+    'process_loss': 'warning',
+    'remove_reprice_promote': 'success',
+    'sync_products': 'info'
+  }
+  return map[type] || ''
+}
+
 function formatStatus(status) {
   const map = {
     'pending': '进行中',
@@ -285,41 +316,66 @@ function formatTime(time) {
 
 <style scoped>
 .operation-logs {
-  padding: 20px;
-}
-
-.operation-logs h2 {
-  margin-bottom: 20px;
+  min-height: 100%;
 }
 
 .filter-card {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
-.pagination {
-  margin-top: 20px;
+.filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.table-wrapper {
+  padding: 0;
+}
+
+.table-footer {
+  padding: 16px 20px;
   display: flex;
   justify-content: flex-end;
+  border-top: 1px solid var(--glass-border);
+}
+
+.code-text {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.time-text {
+  font-size: 13px;
+  color: var(--text-muted);
 }
 
 .error-message {
-  color: #F56C6C;
+  color: var(--danger);
 }
 
 .detail-section {
-  margin-top: 20px;
+  margin-top: 24px;
 }
 
 .detail-section h4 {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .detail-json {
-  background: #f5f7fa;
-  padding: 15px;
-  border-radius: 4px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
   overflow: auto;
   max-height: 300px;
   font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text-secondary);
 }
 </style>

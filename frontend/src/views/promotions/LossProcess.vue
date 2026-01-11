@@ -1,106 +1,155 @@
 <template>
   <div class="loss-process">
-    <h2>亏损商品处理</h2>
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <h2 class="gradient">亏损商品处理</h2>
+    </div>
 
-    <el-card>
-      <template #header>
-        <span>导入亏损商品</span>
-      </template>
-
-      <el-upload
-        ref="uploadRef"
-        class="upload-area"
-        drag
-        :auto-upload="false"
-        :limit="1"
-        accept=".xlsx,.xls"
-        :on-change="handleFileChange"
-        :on-exceed="handleExceed"
-      >
-        <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-        <div class="el-upload__text">
-          将Excel文件拖到此处，或<em>点击上传</em>
-        </div>
-        <template #tip>
-          <div class="el-upload__tip">
-            请上传包含亏损商品的Excel文件（.xlsx/.xls），文件需包含：source_sku、new_price 列
-          </div>
-        </template>
-      </el-upload>
-
-      <div class="action-buttons">
-        <el-button type="primary" :loading="importing" :disabled="!file" @click="handleImport">
-          导入并处理
-        </el-button>
-        <el-button @click="downloadTemplate">
+    <!-- 上传区域 -->
+    <div class="glass-card">
+      <div class="card-header">
+        <span class="card-title">导入亏损商品</span>
+        <el-button text size="small" @click="downloadTemplate">
+          <el-icon><Download /></el-icon>
           下载模板
         </el-button>
       </div>
-    </el-card>
+      <div class="card-body">
+        <el-upload
+          ref="uploadRef"
+          class="upload-area"
+          drag
+          :auto-upload="false"
+          :limit="1"
+          accept=".xlsx,.xls"
+          :on-change="handleFileChange"
+          :on-exceed="handleExceed"
+        >
+          <div class="upload-content">
+            <div class="upload-icon">
+              <el-icon><UploadFilled /></el-icon>
+            </div>
+            <div class="upload-text">
+              <p>将 Excel 文件拖到此处</p>
+              <p class="sub">或 <em>点击上传</em></p>
+            </div>
+          </div>
+        </el-upload>
+        <div class="upload-tip">
+          支持 .xlsx / .xls 格式，文件需包含 source_sku、new_price 列
+        </div>
 
-    <el-card v-if="previewData.length > 0" class="preview-card">
-      <template #header>
-        <span>预览数据（共 {{ previewData.length }} 条）</span>
-      </template>
-      <el-table :data="previewData.slice(0, 10)" size="small">
-        <el-table-column prop="source_sku" label="SKU" />
-        <el-table-column prop="new_price" label="新价格">
-          <template #default="{ row }">
-            ¥{{ row.new_price }}
-          </template>
-        </el-table-column>
-      </el-table>
-      <div v-if="previewData.length > 10" class="preview-hint">
-        仅显示前10条，共 {{ previewData.length }} 条数据
+        <div class="action-buttons">
+          <el-button
+            type="primary"
+            size="large"
+            :loading="importing"
+            :disabled="!file"
+            @click="handleImport"
+          >
+            <el-icon v-if="!importing"><Upload /></el-icon>
+            {{ importing ? '处理中...' : '导入并处理' }}
+          </el-button>
+        </div>
       </div>
-    </el-card>
+    </div>
 
-    <el-card v-if="result" class="result-card">
-      <template #header>
-        <span>处理结果</span>
-      </template>
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="状态">
-          <el-tag :type="result.success ? 'success' : 'danger'">
-            {{ result.success ? '成功' : '失败' }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="处理商品数">
-          {{ result.affected_count }}
-        </el-descriptions-item>
-        <el-descriptions-item label="退出促销">
-          {{ result.exit_count }}
-        </el-descriptions-item>
-        <el-descriptions-item label="改价成功">
-          {{ result.price_update_count }}
-        </el-descriptions-item>
-        <el-descriptions-item label="重新报名">
-          {{ result.rejoin_count }}
-        </el-descriptions-item>
-      </el-descriptions>
-
-      <el-steps :active="3" finish-status="success" class="process-steps">
-        <el-step title="退出促销" :description="`${result.exit_count} 个商品`" />
-        <el-step title="更新价格" :description="`${result.price_update_count} 个商品`" />
-        <el-step title="重新报名28%" :description="`${result.rejoin_count} 个商品`" />
-      </el-steps>
-
-      <div v-if="result.failed_items && result.failed_items.length > 0" class="failed-list">
-        <h4>失败详情</h4>
-        <el-table :data="result.failed_items" size="small" max-height="300">
-          <el-table-column prop="sku" label="SKU" width="150" />
-          <el-table-column prop="step" label="失败步骤" width="100" />
-          <el-table-column prop="error" label="错误信息" />
+    <!-- 预览数据 -->
+    <div v-if="previewData.length > 0" class="glass-card preview-card">
+      <div class="card-header">
+        <span class="card-title">预览数据</span>
+        <el-tag type="info" effect="plain">共 {{ previewData.length }} 条</el-tag>
+      </div>
+      <div class="card-body">
+        <el-table :data="previewData.slice(0, 10)" size="small">
+          <el-table-column prop="source_sku" label="SKU">
+            <template #default="{ row }">
+              <span class="sku-text">{{ row.source_sku }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="new_price" label="新价格" align="right">
+            <template #default="{ row }">
+              <span class="price-text">¥{{ row.new_price }}</span>
+            </template>
+          </el-table-column>
         </el-table>
+        <div v-if="previewData.length > 10" class="preview-hint">
+          仅显示前 10 条，共 {{ previewData.length }} 条数据
+        </div>
       </div>
-    </el-card>
+    </div>
+
+    <!-- 处理结果 -->
+    <div v-if="result" class="glass-card result-card">
+      <div class="card-header">
+        <span class="card-title">处理结果</span>
+        <el-tag :type="result.success ? 'success' : 'danger'" effect="dark">
+          {{ result.success ? '成功' : '失败' }}
+        </el-tag>
+      </div>
+      <div class="card-body">
+        <!-- 处理步骤 -->
+        <div class="process-steps">
+          <div class="step-item" :class="{ active: true }">
+            <div class="step-icon success">
+              <el-icon><CircleCheckFilled /></el-icon>
+            </div>
+            <div class="step-info">
+              <span class="step-title">退出促销</span>
+              <span class="step-count">{{ result.exit_count }} 个商品</span>
+            </div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-item" :class="{ active: true }">
+            <div class="step-icon success">
+              <el-icon><CircleCheckFilled /></el-icon>
+            </div>
+            <div class="step-info">
+              <span class="step-title">更新价格</span>
+              <span class="step-count">{{ result.price_update_count }} 个商品</span>
+            </div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step-item" :class="{ active: true }">
+            <div class="step-icon success">
+              <el-icon><CircleCheckFilled /></el-icon>
+            </div>
+            <div class="step-info">
+              <span class="step-title">重新报名 28%</span>
+              <span class="step-count">{{ result.rejoin_count }} 个商品</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 失败详情 -->
+        <div v-if="result.failed_items && result.failed_items.length > 0" class="failed-section">
+          <h4 class="failed-title">
+            <el-icon><WarningFilled /></el-icon>
+            失败详情
+          </h4>
+          <el-table :data="result.failed_items" size="small" max-height="300">
+            <el-table-column prop="sku" label="SKU" width="150">
+              <template #default="{ row }">
+                <span class="sku-text">{{ row.sku }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="step" label="失败步骤" width="120">
+              <template #default="{ row }">
+                <el-tag size="small" type="warning">{{ row.step }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="error" label="错误信息" />
+          </el-table>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
+import { UploadFilled, Upload, Download, CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { importLoss } from '@/api/promotion'
 import * as XLSX from 'xlsx'
@@ -189,47 +238,184 @@ function downloadTemplate() {
 
 <style scoped>
 .loss-process {
-  padding: 20px;
-}
-
-.loss-process h2 {
-  margin-bottom: 20px;
+  min-height: 100%;
 }
 
 .upload-area {
   width: 100%;
 }
 
-.action-buttons {
-  margin-top: 20px;
-  display: flex;
-  gap: 10px;
+.upload-area :deep(.el-upload-dragger) {
+  background: var(--glass-bg);
+  border: 2px dashed var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  transition: all var(--transition-normal);
+
+  &:hover {
+    border-color: var(--primary);
+    background: var(--glass-bg-hover);
+  }
 }
 
-.preview-card {
-  margin-top: 20px;
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.upload-icon {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  .el-icon {
+    font-size: 28px;
+    color: var(--primary);
+  }
+}
+
+.upload-text {
+  text-align: center;
+
+  p {
+    color: var(--text-primary);
+    font-size: 15px;
+    margin: 0;
+
+    &.sub {
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    em {
+      color: var(--primary);
+      font-style: normal;
+      cursor: pointer;
+    }
+  }
+}
+
+.upload-tip {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.action-buttons {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.preview-card,
+.result-card {
+  margin-top: 24px;
 }
 
 .preview-hint {
-  margin-top: 10px;
-  color: #909399;
+  margin-top: 12px;
   font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
-.result-card {
-  margin-top: 20px;
+.sku-text {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.price-text {
+  font-weight: 600;
+  color: var(--warning);
 }
 
 .process-steps {
-  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 24px;
 }
 
-.failed-list {
-  margin-top: 20px;
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+
+  .step-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass-bg);
+    border: 2px solid var(--glass-border);
+
+    .el-icon {
+      font-size: 24px;
+      color: var(--text-muted);
+    }
+
+    &.success {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: var(--success);
+
+      .el-icon {
+        color: var(--success);
+      }
+    }
+  }
+
+  .step-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+
+    .step-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .step-count {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  }
 }
 
-.failed-list h4 {
-  margin-bottom: 10px;
-  color: #F56C6C;
+.step-line {
+  width: 60px;
+  height: 2px;
+  background: var(--success);
+  margin: 0 16px;
+  margin-bottom: 50px;
+}
+
+.failed-section {
+  padding-top: 20px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.failed-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--danger);
+  margin-bottom: 16px;
 }
 </style>

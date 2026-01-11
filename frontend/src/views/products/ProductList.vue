@@ -1,102 +1,140 @@
 <template>
   <div class="product-list">
+    <!-- 页面标题 -->
     <div class="page-header">
-      <h2>商品列表</h2>
+      <h2 class="gradient">商品列表</h2>
       <el-button type="primary" :loading="syncing" @click="handleSync">
+        <el-icon><Refresh /></el-icon>
         同步商品
       </el-button>
     </div>
 
-    <el-card class="filter-card">
-      <el-form :inline="true" :model="filters">
-        <el-form-item label="亏损状态">
-          <el-select v-model="filters.is_loss" placeholder="全部" clearable>
-            <el-option label="亏损商品" :value="true" />
-            <el-option label="正常商品" :value="false" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="推广状态">
-          <el-select v-model="filters.is_promoted" placeholder="全部" clearable>
-            <el-option label="已推广" :value="true" />
-            <el-option label="未推广" :value="false" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="搜索">
-          <el-input
-            v-model="filters.keyword"
-            placeholder="商品名称/SKU"
-            clearable
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <!-- 筛选器 -->
+    <div class="glass-card filter-card">
+      <div class="card-body">
+        <el-form :inline="true" :model="filters" class="filter-form">
+          <el-form-item label="亏损状态">
+            <el-select v-model="filters.is_loss" placeholder="全部" clearable style="width: 140px">
+              <el-option label="亏损商品" :value="true" />
+              <el-option label="正常商品" :value="false" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="推广状态">
+            <el-select v-model="filters.is_promoted" placeholder="全部" clearable style="width: 140px">
+              <el-option label="已推广" :value="true" />
+              <el-option label="未推广" :value="false" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="搜索">
+            <el-input
+              v-model="filters.keyword"
+              placeholder="商品名称 / SKU"
+              clearable
+              style="width: 200px"
+              @keyup.enter="handleSearch"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="handleSearch">
+              <el-icon><Search /></el-icon>
+              搜索
+            </el-button>
+            <el-button @click="handleReset">
+              <el-icon><RefreshLeft /></el-icon>
+              重置
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </div>
+    </div>
 
-    <el-card class="table-card">
-      <el-table :data="products" v-loading="loading" stripe>
-        <el-table-column prop="source_sku" label="SKU" width="150" />
-        <el-table-column prop="name" label="商品名称" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="current_price" label="当前价格" width="100">
-          <template #default="{ row }">
-            ¥{{ row.current_price?.toFixed(2) || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="亏损" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_loss" type="danger" size="small">亏损</el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="推广" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_promoted" type="success" size="small">已推广</el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="参与的促销活动" min-width="200">
-          <template #default="{ row }">
-            <template v-if="row.promotions && row.promotions.length > 0">
-              <el-tag
-                v-for="promo in row.promotions"
-                :key="promo.action_id"
-                size="small"
-                :type="getPromoTagType(promo.type)"
-                style="margin-right: 5px; margin-bottom: 5px;"
-              >
-                {{ promo.title }}
-              </el-tag>
+    <!-- 数据表格 -->
+    <div class="glass-card table-card">
+      <div class="card-body">
+        <el-table :data="products" v-loading="loading">
+          <el-table-column prop="source_sku" label="SKU" width="150">
+            <template #default="{ row }">
+              <span class="sku-text">{{ row.source_sku }}</span>
             </template>
-            <span v-else class="no-promo">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="亏损信息" width="150">
-          <template #default="{ row }">
-            <template v-if="row.loss_info">
-              <div class="loss-info">
-                <div>原价: ¥{{ row.loss_info.original_price }}</div>
-                <div>新价: ¥{{ row.loss_info.new_price }}</div>
+          </el-table-column>
+          <el-table-column prop="name" label="商品名称" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span class="product-name">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="current_price" label="当前价格" width="110" align="right">
+            <template #default="{ row }">
+              <span class="price-text">¥{{ row.current_price?.toFixed(2) || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="160" align="center">
+            <template #default="{ row }">
+              <div class="status-tags">
+                <el-tag v-if="row.is_loss" type="danger" size="small" effect="dark">
+                  <el-icon><WarningFilled /></el-icon>
+                  亏损
+                </el-tag>
+                <el-tag v-if="row.is_promoted" type="success" size="small" effect="dark">
+                  <el-icon><Promotion /></el-icon>
+                  推广中
+                </el-tag>
+                <span v-if="!row.is_loss && !row.is_promoted" class="status-normal">正常</span>
               </div>
             </template>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-      </el-table>
+          </el-table-column>
+          <el-table-column label="参与的促销" min-width="200">
+            <template #default="{ row }">
+              <template v-if="row.promotions && row.promotions.length > 0">
+                <div class="promo-tags">
+                  <el-tag
+                    v-for="promo in row.promotions"
+                    :key="promo.action_id"
+                    size="small"
+                    :type="getPromoTagType(promo.type)"
+                  >
+                    {{ promo.title }}
+                  </el-tag>
+                </div>
+              </template>
+              <span v-else class="no-data">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="亏损信息" width="140">
+            <template #default="{ row }">
+              <template v-if="row.loss_info">
+                <div class="loss-info">
+                  <div class="loss-row">
+                    <span class="loss-label">原价</span>
+                    <span class="loss-value old">¥{{ row.loss_info.original_price }}</span>
+                  </div>
+                  <div class="loss-row">
+                    <span class="loss-label">新价</span>
+                    <span class="loss-value new">¥{{ row.loss_info.new_price }}</span>
+                  </div>
+                </div>
+              </template>
+              <span v-else class="no-data">-</span>
+            </template>
+          </el-table-column>
+        </el-table>
 
-      <el-pagination
-        class="pagination"
-        v-model:current-page="pagination.page"
-        v-model:page-size="pagination.page_size"
-        :total="pagination.total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next, jumper"
-        @size-change="handleSizeChange"
-        @current-change="handlePageChange"
-      />
-    </el-card>
+        <div class="table-footer">
+          <el-pagination
+            v-model:current-page="pagination.page"
+            v-model:page-size="pagination.page_size"
+            :total="pagination.total"
+            :page-sizes="[20, 50, 100]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @size-change="handleSizeChange"
+            @current-change="handlePageChange"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -105,6 +143,13 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getProducts, syncProducts } from '@/api/product'
+import {
+  Refresh,
+  RefreshLeft,
+  Search,
+  WarningFilled,
+  Promotion
+} from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 
@@ -215,40 +260,98 @@ function getPromoTagType(type) {
 
 <style scoped>
 .product-list {
-  padding: 20px;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-
-.page-header h2 {
-  margin: 0;
+  min-height: 100%;
 }
 
 .filter-card {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
-.table-card {
-  margin-bottom: 20px;
+.filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
 }
 
-.pagination {
-  margin-top: 20px;
+.table-card .card-body {
+  padding: 0;
+}
+
+.table-footer {
+  padding: 16px 20px;
   display: flex;
   justify-content: flex-end;
+  border-top: 1px solid var(--glass-border);
 }
 
-.no-promo {
-  color: #909399;
+.sku-text {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.product-name {
+  color: var(--text-primary);
+}
+
+.price-text {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.status-tags {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.status-tags .el-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-normal {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.promo-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.no-data {
+  color: var(--text-disabled);
 }
 
 .loss-info {
   font-size: 12px;
-  color: #E6A23C;
+}
+
+.loss-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.loss-label {
+  color: var(--text-muted);
+}
+
+.loss-value {
+  font-weight: 500;
+
+  &.old {
+    color: var(--text-muted);
+    text-decoration: line-through;
+  }
+
+  &.new {
+    color: var(--warning);
+  }
 }
 </style>

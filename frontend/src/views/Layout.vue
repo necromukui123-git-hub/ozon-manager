@@ -1,14 +1,22 @@
 <template>
   <div class="layout">
+    <!-- 侧边栏 -->
     <aside class="layout-aside">
-      <div class="logo">Ozon 管理</div>
+      <div class="logo">
+        <div class="logo-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+            <path d="M3 6h18"/>
+            <path d="M16 10a4 4 0 0 1-8 0"/>
+          </svg>
+        </div>
+        <span class="logo-text">Ozon 管理</span>
+      </div>
 
       <el-menu
         :default-active="currentRoute"
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409EFF"
         router
+        class="sidebar-menu"
       >
         <el-menu-item index="/">
           <el-icon><DataLine /></el-icon>
@@ -42,15 +50,19 @@
       </el-menu>
     </aside>
 
+    <!-- 主内容区 -->
     <main class="layout-main">
       <header class="layout-header">
         <div class="header-left">
           <el-select
             v-model="currentShopId"
             placeholder="选择店铺"
-            style="width: 200px"
+            style="width: 220px"
             @change="handleShopChange"
           >
+            <template #prefix>
+              <el-icon><Shop /></el-icon>
+            </template>
             <el-option
               v-for="shop in shops"
               :key="shop.id"
@@ -61,14 +73,17 @@
         </div>
 
         <div class="header-right">
-          <span>{{ userStore.user?.display_name }}</span>
+          <span class="user-name">{{ userStore.user?.display_name }}</span>
           <el-dropdown @command="handleCommand">
-            <el-button circle>
+            <div class="user-avatar">
               <el-icon><User /></el-icon>
-            </el-button>
+            </div>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item command="logout">
+                  <el-icon><SwitchButton /></el-icon>
+                  退出登录
+                </el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -76,7 +91,11 @@
       </header>
 
       <div class="layout-content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </div>
     </main>
   </div>
@@ -87,7 +106,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getShops } from '@/api/shop'
-import { DataLine, Goods, Promotion, Setting, User } from '@element-plus/icons-vue'
+import { DataLine, Goods, Promotion, Setting, User, Shop, SwitchButton } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -106,7 +125,6 @@ async function fetchShops() {
     const res = await getShops()
     shops.value = res.data
 
-    // 如果没有选中店铺，默认选第一个
     if (!currentShopId.value && shops.value.length > 0) {
       currentShopId.value = shops.value[0].id
       userStore.setCurrentShop(currentShopId.value)
@@ -129,58 +147,23 @@ function handleCommand(command) {
 </script>
 
 <style scoped>
-.layout {
-  display: flex;
-  min-height: 100vh;
+.sidebar-menu {
+  background: transparent !important;
 }
 
-.layout-aside {
-  width: 220px;
-  background-color: #304156;
-  flex-shrink: 0;
+/* 页面切换动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-.logo {
-  height: 60px;
-  line-height: 60px;
-  text-align: center;
-  font-size: 20px;
-  font-weight: bold;
-  color: #fff;
-  background-color: #263445;
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
 }
 
-.el-menu {
-  border-right: none;
-}
-
-.layout-main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.layout-header {
-  height: 60px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0 20px;
-  background-color: #fff;
-  border-bottom: 1px solid #e6e6e6;
-  flex-shrink: 0;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-
-.layout-content {
-  flex: 1;
-  overflow: auto;
-  background-color: #f0f2f5;
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 </style>

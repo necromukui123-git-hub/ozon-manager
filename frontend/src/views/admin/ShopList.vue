@@ -1,41 +1,48 @@
 <template>
   <div class="shop-list">
     <div class="page-header">
-      <h2>店铺管理</h2>
+      <h2 class="gradient">店铺管理</h2>
       <el-button type="primary" @click="showDialog()">
+        <el-icon><Plus /></el-icon>
         添加店铺
       </el-button>
     </div>
 
-    <el-card>
-      <el-table :data="shops" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="name" label="店铺名称" />
-        <el-table-column prop="client_id" label="Client ID" />
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.is_active ? 'success' : 'info'">
-              {{ row.is_active ? '启用' : '禁用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="created_at" label="创建时间" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150">
-          <template #default="{ row }">
-            <el-button type="primary" size="small" text @click="showDialog(row)">
-              编辑
-            </el-button>
-            <el-button type="danger" size="small" text @click="handleDelete(row)">
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+    <div class="glass-card">
+      <div class="card-body">
+        <el-table :data="shops" v-loading="loading">
+          <el-table-column prop="id" label="ID" width="80" />
+          <el-table-column prop="name" label="店铺名称" />
+          <el-table-column prop="client_id" label="Client ID">
+            <template #default="{ row }">
+              <span class="code-text">{{ row.client_id }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.is_active ? 'success' : 'info'" effect="dark" size="small">
+                {{ row.is_active ? '启用' : '禁用' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="created_at" label="创建时间" width="180">
+            <template #default="{ row }">
+              <span class="time-text">{{ formatTime(row.created_at) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="150" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" text @click="showDialog(row)">
+                编辑
+              </el-button>
+              <el-button type="danger" size="small" text @click="handleDelete(row)">
+                删除
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </div>
 
     <el-dialog
       v-model="dialogVisible"
@@ -47,14 +54,14 @@
           <el-input v-model="form.name" placeholder="请输入店铺名称" />
         </el-form-item>
         <el-form-item label="Client ID" prop="client_id">
-          <el-input v-model="form.client_id" placeholder="请输入Ozon Client ID" />
+          <el-input v-model="form.client_id" placeholder="请输入 Ozon Client ID" />
         </el-form-item>
         <el-form-item label="API Key" prop="api_key">
           <el-input
             v-model="form.api_key"
             type="password"
             show-password
-            :placeholder="isEdit ? '留空则不修改' : '请输入Ozon API Key'"
+            :placeholder="isEdit ? '留空则不修改' : '请输入 Ozon API Key'"
           />
         </el-form-item>
         <el-form-item label="状态">
@@ -74,6 +81,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import { getShops, createShop, updateShop, deleteShop } from '@/api/shop'
 
 const loading = ref(false)
@@ -93,7 +101,7 @@ const form = reactive({
 
 const rules = {
   name: [{ required: true, message: '请输入店铺名称', trigger: 'blur' }],
-  client_id: [{ required: true, message: '请输入Client ID', trigger: 'blur' }]
+  client_id: [{ required: true, message: '请输入 Client ID', trigger: 'blur' }]
 }
 
 onMounted(() => {
@@ -137,9 +145,8 @@ async function handleSave() {
   await formRef.value.validate(async (valid) => {
     if (!valid) return
 
-    // 新建时 API Key 必填
     if (!isEdit.value && !form.api_key) {
-      ElMessage.warning('请输入API Key')
+      ElMessage.warning('请输入 API Key')
       return
     }
 
@@ -205,17 +212,17 @@ function formatTime(time) {
 
 <style scoped>
 .shop-list {
-  padding: 20px;
+  min-height: 100%;
 }
 
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+.code-text {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--accent);
 }
 
-.page-header h2 {
-  margin: 0;
+.time-text {
+  font-size: 13px;
+  color: var(--text-muted);
 }
 </style>

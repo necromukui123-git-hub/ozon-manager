@@ -1,74 +1,82 @@
 <template>
   <div class="user-list">
     <div class="page-header">
-      <h2>用户管理</h2>
+      <h2 class="gradient">用户管理</h2>
       <el-button type="primary" @click="showDialog()">
+        <el-icon><Plus /></el-icon>
         添加用户
       </el-button>
     </div>
 
-    <el-card>
-      <el-table :data="users" v-loading="loading" stripe>
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="username" label="用户名" width="120" />
-        <el-table-column prop="display_name" label="显示名称" width="120" />
-        <el-table-column prop="role" label="角色" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.role === 'admin' ? 'danger' : 'info'">
-              {{ row.role === 'admin' ? '管理员' : '员工' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'active' ? 'success' : 'info'">
-              {{ row.status === 'active' ? '正常' : '禁用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="可访问店铺" min-width="200">
-          <template #default="{ row }">
-            <template v-if="row.role === 'admin'">
-              <el-tag size="small" type="warning">全部店铺</el-tag>
+    <div class="glass-card">
+      <div class="card-body">
+        <el-table :data="users" v-loading="loading">
+          <el-table-column prop="id" label="ID" width="80" />
+          <el-table-column prop="username" label="用户名" width="120">
+            <template #default="{ row }">
+              <span class="code-text">{{ row.username }}</span>
             </template>
-            <template v-else-if="row.shops && row.shops.length > 0">
-              <el-tag
-                v-for="shop in row.shops"
-                :key="shop.id"
-                size="small"
-                style="margin-right: 5px;"
-              >
-                {{ shop.name }}
+          </el-table-column>
+          <el-table-column prop="display_name" label="显示名称" width="120" />
+          <el-table-column prop="role" label="角色" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" effect="dark" size="small">
+                {{ row.role === 'admin' ? '管理员' : '员工' }}
               </el-tag>
             </template>
-            <span v-else class="no-shop">未分配</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="last_login_at" label="最后登录" width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.last_login_at) || '-' }}
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="200">
-          <template #default="{ row }">
-            <el-button type="primary" size="small" text @click="showShopDialog(row)">
-              分配店铺
-            </el-button>
-            <el-button type="warning" size="small" text @click="showPasswordDialog(row)">
-              重置密码
-            </el-button>
-            <el-button
-              :type="row.status === 'active' ? 'danger' : 'success'"
-              size="small"
-              text
-              @click="toggleStatus(row)"
-            >
-              {{ row.status === 'active' ? '禁用' : '启用' }}
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+          </el-table-column>
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'active' ? 'success' : 'info'" effect="dark" size="small">
+                {{ row.status === 'active' ? '正常' : '禁用' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="可访问店铺" min-width="200">
+            <template #default="{ row }">
+              <template v-if="row.role === 'admin'">
+                <el-tag size="small" type="warning" effect="plain">全部店铺</el-tag>
+              </template>
+              <template v-else-if="row.shops && row.shops.length > 0">
+                <div class="shop-tags">
+                  <el-tag
+                    v-for="shop in row.shops"
+                    :key="shop.id"
+                    size="small"
+                  >
+                    {{ shop.name }}
+                  </el-tag>
+                </div>
+              </template>
+              <span v-else class="no-data">未分配</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="last_login_at" label="最后登录" width="180">
+            <template #default="{ row }">
+              <span class="time-text">{{ formatTime(row.last_login_at) || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="220" align="center">
+            <template #default="{ row }">
+              <el-button type="primary" size="small" text @click="showShopDialog(row)">
+                分配店铺
+              </el-button>
+              <el-button type="warning" size="small" text @click="showPasswordDialog(row)">
+                重置密码
+              </el-button>
+              <el-button
+                :type="row.status === 'active' ? 'danger' : 'success'"
+                size="small"
+                text
+                @click="toggleStatus(row)"
+              >
+                {{ row.status === 'active' ? '禁用' : '启用' }}
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </div>
 
     <!-- 创建用户对话框 -->
     <el-dialog v-model="dialogVisible" title="添加用户" width="500px">
@@ -110,7 +118,7 @@
     <el-dialog v-model="shopDialogVisible" title="分配店铺" width="500px">
       <el-form label-width="100px">
         <el-form-item label="用户">
-          {{ editingUser?.display_name }} ({{ editingUser?.username }})
+          <span class="user-info">{{ editingUser?.display_name }} ({{ editingUser?.username }})</span>
         </el-form-item>
         <el-form-item label="可访问店铺">
           <el-select v-model="selectedShopIds" multiple placeholder="选择店铺" style="width: 100%">
@@ -135,7 +143,7 @@
     <el-dialog v-model="passwordDialogVisible" title="重置密码" width="400px">
       <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="100px">
         <el-form-item label="用户">
-          {{ editingUser?.display_name }} ({{ editingUser?.username }})
+          <span class="user-info">{{ editingUser?.display_name }} ({{ editingUser?.username }})</span>
         </el-form-item>
         <el-form-item label="新密码" prop="new_password">
           <el-input
@@ -159,6 +167,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import { getUsers, createUser, updateUserStatus, updateUserPassword, updateUserShops } from '@/api/user'
 import { getShops } from '@/api/shop'
 
@@ -167,7 +176,6 @@ const saving = ref(false)
 const users = ref([])
 const allShops = ref([])
 
-// 创建用户
 const dialogVisible = ref(false)
 const formRef = ref(null)
 const form = reactive({
@@ -182,12 +190,10 @@ const rules = {
   display_name: [{ required: true, message: '请输入显示名称', trigger: 'blur' }]
 }
 
-// 分配店铺
 const shopDialogVisible = ref(false)
 const editingUser = ref(null)
 const selectedShopIds = ref([])
 
-// 重置密码
 const passwordDialogVisible = ref(false)
 const passwordFormRef = ref(null)
 const passwordForm = reactive({
@@ -330,21 +336,32 @@ function formatTime(time) {
 
 <style scoped>
 .user-list {
-  padding: 20px;
+  min-height: 100%;
 }
 
-.page-header {
+.code-text {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.time-text {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.no-data {
+  color: var(--text-disabled);
+}
+
+.shop-tags {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.page-header h2 {
-  margin: 0;
-}
-
-.no-shop {
-  color: #909399;
+.user-info {
+  color: var(--text-primary);
+  font-weight: 500;
 }
 </style>
