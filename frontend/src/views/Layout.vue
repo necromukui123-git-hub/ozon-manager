@@ -18,27 +18,56 @@
         router
         class="sidebar-menu"
       >
+        <!-- 仪表盘 - 所有用户可见 -->
         <el-menu-item index="/">
           <el-icon><DataLine /></el-icon>
           <span>仪表盘</span>
         </el-menu-item>
 
-        <el-menu-item index="/products">
-          <el-icon><Goods /></el-icon>
-          <span>商品列表</span>
-        </el-menu-item>
+        <!-- 系统管理员专用菜单 -->
+        <template v-if="userStore.isSuperAdmin">
+          <el-menu-item index="/admin/shop-admins">
+            <el-icon><UserFilled /></el-icon>
+            <span>管理员管理</span>
+          </el-menu-item>
+          <el-menu-item index="/admin/overview">
+            <el-icon><DataAnalysis /></el-icon>
+            <span>系统概览</span>
+          </el-menu-item>
+        </template>
 
-        <el-sub-menu index="promotions">
-          <template #title>
-            <el-icon><Promotion /></el-icon>
-            <span>促销管理</span>
-          </template>
-          <el-menu-item index="/promotions/batch-enroll">批量报名</el-menu-item>
-          <el-menu-item index="/promotions/loss-process">亏损处理</el-menu-item>
-          <el-menu-item index="/promotions/reprice">改价推广</el-menu-item>
-        </el-sub-menu>
+        <!-- 店铺管理员专用菜单 -->
+        <template v-if="userStore.isShopAdmin">
+          <el-sub-menu index="my-management">
+            <template #title>
+              <el-icon><Management /></el-icon>
+              <span>我的管理</span>
+            </template>
+            <el-menu-item index="/my/shops">我的店铺</el-menu-item>
+            <el-menu-item index="/my/staff">我的员工</el-menu-item>
+          </el-sub-menu>
+        </template>
 
-        <el-sub-menu v-if="userStore.isAdmin" index="admin">
+        <!-- 业务操作菜单 - shop_admin 和 staff 可见 -->
+        <template v-if="userStore.canOperateBusiness">
+          <el-menu-item index="/products">
+            <el-icon><Goods /></el-icon>
+            <span>商品列表</span>
+          </el-menu-item>
+
+          <el-sub-menu index="promotions">
+            <template #title>
+              <el-icon><Promotion /></el-icon>
+              <span>促销管理</span>
+            </template>
+            <el-menu-item index="/promotions/batch-enroll">批量报名</el-menu-item>
+            <el-menu-item index="/promotions/loss-process">亏损处理</el-menu-item>
+            <el-menu-item index="/promotions/reprice">改价推广</el-menu-item>
+          </el-sub-menu>
+        </template>
+
+        <!-- 旧版管理菜单 - 仅 shop_admin 可见（向后兼容） -->
+        <el-sub-menu v-if="userStore.isShopAdmin" index="admin">
           <template #title>
             <el-icon><Setting /></el-icon>
             <span>系统管理</span>
@@ -54,7 +83,9 @@
     <main class="layout-main">
       <header class="layout-header">
         <div class="header-left">
+          <!-- 店铺选择器 - 仅业务用户可见 -->
           <el-select
+            v-if="userStore.canOperateBusiness"
             v-model="currentShopId"
             placeholder="选择店铺"
             style="width: 220px"
@@ -70,9 +101,17 @@
               :value="shop.id"
             />
           </el-select>
+          <!-- 系统管理员提示 -->
+          <div v-else class="admin-hint">
+            <el-icon><InfoFilled /></el-icon>
+            <span>系统管理员模式</span>
+          </div>
         </div>
 
         <div class="header-right">
+          <el-tag :type="userStore.getRoleTagType()" effect="dark" size="small" class="role-tag">
+            {{ userStore.getRoleLabel() }}
+          </el-tag>
           <span class="user-name">{{ userStore.user?.display_name }}</span>
           <el-dropdown @command="handleCommand">
             <div class="user-avatar">
@@ -148,7 +187,7 @@ import { useUserStore } from '@/stores/user'
 import { getShops } from '@/api/shop'
 import { changePassword } from '@/api/user'
 import { ElMessage } from 'element-plus'
-import { DataLine, Goods, Promotion, Setting, User, Shop, SwitchButton, Lock } from '@element-plus/icons-vue'
+import { DataLine, Goods, Promotion, Setting, User, Shop, SwitchButton, Lock, UserFilled, DataAnalysis, Management, InfoFilled } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -245,6 +284,21 @@ async function handleChangePassword() {
 <style scoped>
 .sidebar-menu {
   background: transparent !important;
+}
+
+.admin-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.role-tag {
+  margin-right: 12px;
 }
 
 /* 页面切换动画 */

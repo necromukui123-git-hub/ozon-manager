@@ -8,7 +8,24 @@ export const useUserStore = defineStore('user', () => {
   const currentShopId = ref(parseInt(localStorage.getItem('currentShopId')) || null)
 
   const isLoggedIn = computed(() => !!token.value)
-  const isAdmin = computed(() => user.value?.role === 'admin')
+
+  // 三层角色判断
+  const isSuperAdmin = computed(() => user.value?.role === 'super_admin')
+  const isShopAdmin = computed(() => user.value?.role === 'shop_admin')
+  const isStaff = computed(() => user.value?.role === 'staff')
+
+  // 兼容旧代码：super_admin 和 shop_admin 都算管理员
+  const isAdmin = computed(() => isSuperAdmin.value || isShopAdmin.value)
+
+  // 是否可以执行业务操作（shop_admin 和 staff）
+  const canOperateBusiness = computed(() => isShopAdmin.value || isStaff.value)
+
+  // 是否可以管理店铺和员工（仅 shop_admin）
+  const canManageShopAndStaff = computed(() => isShopAdmin.value)
+
+  // 是否可以管理店铺管理员（仅 super_admin）
+  const canManageShopAdmins = computed(() => isSuperAdmin.value)
+
   const userShops = computed(() => user.value?.shops || [])
 
   async function doLogin(username, password) {
@@ -18,7 +35,7 @@ export const useUserStore = defineStore('user', () => {
     localStorage.setItem('token', token.value)
     localStorage.setItem('user', JSON.stringify(user.value))
 
-    // 设置默认店铺
+    // 设置默认店铺（仅业务用户需要）
     if (res.data.user.shops && res.data.user.shops.length > 0) {
       setCurrentShop(res.data.user.shops[0].id)
     }
@@ -50,16 +67,38 @@ export const useUserStore = defineStore('user', () => {
     localStorage.setItem('currentShopId', shopId)
   }
 
+  // 获取角色标签类型
+  function getRoleTagType() {
+    if (isSuperAdmin.value) return 'danger'
+    if (isShopAdmin.value) return 'warning'
+    return 'info'
+  }
+
+  // 获取角色显示名称
+  function getRoleLabel() {
+    if (isSuperAdmin.value) return '系统管理员'
+    if (isShopAdmin.value) return '店铺管理员'
+    return '员工'
+  }
+
   return {
     token,
     user,
     currentShopId,
     isLoggedIn,
     isAdmin,
+    isSuperAdmin,
+    isShopAdmin,
+    isStaff,
+    canOperateBusiness,
+    canManageShopAndStaff,
+    canManageShopAdmins,
     userShops,
     doLogin,
     fetchUser,
     doLogout,
-    setCurrentShop
+    setCurrentShop,
+    getRoleTagType,
+    getRoleLabel
   }
 })

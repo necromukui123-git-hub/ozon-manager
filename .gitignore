@@ -17,6 +17,7 @@ benchmark-*/
 .vscode/
 *.swp
 *.swo
+AGENTS.md
 
 # 系统文件
 .DS_Store

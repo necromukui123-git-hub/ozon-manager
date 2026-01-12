@@ -18,26 +18,58 @@ const routes = [
         name: 'Dashboard',
         component: () => import('@/views/Dashboard.vue')
       },
+      // 业务操作路由（shop_admin 和 staff）
       {
         path: 'products',
         name: 'Products',
-        component: () => import('@/views/products/ProductList.vue')
+        component: () => import('@/views/products/ProductList.vue'),
+        meta: { requiresBusinessRole: true }
       },
       {
         path: 'promotions/batch-enroll',
         name: 'BatchEnroll',
-        component: () => import('@/views/promotions/BatchEnroll.vue')
+        component: () => import('@/views/promotions/BatchEnroll.vue'),
+        meta: { requiresBusinessRole: true }
       },
       {
         path: 'promotions/loss-process',
         name: 'LossProcess',
-        component: () => import('@/views/promotions/LossProcess.vue')
+        component: () => import('@/views/promotions/LossProcess.vue'),
+        meta: { requiresBusinessRole: true }
       },
       {
         path: 'promotions/reprice',
         name: 'Reprice',
-        component: () => import('@/views/promotions/Reprice.vue')
+        component: () => import('@/views/promotions/Reprice.vue'),
+        meta: { requiresBusinessRole: true }
       },
+      // 店铺管理员专用路由
+      {
+        path: 'my/shops',
+        name: 'MyShops',
+        component: () => import('@/views/shop-admin/MyShops.vue'),
+        meta: { requiresShopAdmin: true }
+      },
+      {
+        path: 'my/staff',
+        name: 'MyStaff',
+        component: () => import('@/views/shop-admin/MyStaff.vue'),
+        meta: { requiresShopAdmin: true }
+      },
+      // 系统管理员专用路由
+      {
+        path: 'admin/shop-admins',
+        name: 'ShopAdminList',
+        component: () => import('@/views/super-admin/ShopAdminList.vue'),
+        meta: { requiresSuperAdmin: true }
+      },
+      {
+        path: 'admin/overview',
+        name: 'SystemOverview',
+        component: () => import('@/views/super-admin/SystemOverview.vue'),
+        meta: { requiresSuperAdmin: true }
+      },
+      // 旧版管理员路由（保持兼容）
       {
         path: 'admin/shops',
         name: 'ShopList',
@@ -71,6 +103,12 @@ router.beforeEach((to, from, next) => {
 
   if (to.meta.requiresAuth !== false && !userStore.isLoggedIn) {
     next('/login')
+  } else if (to.meta.requiresSuperAdmin && !userStore.isSuperAdmin) {
+    next('/')
+  } else if (to.meta.requiresShopAdmin && !userStore.isShopAdmin) {
+    next('/')
+  } else if (to.meta.requiresBusinessRole && !userStore.canOperateBusiness) {
+    next('/')
   } else if (to.meta.requiresAdmin && !userStore.isAdmin) {
     next('/')
   } else if (to.path === '/login' && userStore.isLoggedIn) {

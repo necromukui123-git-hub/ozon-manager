@@ -94,3 +94,38 @@ func (r *ShopRepository) GetWithCredentials(id uint) (*model.Shop, error) {
 	}
 	return &shop, nil
 }
+
+// FindByOwnerID 获取某个店铺管理员的所有店铺
+func (r *ShopRepository) FindByOwnerID(ownerID uint) ([]model.Shop, error) {
+	var shops []model.Shop
+	err := r.db.Where("owner_id = ?", ownerID).Find(&shops).Error
+	return shops, err
+}
+
+// IsOwner 检查用户是否是店铺的所有者
+func (r *ShopRepository) IsOwner(userID, shopID uint) bool {
+	var count int64
+	r.db.Model(&model.Shop{}).Where("id = ? AND owner_id = ?", shopID, userID).Count(&count)
+	return count > 0
+}
+
+// CountByOwnerID 统计某个店铺管理员的店铺数量
+func (r *ShopRepository) CountByOwnerID(ownerID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Shop{}).Where("owner_id = ?", ownerID).Count(&count).Error
+	return count, err
+}
+
+// CountAll 统计所有店铺数量
+func (r *ShopRepository) CountAll() (int64, error) {
+	var count int64
+	err := r.db.Model(&model.Shop{}).Count(&count).Error
+	return count, err
+}
+
+// FindAllWithOwner 获取所有店铺（包含所有者信息）
+func (r *ShopRepository) FindAllWithOwner() ([]model.Shop, error) {
+	var shops []model.Shop
+	err := r.db.Preload("Owner").Find(&shops).Error
+	return shops, err
+}

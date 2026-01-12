@@ -8,7 +8,22 @@ Ozon店铺管理系统 - 用于管理Ozon电商平台的商品促销活动。主
 - 批量将商品报名促销活动（弹性折扣、28折扣）
 - 处理亏损商品：退出促销、改价、重新报名
 - 导出可推广商品列表
-- 多店铺、多用户权限管理
+- 三层角色权限管理（系统管理员 / 店铺管理员 / 员工）
+
+## 用户角色
+
+系统采用三层角色架构，实现完全隔离：
+
+| 角色 | 用户名示例 | 密码 | 权限 |
+|------|-----------|------|------|
+| 系统管理员 (super_admin) | `super_admin` | `admin123` | 管理店铺管理员，查看系统概览（只读） |
+| 店铺管理员 (shop_admin) | `admin` | `admin123` | 管理自己的店铺和员工，执行业务操作 |
+| 员工 (staff) | - | - | 操作被分配的店铺 |
+
+**隔离原则**：
+- 一个店铺只属于一个店铺管理员
+- 员工只属于创建他的店铺管理员
+- 不同店铺管理员之间完全隔离
 
 ## 技术栈
 
@@ -48,9 +63,9 @@ npm run build
 
 ### 数据库
 
-使用 PostgreSQL，初始化脚本位于 `backend/migrations/001_create_tables.up.sql`
-
-默认管理员账号: admin / admin123
+使用 PostgreSQL，迁移脚本位于 `backend/migrations/`：
+- `001_create_tables.up.sql` - 初始表结构
+- `002_refactor_user_roles.up.sql` - 三层角色重构
 
 ## 项目架构
 
@@ -65,11 +80,15 @@ internal/
   repository/           # 数据库操作层
   service/              # 业务逻辑层
   handler/              # HTTP处理器（Gin）
-  middleware/           # 认证、权限、日志中间件
+  middleware/           # 中间件
+    auth.go             # JWT认证
+    admin_only.go       # 三层角色权限中间件
+    operation_log.go    # 操作日志
 pkg/
   jwt/                  # JWT工具
   ozon/                 # Ozon API客户端封装
   excel/                # Excel导入导出
+migrations/             # 数据库迁移脚本
 ```
 
 ### 前端结构 (frontend/src/)
@@ -80,9 +99,22 @@ views/
   Dashboard.vue         # 仪表盘
   products/             # 商品管理
   promotions/           # 促销操作（批量报名、亏损处理、改价）
-  admin/                # 管理员功能（店铺、用户、日志）
+  admin/                # 旧版管理功能（店铺、用户、日志）
+  super-admin/          # 系统管理员页面
+    ShopAdminList.vue   # 管理店铺管理员
+    SystemOverview.vue  # 系统概览
+  shop-admin/           # 店铺管理员页面
+    MyShops.vue         # 我的店铺
+    MyStaff.vue         # 我的员工
 stores/                 # Pinia状态管理
 api/                    # API调用封装
+  auth.js               # 认证API
+  admin.js              # 系统管理员API
+  shopAdmin.js          # 店铺管理员API
+  product.js            # 商品API
+  promotion.js          # 促销API
+  shop.js               # 店铺API
+  user.js               # 用户API
 router/                 # Vue Router路由配置
 ```
 
@@ -94,13 +126,39 @@ router/                 # Vue Router路由配置
 
 ## API路由
 
-- `/api/v1/auth/*` - 认证相关
+### 认证相关
+- `POST /api/v1/auth/login` - 登录
+- `POST /api/v1/auth/logout` - 登出
+- `GET /api/v1/auth/me` - 获取当前用户
+- `PUT /api/v1/auth/password` - 修改密码
+
+### 系统管理员专用 (`/api/v1/admin/*`)
+- `GET/POST /admin/shop-admins` - 店铺管理员列表/创建
+- `GET /admin/shop-admins/:id` - 店铺管理员详情
+- `PUT /admin/shop-admins/:id/status` - 更新状态
+- `PUT /admin/shop-admins/:id/password` - 重置密码
+- `DELETE /admin/shop-admins/:id` - 删除
+- `GET /admin/overview` - 系统概览
+
+### 店铺管理员专用 (`/api/v1/my/*`)
+- `GET/POST /my/shops` - 我的店铺列表/创建
+- `PUT/DELETE /my/shops/:id` - 更新/删除店铺
+- `GET/POST /my/staff` - 我的员工列表/创建
+- `PUT /my/staff/:id/status` - 更新员工状态
+- `PUT /my/staff/:id/password` - 重置员工密码
+- `PUT /my/staff/:id/shops` - 分配店铺
+- `DELETE /my/staff/:id` - 删除员工
+
+### 业务操作（shop_admin + staff）
 - `/api/v1/products/*` - 商品管理
 - `/api/v1/promotions/*` - 促销操作
 - `/api/v1/excel/*` - Excel导入导出
+- `/api/v1/stats/*` - 统计数据
+- `/api/v1/operation-logs` - 操作日志
+
+### 旧版管理路由（向后兼容）
 - `/api/v1/shops/*` - 店铺管理
-- `/api/v1/users/*` - 用户管理（管理员）
-- `/api/v1/operation-logs` - 操作日志（管理员）
+- `/api/v1/users/*` - 用户管理
 
 ## Ozon API
 

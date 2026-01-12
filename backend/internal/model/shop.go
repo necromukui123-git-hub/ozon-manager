@@ -11,10 +11,12 @@ type Shop struct {
 	ClientID  string    `gorm:"size:50;uniqueIndex;not null" json:"client_id"`
 	ApiKey    string    `gorm:"size:200;not null" json:"-"` // 不返回给前端
 	IsActive  bool      `gorm:"default:true" json:"is_active"`
+	OwnerID   uint      `gorm:"not null;index" json:"owner_id"` // 店铺所属的店铺管理员ID
 	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 
 	// 关联
+	Owner *User  `gorm:"foreignKey:OwnerID" json:"owner,omitempty"` // 所属管理员
 	Users []User `gorm:"many2many:user_shops;" json:"users,omitempty"`
 }
 

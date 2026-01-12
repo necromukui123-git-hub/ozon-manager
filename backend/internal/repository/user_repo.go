@@ -111,3 +111,51 @@ func (r *UserRepository) Delete(id uint) error {
 		return tx.Delete(&model.User{}, id).Error
 	})
 }
+
+// FindShopAdmins 获取所有店铺管理员
+func (r *UserRepository) FindShopAdmins() ([]model.User, error) {
+	var users []model.User
+	err := r.db.Where("role = ?", model.RoleShopAdmin).Find(&users).Error
+	return users, err
+}
+
+// FindByOwnerID 获取某个店铺管理员下的所有员工
+func (r *UserRepository) FindByOwnerID(ownerID uint) ([]model.User, error) {
+	var users []model.User
+	err := r.db.Preload("Shops").Where("owner_id = ?", ownerID).Find(&users).Error
+	return users, err
+}
+
+// FindByRole 按角色查找用户
+func (r *UserRepository) FindByRole(role string) ([]model.User, error) {
+	var users []model.User
+	err := r.db.Preload("Shops").Where("role = ?", role).Find(&users).Error
+	return users, err
+}
+
+// FindShopAdminWithDetails 获取店铺管理员详情（包含其店铺和员工）
+func (r *UserRepository) FindShopAdminWithDetails(id uint) (*model.User, error) {
+	var user model.User
+	err := r.db.Preload("Staff").Preload("Staff.Shops").First(&user, id).Error
+	if err != nil {
+		return nil, err
+	}
+	if user.Role != model.RoleShopAdmin {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return &user, nil
+}
+
+// CountByRole 统计各角色用户数量
+func (r *UserRepository) CountByRole(role string) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.User{}).Where("role = ?", role).Count(&count).Error
+	return count, err
+}
+
+// CountByOwnerID 统计某个店铺管理员下的员工数量
+func (r *UserRepository) CountByOwnerID(ownerID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&model.User{}).Where("owner_id = ?", ownerID).Count(&count).Error
+	return count, err
+}

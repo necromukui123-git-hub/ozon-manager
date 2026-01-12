@@ -1,5 +1,7 @@
 package dto
 
+import "time"
+
 // 认证相关请求
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
@@ -16,12 +18,14 @@ type UserInfo struct {
 	Username    string     `json:"username"`
 	DisplayName string     `json:"display_name"`
 	Role        string     `json:"role"`
+	Status      string     `json:"status"`
 	Shops       []ShopInfo `json:"shops,omitempty"`
 }
 
 type ShopInfo struct {
-	ID   uint   `json:"id"`
-	Name string `json:"name"`
+	ID       uint   `json:"id"`
+	Name     string `json:"name"`
+	IsActive bool   `json:"is_active,omitempty"`
 }
 
 // 用户管理相关请求
@@ -103,4 +107,52 @@ type LossInfo struct {
 
 type SyncProductsRequest struct {
 	ShopID uint `json:"shop_id" binding:"required"`
+}
+
+// ========== 三层角色系统相关 ==========
+
+// 店铺管理员信息（系统管理员视角）
+type ShopAdminInfo struct {
+	ID          uint       `json:"id"`
+	Username    string     `json:"username"`
+	DisplayName string     `json:"display_name"`
+	Status      string     `json:"status"`
+	ShopCount   int64      `json:"shop_count"`
+	StaffCount  int64      `json:"staff_count"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+}
+
+// 店铺管理员详情（系统管理员视角）
+type ShopAdminDetail struct {
+	ID          uint       `json:"id"`
+	Username    string     `json:"username"`
+	DisplayName string     `json:"display_name"`
+	Status      string     `json:"status"`
+	CreatedAt   time.Time  `json:"created_at"`
+	LastLoginAt *time.Time `json:"last_login_at,omitempty"`
+	Shops       []ShopInfo `json:"shops"`
+	Staff       []UserInfo `json:"staff"`
+}
+
+// 创建店铺管理员请求
+type CreateShopAdminRequest struct {
+	Username    string `json:"username" binding:"required,min=3,max=50"`
+	Password    string `json:"password" binding:"required,min=6"`
+	DisplayName string `json:"display_name" binding:"required,max=100"`
+}
+
+// 创建员工请求（店铺管理员使用）
+type CreateStaffRequest struct {
+	Username    string `json:"username" binding:"required,min=3,max=50"`
+	Password    string `json:"password" binding:"required,min=6"`
+	DisplayName string `json:"display_name" binding:"required,max=100"`
+	ShopIDs     []uint `json:"shop_ids"`
+}
+
+// 系统概览响应
+type SystemOverviewResponse struct {
+	ShopAdminCount int64 `json:"shop_admin_count"`
+	ShopCount      int64 `json:"shop_count"`
+	StaffCount     int64 `json:"staff_count"`
 }

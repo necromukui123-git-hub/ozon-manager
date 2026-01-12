@@ -89,55 +89,95 @@ func main() {
 		authenticated.Use(middleware.AuthMiddleware())
 		authenticated.Use(middleware.OperationLogMiddleware(db))
 		{
-			// 认证相关
+			// 认证相关（所有角色）
 			authenticated.POST("/auth/logout", authHandler.Logout)
 			authenticated.GET("/auth/me", authHandler.GetCurrentUser)
 			authenticated.PUT("/auth/password", userHandler.ChangePassword)
 
-			// 店铺管理（所有认证用户可访问）
-			shops := authenticated.Group("/shops")
+			// 店铺查看（所有认证用户，根据角色返回不同店铺）
+			authenticated.GET("/shops", shopHandler.GetShops)
+			authenticated.GET("/shops/:id", shopHandler.GetShop)
+
+			// ========== 系统管理员专用路由 ==========
+			superAdmin := authenticated.Group("/admin")
+			superAdmin.Use(middleware.SuperAdminOnlyMiddleware())
 			{
-				shops.GET("", shopHandler.GetShops)
-				shops.GET("/:id", shopHandler.GetShop)
+				// 店铺管理员管理
+				superAdmin.POST("/shop-admins", userHandler.CreateShopAdmin)
+				superAdmin.GET("/shop-admins", userHandler.GetShopAdmins)
+				superAdmin.GET("/shop-admins/:id", userHandler.GetShopAdmin)
+				superAdmin.PUT("/shop-admins/:id/status", userHandler.UpdateShopAdminStatus)
+				superAdmin.PUT("/shop-admins/:id/password", userHandler.ResetShopAdminPassword)
+				superAdmin.DELETE("/shop-admins/:id", userHandler.DeleteShopAdmin)
+
+				// 系统概览
+				superAdmin.GET("/overview", shopHandler.GetSystemOverview)
 			}
 
-			// 商品管理
-			products := authenticated.Group("/products")
+			// ========== 店铺管理员专用路由 ==========
+			shopAdmin := authenticated.Group("/my")
+			shopAdmin.Use(middleware.ShopAdminOnlyMiddleware())
 			{
-				products.GET("", productHandler.GetProducts)
-				products.GET("/:id", productHandler.GetProduct)
-				products.POST("/sync", productHandler.SyncProducts)
+				// 店铺管理
+				shopAdmin.POST("/shops", shopHandler.CreateMyShop)
+				shopAdmin.GET("/shops", shopHandler.GetMyShops)
+				shopAdmin.PUT("/shops/:id", shopHandler.UpdateMyShop)
+				shopAdmin.DELETE("/shops/:id", shopHandler.DeleteMyShop)
+
+				// 员工管理
+				shopAdmin.POST("/staff", userHandler.CreateStaff)
+				shopAdmin.GET("/staff", userHandler.GetMyStaff)
+				shopAdmin.PUT("/staff/:id/status", userHandler.UpdateStaffStatus)
+				shopAdmin.PUT("/staff/:id/password", userHandler.ResetStaffPassword)
+				shopAdmin.PUT("/staff/:id/shops", userHandler.UpdateStaffShops)
+				shopAdmin.DELETE("/staff/:id", userHandler.DeleteStaff)
 			}
 
-			// 促销管理
-			promotions := authenticated.Group("/promotions")
+			// ========== 业务操作路由（shop_admin 和 staff）==========
+			business := authenticated.Group("")
+			business.Use(middleware.ShopAdminOrStaffMiddleware())
 			{
-				promotions.POST("/batch-enroll", promotionHandler.BatchEnroll)
-				promotions.POST("/process-loss", promotionHandler.ProcessLoss)
-				promotions.POST("/remove-reprice-promote", promotionHandler.RemoveRepricePromote)
-				promotions.POST("/sync-actions", promotionHandler.SyncActions)
+				// 商品管理
+				products := business.Group("/products")
+				{
+					products.GET("", productHandler.GetProducts)
+					products.GET("/:id", productHandler.GetProduct)
+					products.POST("/sync", productHandler.SyncProducts)
+				}
+
+				// 促销管理
+				promotions := business.Group("/promotions")
+				{
+					promotions.POST("/batch-enroll", promotionHandler.BatchEnroll)
+					promotions.POST("/process-loss", promotionHandler.ProcessLoss)
+					promotions.POST("/remove-reprice-promote", promotionHandler.RemoveRepricePromote)
+					promotions.POST("/sync-actions", promotionHandler.SyncActions)
+				}
+
+				// Excel导入导出
+				excel := business.Group("/excel")
+				{
+					excel.POST("/import-loss", promotionHandler.ImportLoss)
+					excel.POST("/import-reprice", promotionHandler.ImportReprice)
+					excel.GET("/export-promotable", productHandler.ExportPromotable)
+					excel.GET("/template/loss", promotionHandler.DownloadLossTemplate)
+				}
+
+				// 统计
+				stats := business.Group("/stats")
+				{
+					stats.GET("/overview", productHandler.GetStats)
+				}
+
+				// 操作日志
+				business.GET("/operation-logs", operationLogHandler.GetOperationLogs)
 			}
 
-			// Excel导入导出
-			excel := authenticated.Group("/excel")
-			{
-				excel.POST("/import-loss", promotionHandler.ImportLoss)
-				excel.POST("/import-reprice", promotionHandler.ImportReprice)
-				excel.GET("/export-promotable", productHandler.ExportPromotable)
-				excel.GET("/template/loss", promotionHandler.DownloadLossTemplate)
-			}
-
-			// 统计
-			stats := authenticated.Group("/stats")
-			{
-				stats.GET("/overview", productHandler.GetStats)
-			}
-
-			// 管理员专用路由
+			// ========== 旧版管理员路由（保持兼容）==========
 			admin := authenticated.Group("")
 			admin.Use(middleware.AdminOnlyMiddleware())
 			{
-				// 用户管理
+				// 用户管理（旧版，保持兼容）
 				users := admin.Group("/users")
 				{
 					users.GET("", userHandler.GetUsers)
@@ -148,18 +188,12 @@ func main() {
 					users.PUT("/:id/shops", userHandler.UpdateUserShops)
 				}
 
-				// 店铺管理（管理员）
+				// 店铺管理（旧版，保持兼容）
 				adminShops := admin.Group("/shops")
 				{
 					adminShops.POST("", shopHandler.CreateShop)
 					adminShops.PUT("/:id", shopHandler.UpdateShop)
 					adminShops.DELETE("/:id", shopHandler.DeleteShop)
-				}
-
-				// 操作日志（管理员）
-				operationLogs := admin.Group("/operation-logs")
-				{
-					operationLogs.GET("", operationLogHandler.GetOperationLogs)
 				}
 			}
 		}

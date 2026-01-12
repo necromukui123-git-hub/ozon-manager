@@ -1,16 +1,16 @@
 <template>
-  <div class="user-list">
+  <div class="my-staff">
     <div class="page-header">
-      <h2 class="gradient">用户管理</h2>
+      <h2 class="gradient">我的员工</h2>
       <el-button type="primary" @click="showDialog()">
         <el-icon><Plus /></el-icon>
-        添加用户
+        添加员工
       </el-button>
     </div>
 
     <div class="glass-card">
       <div class="card-body">
-        <el-table :data="users" v-loading="loading">
+        <el-table :data="staffList" v-loading="loading">
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column prop="username" label="用户名" width="120">
             <template #default="{ row }">
@@ -18,13 +18,6 @@
             </template>
           </el-table-column>
           <el-table-column prop="display_name" label="显示名称" width="120" />
-          <el-table-column prop="role" label="角色" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.role === 'admin' ? 'danger' : 'info'" effect="dark" size="small">
-                {{ row.role === 'admin' ? '管理员' : '员工' }}
-              </el-tag>
-            </template>
-          </el-table-column>
           <el-table-column label="状态" width="100" align="center">
             <template #default="{ row }">
               <el-tag :type="row.status === 'active' ? 'success' : 'info'" effect="dark" size="small">
@@ -34,10 +27,7 @@
           </el-table-column>
           <el-table-column label="可访问店铺" min-width="200">
             <template #default="{ row }">
-              <template v-if="row.role === 'admin'">
-                <el-tag size="small" type="warning" effect="plain">全部店铺</el-tag>
-              </template>
-              <template v-else-if="row.shops && row.shops.length > 0">
+              <template v-if="row.shops && row.shops.length > 0">
                 <div class="shop-tags">
                   <el-tag
                     v-for="shop in row.shops"
@@ -78,8 +68,8 @@
       </div>
     </div>
 
-    <!-- 创建用户对话框 -->
-    <el-dialog v-model="dialogVisible" title="添加用户" width="500px">
+    <!-- 创建员工对话框 -->
+    <el-dialog v-model="dialogVisible" title="添加员工" width="500px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" placeholder="请输入用户名" />
@@ -98,7 +88,7 @@
         <el-form-item label="分配店铺">
           <el-select v-model="form.shop_ids" multiple placeholder="选择店铺" style="width: 100%">
             <el-option
-              v-for="shop in allShops"
+              v-for="shop in myShops"
               :key="shop.id"
               :label="shop.name"
               :value="shop.id"
@@ -117,13 +107,13 @@
     <!-- 分配店铺对话框 -->
     <el-dialog v-model="shopDialogVisible" title="分配店铺" width="500px">
       <el-form label-width="100px">
-        <el-form-item label="用户">
+        <el-form-item label="员工">
           <span class="user-info">{{ editingUser?.display_name }} ({{ editingUser?.username }})</span>
         </el-form-item>
         <el-form-item label="可访问店铺">
           <el-select v-model="selectedShopIds" multiple placeholder="选择店铺" style="width: 100%">
             <el-option
-              v-for="shop in allShops"
+              v-for="shop in myShops"
               :key="shop.id"
               :label="shop.name"
               :value="shop.id"
@@ -142,7 +132,7 @@
     <!-- 重置密码对话框 -->
     <el-dialog v-model="passwordDialogVisible" title="重置密码" width="400px">
       <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="100px">
-        <el-form-item label="用户">
+        <el-form-item label="员工">
           <span class="user-info">{{ editingUser?.display_name }} ({{ editingUser?.username }})</span>
         </el-form-item>
         <el-form-item label="新密码" prop="new_password">
@@ -168,13 +158,19 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, ArrowDown } from '@element-plus/icons-vue'
-import { getUsers, createUser, updateUserStatus, updateUserPassword, updateUserShops } from '@/api/user'
-import { getShops } from '@/api/shop'
+import {
+  getMyShops,
+  getMyStaff,
+  createStaff,
+  updateStaffStatus,
+  resetStaffPassword,
+  updateStaffShops
+} from '@/api/shopAdmin'
 
 const loading = ref(false)
 const saving = ref(false)
-const users = ref([])
-const allShops = ref([])
+const staffList = ref([])
+const myShops = ref([])
 
 const dialogVisible = ref(false)
 const formRef = ref(null)
@@ -204,14 +200,14 @@ const passwordRules = {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchUsers(), fetchShops()])
+  await Promise.all([fetchStaff(), fetchMyShops()])
 })
 
-async function fetchUsers() {
+async function fetchStaff() {
   loading.value = true
   try {
-    const res = await getUsers()
-    users.value = res.data || []
+    const res = await getMyStaff()
+    staffList.value = res.data || []
   } catch (error) {
     console.error(error)
   } finally {
@@ -219,10 +215,10 @@ async function fetchUsers() {
   }
 }
 
-async function fetchShops() {
+async function fetchMyShops() {
   try {
-    const res = await getShops()
-    allShops.value = res.data || []
+    const res = await getMyShops()
+    myShops.value = res.data || []
   } catch (error) {
     console.error(error)
   }
@@ -244,10 +240,10 @@ async function handleCreate() {
 
     saving.value = true
     try {
-      await createUser(form)
+      await createStaff(form)
       ElMessage.success('创建成功')
       dialogVisible.value = false
-      await fetchUsers()
+      await fetchStaff()
     } catch (error) {
       console.error(error)
     } finally {
@@ -265,10 +261,10 @@ function showShopDialog(user) {
 async function handleUpdateShops() {
   saving.value = true
   try {
-    await updateUserShops(editingUser.value.id, selectedShopIds.value)
+    await updateStaffShops(editingUser.value.id, selectedShopIds.value)
     ElMessage.success('更新成功')
     shopDialogVisible.value = false
-    await fetchUsers()
+    await fetchStaff()
   } catch (error) {
     console.error(error)
   } finally {
@@ -290,7 +286,7 @@ async function handleResetPassword() {
 
     saving.value = true
     try {
-      await updateUserPassword(editingUser.value.id, passwordForm.new_password)
+      await resetStaffPassword(editingUser.value.id, passwordForm.new_password)
       ElMessage.success('密码重置成功')
       passwordDialogVisible.value = false
     } catch (error) {
@@ -307,7 +303,7 @@ async function toggleStatus(user) {
 
   try {
     await ElMessageBox.confirm(
-      `确定要${action}用户"${user.display_name}"吗？`,
+      `确定要${action}员工"${user.display_name}"吗？`,
       '确认操作',
       {
         confirmButtonText: '确定',
@@ -320,11 +316,13 @@ async function toggleStatus(user) {
   }
 
   try {
-    await updateUserStatus(user.id, newStatus)
+    await updateStaffStatus(user.id, newStatus)
+    user.status = newStatus
     ElMessage.success(`${action}成功`)
-    await fetchUsers()
+    await fetchStaff()
   } catch (error) {
     console.error(error)
+    ElMessage.error(`${action}??`)
   }
 }
 
@@ -335,7 +333,7 @@ function formatTime(time) {
 </script>
 
 <style scoped>
-.user-list {
+.my-staff {
   min-height: 100%;
 }
 
