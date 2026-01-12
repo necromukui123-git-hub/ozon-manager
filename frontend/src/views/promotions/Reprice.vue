@@ -88,6 +88,42 @@
           </el-table-column>
         </el-table>
 
+        <!-- 重新推广活动选择 -->
+        <div class="reenroll-section">
+          <h4 class="section-title">重新推广活动（可选）</h4>
+          <el-skeleton v-if="actionsLoading" :rows="2" animated />
+          <el-empty v-else-if="actions.length === 0" description="暂无可用活动" :image-size="40">
+            <el-button type="primary" text size="small" @click="fetchActions" :loading="actionsLoading">
+              <el-icon><Refresh /></el-icon>
+              刷新
+            </el-button>
+          </el-empty>
+          <div v-else class="action-selector">
+            <el-checkbox-group v-model="selectedActionIds">
+              <el-checkbox
+                v-for="action in actions"
+                :key="action.action_id"
+                :value="action.action_id"
+                class="action-checkbox"
+              >
+                <div class="action-item">
+                  <span class="action-title">{{ action.title || `活动 #${action.action_id}` }}</span>
+                  <span class="action-id">ID: {{ action.action_id }}</span>
+                  <el-tag v-if="action.is_elastic_boost" type="success" size="small">弹性</el-tag>
+                  <el-tag v-if="action.is_discount_28" type="warning" size="small">28折</el-tag>
+                </div>
+              </el-checkbox>
+            </el-checkbox-group>
+            <el-button type="primary" text size="small" @click="fetchActions" :loading="actionsLoading">
+              <el-icon><Refresh /></el-icon>
+              刷新列表
+            </el-button>
+          </div>
+          <div class="reenroll-hint">
+            留空则不重新添加推广，仅执行：取消促销 → 更新价格
+          </div>
+        </div>
+
         <div class="action-section">
           <el-button
             type="primary"
@@ -100,7 +136,7 @@
           </el-button>
           <div class="process-hint">
             <el-icon><InfoFilled /></el-icon>
-            处理流程：取消促销 → 更新价格 → 重新添加推广
+            处理流程：取消促销 → 更新价格{{ selectedActionIds.length > 0 ? ' → 重新添加推广' : '' }}
           </div>
         </div>
       </div>
@@ -174,7 +210,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   UploadFilled,
@@ -183,10 +219,11 @@ import {
   Check,
   InfoFilled,
   CircleCheckFilled,
-  WarningFilled
+  WarningFilled,
+  Refresh
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { importReprice } from '@/api/promotion'
+import { getActions, removeRepricePromoteV2 } from '@/api/promotion'
 import * as XLSX from 'xlsx'
 
 const userStore = useUserStore()
@@ -195,11 +232,29 @@ const uploadRef = ref(null)
 const processing = ref(false)
 const products = ref([])
 const result = ref(null)
+const actionsLoading = ref(false)
+const actions = ref([])
+const selectedActionIds = ref([])
 
 const manualForm = reactive({
   source_sku: '',
   new_price: 0
 })
+
+async function fetchActions() {
+  const shopId = userStore.currentShopId
+  if (!shopId) return
+
+  actionsLoading.value = true
+  try {
+    const res = await getActions(shopId)
+    actions.value = res.data || []
+  } catch (error) {
+    console.error(error)
+  } finally {
+    actionsLoading.value = false
+  }
+}
 
 function handleFileChange(uploadFile) {
   parseExcel(uploadFile.raw)
@@ -282,9 +337,13 @@ async function handleProcess() {
     return
   }
 
+  const actionText = selectedActionIds.value.length > 0
+    ? '取消促销 → 更新价格 → 重新添加推广'
+    : '取消促销 → 更新价格'
+
   try {
     await ElMessageBox.confirm(
-      `确定要处理 ${products.value.length} 个商品吗？此操作将：取消促销 → 更新价格 → 重新添加推广`,
+      `确定要处理 ${products.value.length} 个商品吗？此操作将：${actionText}`,
       '确认操作',
       {
         confirmButtonText: '确定',
@@ -300,11 +359,11 @@ async function handleProcess() {
   result.value = null
 
   try {
-    const formData = new FormData()
-    formData.append('shop_id', shopId)
-    formData.append('products', JSON.stringify(products.value))
-
-    const res = await importReprice(formData)
+    const res = await removeRepricePromoteV2({
+      shop_id: shopId,
+      products: products.value,
+      reenroll_action_ids: selectedActionIds.value
+    })
     result.value = res.data
     if (res.data.success) {
       ElMessage.success('处理完成')
@@ -319,6 +378,15 @@ async function handleProcess() {
     processing.value = false
   }
 }
+
+watch(() => userStore.currentShopId, () => {
+  selectedActionIds.value = []
+  fetchActions()
+})
+
+onMounted(() => {
+  fetchActions()
+})
 </script>
 
 <style scoped>
@@ -535,5 +603,52 @@ async function handleProcess() {
   font-weight: 600;
   color: var(--danger);
   margin-bottom: 16px;
+}
+
+.reenroll-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  padding-left: 12px;
+  border-left: 3px solid var(--primary);
+}
+
+.reenroll-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.action-selector {
+  width: 100%;
+}
+
+.action-checkbox {
+  display: block;
+  margin-bottom: 12px;
+  margin-right: 0;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-title {
+  font-weight: 500;
+}
+
+.action-id {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 </style>

@@ -172,3 +172,37 @@ func (r *PromotionRepository) UpsertPromotionAction(pa *model.PromotionAction) e
 		Assign(pa).
 		FirstOrCreate(pa).Error
 }
+
+// FindPromotionActionByID 根据数据库ID查找促销活动
+func (r *PromotionRepository) FindPromotionActionByID(id uint) (*model.PromotionAction, error) {
+	var pa model.PromotionAction
+	err := r.db.First(&pa, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &pa, nil
+}
+
+// DeletePromotionAction 删除促销活动
+func (r *PromotionRepository) DeletePromotionAction(id uint) error {
+	return r.db.Delete(&model.PromotionAction{}, id).Error
+}
+
+// FindPromotionActionsByActionIDs 根据ActionID列表查找促销活动
+func (r *PromotionRepository) FindPromotionActionsByActionIDs(shopID uint, actionIDs []int64) ([]model.PromotionAction, error) {
+	var pas []model.PromotionAction
+	err := r.db.Where("shop_id = ? AND action_id IN ?", shopID, actionIDs).Find(&pas).Error
+	return pas, err
+}
+
+// FindActivePromotionActions 查找活跃的促销活动
+func (r *PromotionRepository) FindActivePromotionActions(shopID uint) ([]model.PromotionAction, error) {
+	var pas []model.PromotionAction
+	err := r.db.Where("shop_id = ? AND status = ?", shopID, "active").Order("created_at DESC").Find(&pas).Error
+	return pas, err
+}
+
+// UpdatePromotionActionStatus 更新促销活动状态
+func (r *PromotionRepository) UpdatePromotionActionStatus(id uint, status string) error {
+	return r.db.Model(&model.PromotionAction{}).Where("id = ?", id).Update("status", status).Error
+}

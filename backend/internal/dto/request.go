@@ -83,14 +83,14 @@ type ProductListResponse struct {
 }
 
 type ProductItem struct {
-	ID           uint              `json:"id"`
-	SourceSKU    string            `json:"source_sku"`
-	Name         string            `json:"name"`
-	CurrentPrice float64           `json:"current_price"`
-	IsLoss       bool              `json:"is_loss"`
-	IsPromoted   bool              `json:"is_promoted"`
-	Promotions   []PromotionInfo   `json:"promotions"`
-	LossInfo     *LossInfo         `json:"loss_info,omitempty"`
+	ID           uint            `json:"id"`
+	SourceSKU    string          `json:"source_sku"`
+	Name         string          `json:"name"`
+	CurrentPrice float64         `json:"current_price"`
+	IsLoss       bool            `json:"is_loss"`
+	IsPromoted   bool            `json:"is_promoted"`
+	Promotions   []PromotionInfo `json:"promotions"`
+	LossInfo     *LossInfo       `json:"loss_info,omitempty"`
 }
 
 type PromotionInfo struct {
@@ -155,4 +155,66 @@ type SystemOverviewResponse struct {
 	ShopAdminCount int64 `json:"shop_admin_count"`
 	ShopCount      int64 `json:"shop_count"`
 	StaffCount     int64 `json:"staff_count"`
+}
+
+// ========== 促销活动管理相关 ==========
+
+// 获取促销活动列表请求
+type GetActionsRequest struct {
+	ShopID uint `form:"shop_id" binding:"required"`
+}
+
+// 手动创建促销活动请求
+type CreateManualActionRequest struct {
+	ShopID   uint   `json:"shop_id" binding:"required"`
+	ActionID int64  `json:"action_id" binding:"required"`
+	Title    string `json:"title"`
+}
+
+// 删除促销活动请求
+type DeleteActionRequest struct {
+	ShopID uint `json:"shop_id" binding:"required"`
+}
+
+// 同步促销活动请求
+type SyncActionsRequest struct {
+	ShopID uint `json:"shop_id" binding:"required"`
+}
+
+// 促销活动列表项响应
+type PromotionActionItem struct {
+	ID                 uint    `json:"id"`
+	ShopID             uint    `json:"shop_id"`
+	ActionID           int64   `json:"action_id"`
+	Title              string  `json:"title"`
+	ActionType         string  `json:"action_type"`
+	DateStart          *string `json:"date_start"`
+	DateEnd            *string `json:"date_end"`
+	ParticipatingCount int     `json:"participating_products_count"`
+	PotentialCount     int     `json:"potential_products_count"`
+	IsManual           bool    `json:"is_manual"`
+	Status             string  `json:"status"`
+	LastSyncedAt       *string `json:"last_synced_at"`
+}
+
+// 批量报名V2请求（支持选择具体活动）
+type BatchEnrollV2Request struct {
+	ShopID          uint    `json:"shop_id" binding:"required"`
+	ActionIDs       []int64 `json:"action_ids" binding:"required,min=1"`
+	ExcludeLoss     bool    `json:"exclude_loss"`
+	ExcludePromoted bool    `json:"exclude_promoted"`
+}
+
+// 处理亏损商品V2请求（支持选择重新报名活动）
+type ProcessLossV2Request struct {
+	ShopID         uint   `json:"shop_id" binding:"required"`
+	LossProductIDs []uint `json:"loss_product_ids" binding:"required"`
+	RejoinActionID *int64 `json:"rejoin_action_id"`
+}
+
+// 改价推广V2请求（支持选择重新推广活动）
+type RemoveRepricePromoteV2Request struct {
+	ShopID            uint          `json:"shop_id" binding:"required"`
+	Products          []RepriceItem `json:"products" binding:"required,dive"`
+	ReenrollActionIDs []int64       `json:"reenroll_action_ids"`
 }

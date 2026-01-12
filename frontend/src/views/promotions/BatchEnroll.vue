@@ -30,18 +30,38 @@
           </div>
 
           <div class="form-section">
-            <h4 class="section-title">促销活动</h4>
-            <el-form-item label="弹性提升">
-              <div class="switch-wrapper">
-                <el-switch v-model="form.enroll_elastic_boost" />
-                <span class="form-hint">Ozon 官方「弹性提升」促销活动</span>
-              </div>
+            <h4 class="section-title">选择促销活动</h4>
+            <el-form-item v-if="actionsLoading" label="加载中">
+              <el-skeleton :rows="2" animated />
             </el-form-item>
-
-            <el-form-item label="折扣 28%">
-              <div class="switch-wrapper">
-                <el-switch v-model="form.enroll_discount_28" />
-                <span class="form-hint">店铺「折扣 28%」促销活动</span>
+            <el-form-item v-else-if="actions.length === 0" label="无可用活动">
+              <el-empty description="暂无促销活动，请先同步或添加活动" :image-size="60">
+                <el-button type="primary" size="small" @click="$router.push('/promotions/actions')">
+                  前往活动管理
+                </el-button>
+              </el-empty>
+            </el-form-item>
+            <el-form-item v-else label="促销活动">
+              <div class="action-selector">
+                <el-checkbox-group v-model="form.action_ids">
+                  <el-checkbox
+                    v-for="action in actions"
+                    :key="action.action_id"
+                    :value="action.action_id"
+                    class="action-checkbox"
+                  >
+                    <div class="action-item">
+                      <span class="action-title">{{ action.title || `活动 #${action.action_id}` }}</span>
+                      <span class="action-id">ID: {{ action.action_id }}</span>
+                      <el-tag v-if="action.is_elastic_boost" type="success" size="small">弹性</el-tag>
+                      <el-tag v-if="action.is_discount_28" type="warning" size="small">28折</el-tag>
+                    </div>
+                  </el-checkbox>
+                </el-checkbox-group>
+                <el-button type="primary" text size="small" @click="fetchActions" :loading="actionsLoading">
+                  <el-icon><Refresh /></el-icon>
+                  刷新列表
+                </el-button>
               </div>
             </el-form-item>
           </div>
@@ -51,6 +71,7 @@
               type="primary"
               size="large"
               :loading="loading"
+              :disabled="form.action_ids.length === 0"
               @click="handleSubmit"
             >
               <el-icon v-if="!loading"><Upload /></el-icon>
@@ -72,11 +93,11 @@
       <div class="card-body">
         <div class="result-stats">
           <div class="stat-item">
-            <span class="stat-number">{{ result.affected_count }}</span>
+            <span class="stat-number">{{ result.enrolled_count + result.failed_count }}</span>
             <span class="stat-text">处理商品</span>
           </div>
           <div class="stat-item success">
-            <span class="stat-number">{{ result.success_count }}</span>
+            <span class="stat-number">{{ result.enrolled_count }}</span>
             <span class="stat-text">成功</span>
           </div>
           <div class="stat-item danger">
@@ -85,15 +106,15 @@
           </div>
         </div>
 
-        <div v-if="result.failed_items && result.failed_items.length > 0" class="failed-section">
+        <div v-if="result.details && result.details.filter(d => d.status === 'failed').length > 0" class="failed-section">
           <h4 class="failed-title">
             <el-icon><WarningFilled /></el-icon>
             失败详情
           </h4>
-          <el-table :data="result.failed_items" size="small" max-height="300">
-            <el-table-column prop="sku" label="SKU" width="180">
+          <el-table :data="result.details.filter(d => d.status === 'failed')" size="small" max-height="300">
+            <el-table-column prop="source_sku" label="SKU" width="180">
               <template #default="{ row }">
-                <span class="sku-text">{{ row.sku }}</span>
+                <span class="sku-text">{{ row.source_sku }}</span>
               </template>
             </el-table-column>
             <el-table-column prop="error" label="错误信息" />
@@ -105,23 +126,43 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { batchEnroll } from '@/api/promotion'
-import { Upload, WarningFilled } from '@element-plus/icons-vue'
+import { batchEnrollV2, getActions } from '@/api/promotion'
+import { Upload, WarningFilled, Refresh } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 
 const loading = ref(false)
+const actionsLoading = ref(false)
 const result = ref(null)
+const actions = ref([])
 
 const form = reactive({
   exclude_loss: true,
   exclude_promoted: true,
-  enroll_elastic_boost: true,
-  enroll_discount_28: true
+  action_ids: []
 })
+
+async function fetchActions() {
+  const shopId = userStore.currentShopId
+  if (!shopId) return
+
+  actionsLoading.value = true
+  try {
+    const res = await getActions(shopId)
+    actions.value = res.data || []
+    // 默认选中所有活动
+    if (form.action_ids.length === 0 && actions.value.length > 0) {
+      form.action_ids = actions.value.map(a => a.action_id)
+    }
+  } catch (error) {
+    console.error(error)
+  } finally {
+    actionsLoading.value = false
+  }
+}
 
 async function handleSubmit() {
   const shopId = userStore.currentShopId
@@ -130,14 +171,14 @@ async function handleSubmit() {
     return
   }
 
-  if (!form.enroll_elastic_boost && !form.enroll_discount_28) {
+  if (form.action_ids.length === 0) {
     ElMessage.warning('请至少选择一个促销活动')
     return
   }
 
   try {
     await ElMessageBox.confirm(
-      '确定要批量报名促销活动吗？此操作可能需要一些时间。',
+      `确定要批量报名 ${form.action_ids.length} 个促销活动吗？此操作可能需要一些时间。`,
       '确认操作',
       {
         confirmButtonText: '确定',
@@ -153,13 +194,15 @@ async function handleSubmit() {
   result.value = null
 
   try {
-    const res = await batchEnroll({
+    const res = await batchEnrollV2({
       shop_id: shopId,
-      ...form
+      action_ids: form.action_ids,
+      exclude_loss: form.exclude_loss,
+      exclude_promoted: form.exclude_promoted
     })
     result.value = res.data
     if (res.data.success) {
-      ElMessage.success(`批量报名完成，成功 ${res.data.success_count} 个商品`)
+      ElMessage.success(`批量报名完成，成功 ${res.data.enrolled_count} 个商品`)
     } else {
       ElMessage.warning('部分商品报名失败，请查看详情')
     }
@@ -170,6 +213,15 @@ async function handleSubmit() {
     loading.value = false
   }
 }
+
+watch(() => userStore.currentShopId, () => {
+  form.action_ids = []
+  fetchActions()
+})
+
+onMounted(() => {
+  fetchActions()
+})
 </script>
 
 <style scoped>
@@ -178,7 +230,7 @@ async function handleSubmit() {
 }
 
 .config-form {
-  max-width: 600px;
+  max-width: 700px;
 }
 
 .form-section {
@@ -209,6 +261,32 @@ async function handleSubmit() {
   margin-top: 32px;
   padding-top: 24px;
   border-top: 1px solid var(--glass-border);
+}
+
+.action-selector {
+  width: 100%;
+}
+
+.action-checkbox {
+  display: block;
+  margin-bottom: 12px;
+  margin-right: 0;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.action-title {
+  font-weight: 500;
+}
+
+.action-id {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .result-card {

@@ -148,10 +148,21 @@ func main() {
 				// 促销管理
 				promotions := business.Group("/promotions")
 				{
+					// 活动管理
+					promotions.GET("/actions", promotionHandler.GetActions)
+					promotions.POST("/actions/manual", promotionHandler.CreateManualAction)
+					promotions.DELETE("/actions/:id", promotionHandler.DeleteAction)
+					promotions.POST("/sync-actions", promotionHandler.SyncActions)
+
+					// V1 接口（保持兼容）
 					promotions.POST("/batch-enroll", promotionHandler.BatchEnroll)
 					promotions.POST("/process-loss", promotionHandler.ProcessLoss)
 					promotions.POST("/remove-reprice-promote", promotionHandler.RemoveRepricePromote)
-					promotions.POST("/sync-actions", promotionHandler.SyncActions)
+
+					// V2 接口（支持选择活动）
+					promotions.POST("/batch-enroll-v2", promotionHandler.BatchEnrollV2)
+					promotions.POST("/process-loss-v2", promotionHandler.ProcessLossV2)
+					promotions.POST("/remove-reprice-promote-v2", promotionHandler.RemoveRepricePromoteV2)
 				}
 
 				// Excel导入导出

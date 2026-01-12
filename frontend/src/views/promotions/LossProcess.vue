@@ -39,6 +39,28 @@
           支持 .xlsx / .xls 格式，文件需包含 source_sku、new_price 列
         </div>
 
+        <!-- 重新报名活动选择 -->
+        <div class="rejoin-section">
+          <h4 class="section-title">重新报名活动（可选）</h4>
+          <el-select
+            v-model="rejoinActionId"
+            placeholder="选择重新报名的活动（留空则不重新报名）"
+            clearable
+            style="width: 100%; max-width: 400px"
+            :loading="actionsLoading"
+          >
+            <el-option
+              v-for="action in actions"
+              :key="action.action_id"
+              :label="`${action.title || '活动 #' + action.action_id} (ID: ${action.action_id})`"
+              :value="action.action_id"
+            />
+          </el-select>
+          <div class="rejoin-hint">
+            处理流程：退出促销 → 改价 → 重新报名选定活动
+          </div>
+        </div>
+
         <div class="action-buttons">
           <el-button
             type="primary"
@@ -96,7 +118,7 @@
             </div>
             <div class="step-info">
               <span class="step-title">退出促销</span>
-              <span class="step-count">{{ result.exit_count }} 个商品</span>
+              <span class="step-count">{{ result.steps?.exit_promotion?.success || 0 }} 成功</span>
             </div>
           </div>
           <div class="step-line"></div>
@@ -106,7 +128,7 @@
             </div>
             <div class="step-info">
               <span class="step-title">更新价格</span>
-              <span class="step-count">{{ result.price_update_count }} 个商品</span>
+              <span class="step-count">{{ result.steps?.price_update?.success || 0 }} 成功</span>
             </div>
           </div>
           <div class="step-line"></div>
@@ -115,31 +137,14 @@
               <el-icon><CircleCheckFilled /></el-icon>
             </div>
             <div class="step-info">
-              <span class="step-title">重新报名 28%</span>
-              <span class="step-count">{{ result.rejoin_count }} 个商品</span>
+              <span class="step-title">重新报名</span>
+              <span class="step-count">{{ result.steps?.rejoin_discount_28?.success || 0 }} 成功</span>
             </div>
           </div>
         </div>
 
-        <!-- 失败详情 -->
-        <div v-if="result.failed_items && result.failed_items.length > 0" class="failed-section">
-          <h4 class="failed-title">
-            <el-icon><WarningFilled /></el-icon>
-            失败详情
-          </h4>
-          <el-table :data="result.failed_items" size="small" max-height="300">
-            <el-table-column prop="sku" label="SKU" width="150">
-              <template #default="{ row }">
-                <span class="sku-text">{{ row.sku }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="step" label="失败步骤" width="120">
-              <template #default="{ row }">
-                <el-tag size="small" type="warning">{{ row.step }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="error" label="错误信息" />
-          </el-table>
+        <div class="result-summary">
+          共处理 {{ result.processed_count || 0 }} 个商品
         </div>
       </div>
     </div>
@@ -147,11 +152,11 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { UploadFilled, Upload, Download, CircleCheckFilled, WarningFilled } from '@element-plus/icons-vue'
+import { UploadFilled, Upload, Download, CircleCheckFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { importLoss } from '@/api/promotion'
+import { importLoss, processLossV2, getActions } from '@/api/promotion'
 import * as XLSX from 'xlsx'
 
 const userStore = useUserStore()
@@ -161,6 +166,24 @@ const file = ref(null)
 const importing = ref(false)
 const previewData = ref([])
 const result = ref(null)
+const actionsLoading = ref(false)
+const actions = ref([])
+const rejoinActionId = ref(null)
+
+async function fetchActions() {
+  const shopId = userStore.currentShopId
+  if (!shopId) return
+
+  actionsLoading.value = true
+  try {
+    const res = await getActions(shopId)
+    actions.value = res.data || []
+  } catch (error) {
+    console.error(error)
+  } finally {
+    actionsLoading.value = false
+  }
+}
 
 function handleFileChange(uploadFile) {
   file.value = uploadFile.raw
@@ -209,12 +232,28 @@ async function handleImport() {
   result.value = null
 
   try {
+    // 先导入亏损商品
     const formData = new FormData()
     formData.append('file', file.value)
     formData.append('shop_id', shopId)
 
-    const res = await importLoss(formData)
-    result.value = res.data
+    const importRes = await importLoss(formData)
+    const lossProductIds = importRes.data.loss_product_ids || []
+
+    if (lossProductIds.length === 0) {
+      ElMessage.warning('没有找到可处理的亏损商品')
+      importing.value = false
+      return
+    }
+
+    // 然后处理亏损商品
+    const processRes = await processLossV2({
+      shop_id: shopId,
+      loss_product_ids: lossProductIds,
+      rejoin_action_id: rejoinActionId.value
+    })
+
+    result.value = processRes.data
     ElMessage.success('处理完成')
   } catch (error) {
     console.error(error)
@@ -234,6 +273,15 @@ function downloadTemplate() {
   XLSX.utils.book_append_sheet(wb, ws, '亏损商品')
   XLSX.writeFile(wb, '亏损商品模板.xlsx')
 }
+
+watch(() => userStore.currentShopId, () => {
+  rejoinActionId.value = null
+  fetchActions()
+})
+
+onMounted(() => {
+  fetchActions()
+})
 </script>
 
 <style scoped>
@@ -307,6 +355,27 @@ function downloadTemplate() {
   font-size: 12px;
   color: var(--text-muted);
   text-align: center;
+}
+
+.rejoin-section {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  padding-left: 12px;
+  border-left: 3px solid var(--primary);
+}
+
+.rejoin-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .action-buttons {
@@ -404,18 +473,11 @@ function downloadTemplate() {
   margin-bottom: 50px;
 }
 
-.failed-section {
-  padding-top: 20px;
-  border-top: 1px solid var(--glass-border);
-}
-
-.failed-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.result-summary {
+  text-align: center;
   font-size: 14px;
-  font-weight: 600;
-  color: var(--danger);
-  margin-bottom: 16px;
+  color: var(--text-secondary);
+  padding-top: 16px;
+  border-top: 1px solid var(--glass-border);
 }
 </style>

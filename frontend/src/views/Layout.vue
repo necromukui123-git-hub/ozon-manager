@@ -60,6 +60,7 @@
               <el-icon><Promotion /></el-icon>
               <span>促销管理</span>
             </template>
+            <el-menu-item index="/promotions/actions">活动列表</el-menu-item>
             <el-menu-item index="/promotions/batch-enroll">批量报名</el-menu-item>
             <el-menu-item index="/promotions/loss-process">亏损处理</el-menu-item>
             <el-menu-item index="/promotions/reprice">改价推广</el-menu-item>

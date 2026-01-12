@@ -76,17 +76,22 @@ func (PromotedProduct) TableName() string {
 
 // PromotionAction 促销活动缓存表
 type PromotionAction struct {
-	ID             uint       `gorm:"primaryKey" json:"id"`
-	ShopID         uint       `gorm:"not null;uniqueIndex:idx_shop_action" json:"shop_id"`
-	ActionID       int64      `gorm:"not null;uniqueIndex:idx_shop_action" json:"action_id"`
-	Title          string     `gorm:"size:200" json:"title"`
-	ActionType     string     `gorm:"size:50" json:"action_type"`
-	DateStart      *time.Time `json:"date_start"`
-	DateEnd        *time.Time `json:"date_end"`
-	IsElasticBoost bool       `gorm:"default:false" json:"is_elastic_boost"`
-	IsDiscount28   bool       `gorm:"default:false" json:"is_discount_28"`
-	LastSyncedAt   *time.Time `json:"last_synced_at"`
-	CreatedAt      time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	ID                 uint       `gorm:"primaryKey" json:"id"`
+	ShopID             uint       `gorm:"not null;uniqueIndex:idx_shop_action" json:"shop_id"`
+	ActionID           int64      `gorm:"not null;uniqueIndex:idx_shop_action" json:"action_id"`
+	Title              string     `gorm:"size:200" json:"title"`
+	ActionType         string     `gorm:"size:50" json:"action_type"`
+	DateStart          *time.Time `json:"date_start"`
+	DateEnd            *time.Time `json:"date_end"`
+	IsElasticBoost     bool       `gorm:"default:false" json:"is_elastic_boost"`
+	IsDiscount28       bool       `gorm:"default:false" json:"is_discount_28"`
+	ParticipatingCount int        `gorm:"default:0" json:"participating_products_count"`
+	PotentialCount     int        `gorm:"default:0" json:"potential_products_count"`
+	IsManual           bool       `gorm:"default:false" json:"is_manual"`
+	Status             string     `gorm:"size:20;default:active" json:"status"` // active / expired / disabled
+	LastSyncedAt       *time.Time `json:"last_synced_at"`
+	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
 
 	// 关联
 	Shop Shop `gorm:"foreignKey:ShopID" json:"shop,omitempty"`
