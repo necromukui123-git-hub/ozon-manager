@@ -75,24 +75,12 @@ const routes = [
         component: () => import('@/views/super-admin/SystemOverview.vue'),
         meta: { requiresSuperAdmin: true }
       },
-      // 旧版管理员路由（保持兼容）
-      {
-        path: 'admin/shops',
-        name: 'ShopList',
-        component: () => import('@/views/admin/ShopList.vue'),
-        meta: { requiresAdmin: true }
-      },
-      {
-        path: 'admin/users',
-        name: 'UserList',
-        component: () => import('@/views/admin/UserList.vue'),
-        meta: { requiresAdmin: true }
-      },
+      // 操作日志（店铺管理员可见）
       {
         path: 'admin/logs',
         name: 'OperationLogs',
         component: () => import('@/views/admin/OperationLogs.vue'),
-        meta: { requiresAdmin: true }
+        meta: { requiresShopAdmin: true }
       }
     ]
   }
@@ -114,8 +102,6 @@ router.beforeEach((to, from, next) => {
   } else if (to.meta.requiresShopAdmin && !userStore.isShopAdmin) {
     next('/')
   } else if (to.meta.requiresBusinessRole && !userStore.canOperateBusiness) {
-    next('/')
-  } else if (to.meta.requiresAdmin && !userStore.isAdmin) {
     next('/')
   } else if (to.path === '/login' && userStore.isLoggedIn) {
     next('/')

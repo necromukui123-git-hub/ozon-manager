@@ -9,18 +9,3 @@ export function getShops() {
 export function getShop(id) {
   return request.get(`/shops/${id}`)
 }
-
-// 创建店铺
-export function createShop(data) {
-  return request.post('/shops', data)
-}
-
-// 更新店铺
-export function updateShop(id, data) {
-  return request.put(`/shops/${id}`, data)
-}
-
-// 删除店铺
-export function deleteShop(id) {
-  return request.delete(`/shops/${id}`)
-}

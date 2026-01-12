@@ -164,8 +164,11 @@
 import { ref, reactive, onMounted } from 'vue'
 import { Search, RefreshLeft } from '@element-plus/icons-vue'
 import { getOperationLogs } from '@/api/log'
-import { getUsers } from '@/api/user'
+import { getMyStaff } from '@/api/shopAdmin'
 import { getShops } from '@/api/shop'
+import { useUserStore } from '@/stores/user'
+
+const userStore = useUserStore()
 
 const loading = ref(false)
 const logs = ref([])
@@ -226,8 +229,19 @@ async function fetchLogs() {
 
 async function fetchUsers() {
   try {
-    const res = await getUsers()
-    users.value = res.data || []
+    // 获取员工列表
+    const res = await getMyStaff()
+    const staffList = res.data || []
+    // 添加当前用户（店铺管理员自己）到列表开头
+    const currentUser = userStore.user
+    if (currentUser) {
+      users.value = [
+        { id: currentUser.id, display_name: currentUser.display_name + '（我）' },
+        ...staffList
+      ]
+    } else {
+      users.value = staffList
+    }
   } catch (error) {
     console.error(error)
   }

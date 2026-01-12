@@ -67,16 +67,11 @@
           </el-sub-menu>
         </template>
 
-        <!-- 旧版管理菜单 - 仅 shop_admin 可见（向后兼容） -->
-        <el-sub-menu v-if="userStore.isShopAdmin" index="admin">
-          <template #title>
-            <el-icon><Setting /></el-icon>
-            <span>系统管理</span>
-          </template>
-          <el-menu-item index="/admin/shops">店铺管理</el-menu-item>
-          <el-menu-item index="/admin/users">用户管理</el-menu-item>
-          <el-menu-item index="/admin/logs">操作日志</el-menu-item>
-        </el-sub-menu>
+        <!-- 操作日志 - 仅 shop_admin 可见 -->
+        <el-menu-item v-if="userStore.isShopAdmin" index="/admin/logs">
+          <el-icon><Document /></el-icon>
+          <span>操作日志</span>
+        </el-menu-item>
       </el-menu>
     </aside>
 
@@ -188,7 +183,7 @@ import { useUserStore } from '@/stores/user'
 import { getShops } from '@/api/shop'
 import { changePassword } from '@/api/user'
 import { ElMessage } from 'element-plus'
-import { DataLine, Goods, Promotion, Setting, User, Shop, SwitchButton, Lock, UserFilled, DataAnalysis, Management, InfoFilled } from '@element-plus/icons-vue'
+import { DataLine, Goods, Promotion, Document, User, Shop, SwitchButton, Lock, UserFilled, DataAnalysis, Management, InfoFilled } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()

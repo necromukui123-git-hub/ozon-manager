@@ -14,9 +14,6 @@ export const useUserStore = defineStore('user', () => {
   const isShopAdmin = computed(() => user.value?.role === 'shop_admin')
   const isStaff = computed(() => user.value?.role === 'staff')
 
-  // 兼容旧代码：super_admin 和 shop_admin 都算管理员
-  const isAdmin = computed(() => isSuperAdmin.value || isShopAdmin.value)
-
   // 是否可以执行业务操作（shop_admin 和 staff）
   const canOperateBusiness = computed(() => isShopAdmin.value || isStaff.value)
 
@@ -86,7 +83,6 @@ export const useUserStore = defineStore('user', () => {
     user,
     currentShopId,
     isLoggedIn,
-    isAdmin,
     isSuperAdmin,
     isShopAdmin,
     isStaff,

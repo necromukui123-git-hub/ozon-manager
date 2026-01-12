@@ -183,30 +183,6 @@ func main() {
 				// 操作日志
 				business.GET("/operation-logs", operationLogHandler.GetOperationLogs)
 			}
-
-			// ========== 旧版管理员路由（保持兼容）==========
-			admin := authenticated.Group("")
-			admin.Use(middleware.AdminOnlyMiddleware())
-			{
-				// 用户管理（旧版，保持兼容）
-				users := admin.Group("/users")
-				{
-					users.GET("", userHandler.GetUsers)
-					users.POST("", userHandler.CreateUser)
-					users.GET("/:id", userHandler.GetUser)
-					users.PUT("/:id/status", userHandler.UpdateUserStatus)
-					users.PUT("/:id/password", userHandler.UpdateUserPassword)
-					users.PUT("/:id/shops", userHandler.UpdateUserShops)
-				}
-
-				// 店铺管理（旧版，保持兼容）
-				adminShops := admin.Group("/shops")
-				{
-					adminShops.POST("", shopHandler.CreateShop)
-					adminShops.PUT("/:id", shopHandler.UpdateShop)
-					adminShops.DELETE("/:id", shopHandler.DeleteShop)
-				}
-			}
 		}
 	}
 
