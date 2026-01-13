@@ -21,7 +21,7 @@ Ozon店铺管理系统 - 用于管理Ozon电商平台的商品促销活动。主
 | 角色 | 用户名示例 | 密码 | 权限 |
 |------|-----------|------|------|
 | 系统管理员 (super_admin) | `super_admin` | `admin123` | 管理店铺管理员，查看系统概览（只读） |
-| 店铺管理员 (shop_admin) | `admin` | `admin123` | 管理自己的店铺和员工，执行业务操作 |
+| 店铺管理员 (shop_admin) | - | - | 由系统管理员创建，管理自己的店铺和员工，执行业务操作 |
 | 员工 (staff) | - | - | 操作被分配的店铺 |
 
 **隔离原则**：
@@ -70,8 +70,6 @@ npm run build
 
 使用 PostgreSQL，迁移脚本位于 `backend/migrations/`：
 - `001_create_tables.up.sql` - 初始表结构
-- `002_refactor_user_roles.up.sql` - 三层角色重构
-- `002_refactor_user_roles.down.sql` - 回滚脚本
 
 ## 项目架构
 

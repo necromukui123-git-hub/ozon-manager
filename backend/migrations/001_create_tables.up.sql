@@ -1,6 +1,5 @@
--- Ozon店铺管理系统 - 数据库迁移脚本
-
--- 用户表：管理员和员工账号
+-- Ozon shop manager - database migrations
+-- Users table: admins and staff accounts
 CREATE TABLE IF NOT EXISTS users (
     id              SERIAL PRIMARY KEY,
     username        VARCHAR(50) NOT NULL UNIQUE,
@@ -14,18 +13,19 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 店铺表：支持多店铺管理
+-- Shops table
 CREATE TABLE IF NOT EXISTS shops (
     id              SERIAL PRIMARY KEY,
     name            VARCHAR(100) NOT NULL,
     client_id       VARCHAR(50) NOT NULL UNIQUE,
     api_key         VARCHAR(200) NOT NULL,
     is_active       BOOLEAN DEFAULT true,
+    owner_id        INTEGER REFERENCES users(id),
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 用户-店铺关联表：员工可访问的店铺（多对多）
+-- User-shop relation table (many-to-many for staff)
 CREATE TABLE IF NOT EXISTS user_shops (
     id              SERIAL PRIMARY KEY,
     user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS user_shops (
     UNIQUE(user_id, shop_id)
 );
 
--- 商品表
+-- Products table
 CREATE TABLE IF NOT EXISTS products (
     id                  SERIAL PRIMARY KEY,
     shop_id             INTEGER NOT NULL REFERENCES shops(id),
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS products (
     UNIQUE(shop_id, source_sku)
 );
 
--- 亏损商品表
+-- Loss products table
 CREATE TABLE IF NOT EXISTS loss_products (
     id                  SERIAL PRIMARY KEY,
     product_id          INTEGER NOT NULL REFERENCES products(id),
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS loss_products (
     UNIQUE(product_id, loss_date)
 );
 
--- 已推广商品表
+-- Promoted products table
 CREATE TABLE IF NOT EXISTS promoted_products (
     id                  SERIAL PRIMARY KEY,
     product_id          INTEGER NOT NULL REFERENCES products(id),
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS promoted_products (
     UNIQUE(product_id, promotion_type, action_id)
 );
 
--- 促销活动缓存表
+-- Promotion actions cache table
 CREATE TABLE IF NOT EXISTS promotion_actions (
     id                  SERIAL PRIMARY KEY,
     shop_id             INTEGER NOT NULL REFERENCES shops(id),
@@ -92,14 +92,17 @@ CREATE TABLE IF NOT EXISTS promotion_actions (
     action_type         VARCHAR(50),
     date_start          TIMESTAMP,
     date_end            TIMESTAMP,
-    is_elastic_boost    BOOLEAN DEFAULT false,
-    is_discount_28      BOOLEAN DEFAULT false,
+    participating_count INTEGER DEFAULT 0,
+    potential_count     INTEGER DEFAULT 0,
+    is_manual           BOOLEAN DEFAULT false,
+    status              VARCHAR(20) DEFAULT 'active',
     last_synced_at      TIMESTAMP,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(shop_id, action_id)
 );
 
--- 操作日志表
+-- Operation logs table
 CREATE TABLE IF NOT EXISTS operation_logs (
     id                  SERIAL PRIMARY KEY,
     user_id             INTEGER NOT NULL REFERENCES users(id),
@@ -115,11 +118,12 @@ CREATE TABLE IF NOT EXISTS operation_logs (
     completed_at        TIMESTAMP
 );
 
--- 索引
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_products_shop_id ON products(shop_id);
 CREATE INDEX IF NOT EXISTS idx_products_source_sku ON products(source_sku);
 CREATE INDEX IF NOT EXISTS idx_products_is_loss ON products(is_loss);
 CREATE INDEX IF NOT EXISTS idx_products_is_promoted ON products(is_promoted);
+CREATE INDEX IF NOT EXISTS idx_shops_owner_id ON shops(owner_id);
 CREATE INDEX IF NOT EXISTS idx_loss_products_product_id ON loss_products(product_id);
 CREATE INDEX IF NOT EXISTS idx_loss_products_loss_date ON loss_products(loss_date);
 CREATE INDEX IF NOT EXISTS idx_promoted_products_product_id ON promoted_products(product_id);
@@ -127,7 +131,7 @@ CREATE INDEX IF NOT EXISTS idx_promoted_products_status ON promoted_products(sta
 CREATE INDEX IF NOT EXISTS idx_operation_logs_user_id ON operation_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_created_at ON operation_logs(created_at);
 
--- 默认管理员账号（密码: admin123）
+-- Default super admin account (password: admin123)
 INSERT INTO users (username, password_hash, display_name, role, status)
-VALUES ('admin', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqrqBuBk0F.Gc7YMG.T9D.Z2OVOQHMu', '系统管理员', 'admin', 'active')
+VALUES ('super_admin', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqrqBuBk0F.Gc7YMG.T9D.Z2OVOQHMu', '系统管理员', 'super_admin', 'active')
 ON CONFLICT (username) DO NOTHING;

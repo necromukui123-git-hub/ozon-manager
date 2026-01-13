@@ -166,6 +166,7 @@ import {
   resetStaffPassword,
   updateStaffShops
 } from '@/api/shopAdmin'
+import { hashPassword } from '@/utils/crypto'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -240,7 +241,10 @@ async function handleCreate() {
 
     saving.value = true
     try {
-      await createStaff(form)
+      await createStaff({
+        ...form,
+        password: hashPassword(form.password)
+      })
       ElMessage.success('创建成功')
       dialogVisible.value = false
       await fetchStaff()
@@ -286,7 +290,7 @@ async function handleResetPassword() {
 
     saving.value = true
     try {
-      await resetStaffPassword(editingUser.value.id, passwordForm.new_password)
+      await resetStaffPassword(editingUser.value.id, hashPassword(passwordForm.new_password))
       ElMessage.success('密码重置成功')
       passwordDialogVisible.value = false
     } catch (error) {

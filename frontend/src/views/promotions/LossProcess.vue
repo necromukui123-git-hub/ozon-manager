@@ -138,7 +138,7 @@
             </div>
             <div class="step-info">
               <span class="step-title">重新报名</span>
-              <span class="step-count">{{ result.steps?.rejoin_discount_28?.success || 0 }} 成功</span>
+              <span class="step-count">{{ result.steps?.rejoin_promotions?.success || 0 }} 成功</span>
             </div>
           </div>
         </div>

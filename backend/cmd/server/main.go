@@ -31,9 +31,13 @@ func main() {
 	// 	log.Fatalf("Failed to migrate database: %v", err)
 	// }
 
+	if err := repository.EnsureOwnerColumns(db); err != nil {
+		log.Fatalf("Failed to ensure owner_id columns: %v", err)
+	}
+
 	// 创建默认管理员
-	if err := repository.CreateAdminUser(db); err != nil {
-		log.Printf("Warning: Failed to create admin user: %v", err)
+	if err := repository.CreateSuperAdminUser(db); err != nil {
+		log.Printf("Warning: Failed to create super admin user: %v", err)
 	}
 
 	// 初始化Repository
@@ -68,12 +72,15 @@ func main() {
 
 	// 配置CORS
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:5174", "http://localhost:3000"},
+		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:5174", "http://localhost:3000", "https://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length", "Content-Disposition"},
 		AllowCredentials: true,
 	}))
+
+	// 添加安全头部
+	r.Use(middleware.SecurityHeaders())
 
 	// API路由组
 	api := r.Group("/api/v1")
@@ -188,9 +195,21 @@ func main() {
 
 	// 启动服务器
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
-	log.Printf("Server starting on %s", addr)
-	log.Printf("Default admin account: admin / admin123")
-	if err := r.Run(addr); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+
+	if cfg.Server.TLS.Enabled {
+		log.Printf("Starting HTTPS server on %s", addr)
+		log.Printf("TLS Certificate: %s", cfg.Server.TLS.CertFile)
+		log.Printf("TLS Key: %s", cfg.Server.TLS.KeyFile)
+		log.Printf("Default super admin account: super_admin / admin123")
+		if err := r.RunTLS(addr, cfg.Server.TLS.CertFile, cfg.Server.TLS.KeyFile); err != nil {
+			log.Fatalf("Failed to start HTTPS server: %v", err)
+		}
+	} else {
+		log.Printf("⚠️  Warning: Running HTTP server (insecure)")
+		log.Printf("Server starting on %s", addr)
+		log.Printf("Default super admin account: super_admin / admin123")
+		if err := r.Run(addr); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
 	}
 }

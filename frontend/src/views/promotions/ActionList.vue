@@ -32,8 +32,6 @@
             <template #default="{ row }">
               <div class="action-title">
                 {{ row.title || '未命名活动' }}
-                <el-tag v-if="row.is_elastic_boost" type="success" size="small">弹性提升</el-tag>
-                <el-tag v-if="row.is_discount_28" type="warning" size="small">28折扣</el-tag>
               </div>
             </template>
           </el-table-column>

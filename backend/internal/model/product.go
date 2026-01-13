@@ -57,7 +57,7 @@ func (LossProduct) TableName() string {
 type PromotedProduct struct {
 	ID            uint       `gorm:"primaryKey" json:"id"`
 	ProductID     uint       `gorm:"not null;uniqueIndex:idx_product_promotion_action" json:"product_id"`
-	PromotionType string     `gorm:"size:50;not null;uniqueIndex:idx_product_promotion_action" json:"promotion_type"` // elastic_boost / discount_28
+	PromotionType string     `gorm:"size:50;not null;uniqueIndex:idx_product_promotion_action" json:"promotion_type"`
 	ActionID      int64      `gorm:"uniqueIndex:idx_product_promotion_action" json:"action_id"`
 	ActionPrice   float64    `gorm:"type:decimal(12,2)" json:"action_price"`
 	Status        string     `gorm:"size:20;default:active" json:"status"` // active / exited / pending
@@ -83,8 +83,6 @@ type PromotionAction struct {
 	ActionType         string     `gorm:"size:50" json:"action_type"`
 	DateStart          *time.Time `json:"date_start"`
 	DateEnd            *time.Time `json:"date_end"`
-	IsElasticBoost     bool       `gorm:"default:false" json:"is_elastic_boost"`
-	IsDiscount28       bool       `gorm:"default:false" json:"is_discount_28"`
 	ParticipatingCount int        `gorm:"default:0" json:"participating_products_count"`
 	PotentialCount     int        `gorm:"default:0" json:"potential_products_count"`
 	IsManual           bool       `gorm:"default:false" json:"is_manual"`

@@ -180,8 +180,6 @@ func (s *ProductService) GetStats(shopID uint) (*dto.StatsOverview, error) {
 	total, _ := s.productRepo.CountByShopID(shopID)
 	loss, _ := s.productRepo.CountLossByShopID(shopID)
 	promoted, _ := s.productRepo.CountPromotedByShopID(shopID)
-	elasticBoost, _ := s.promotionRepo.CountByPromotionType(shopID, "elastic_boost")
-	discount28, _ := s.promotionRepo.CountByPromotionType(shopID, "discount_28")
 
 	promotable := total - loss - promoted
 
@@ -190,18 +188,12 @@ func (s *ProductService) GetStats(shopID uint) (*dto.StatsOverview, error) {
 		LossProducts:       loss,
 		PromotedProducts:   promoted,
 		PromotableProducts: promotable,
-		ElasticBoostCount:  elasticBoost,
-		Discount28Count:    discount28,
 	}, nil
 }
 
 func getPromotionTitle(promotionType string) string {
-	switch promotionType {
-	case "elastic_boost":
-		return "弹性提升"
-	case "discount_28":
-		return "折扣28%"
-	default:
-		return promotionType
+	if promotionType == "" || promotionType == "custom" {
+		return "Promotion"
 	}
+	return promotionType
 }

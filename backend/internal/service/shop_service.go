@@ -45,32 +45,6 @@ func (s *ShopService) GetAllShops() ([]dto.ShopInfo, error) {
 	return result, nil
 }
 
-// GetUserAccessibleShops 获取用户可访问的店铺
-func (s *ShopService) GetUserAccessibleShops(userID uint, isAdmin bool) ([]dto.ShopInfo, error) {
-	var shops []model.Shop
-	var err error
-
-	if isAdmin {
-		shops, err = s.shopRepo.FindAll()
-	} else {
-		shops, err = s.shopRepo.FindByUserID(userID)
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]dto.ShopInfo, 0, len(shops))
-	for _, shop := range shops {
-		result = append(result, dto.ShopInfo{
-			ID:   shop.ID,
-			Name: shop.Name,
-		})
-	}
-
-	return result, nil
-}
-
 // GetShopByID 获取店铺详情
 func (s *ShopService) GetShopByID(shopID uint) (*model.Shop, error) {
 	shop, err := s.shopRepo.FindByID(shopID)
@@ -150,26 +124,6 @@ func (s *ShopService) GetShopCredentials(shopID uint) (clientID, apiKey string, 
 		return "", "", ErrShopNotFound
 	}
 	return shop.ClientID, shop.ApiKey, nil
-}
-
-// CheckUserAccess 检查用户是否有权访问店铺
-func (s *ShopService) CheckUserAccess(userID, shopID uint, isAdmin bool) error {
-	if isAdmin {
-		return nil
-	}
-
-	shops, err := s.shopRepo.FindByUserID(userID)
-	if err != nil {
-		return err
-	}
-
-	for _, shop := range shops {
-		if shop.ID == shopID {
-			return nil
-		}
-	}
-
-	return ErrNoAccessToShop
 }
 
 // ========== 店铺管理员功能 ==========
@@ -275,7 +229,6 @@ func (s *ShopService) IsShopOwner(userID, shopID uint) bool {
 
 // ========== 三层角色权限检查 ==========
 
-// CheckUserAccessByRole 根据角色检查用户是否有权访问店铺
 func (s *ShopService) CheckUserAccessByRole(userID, shopID uint, role string) error {
 	switch role {
 	case model.RoleSuperAdmin:

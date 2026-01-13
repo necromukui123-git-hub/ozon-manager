@@ -68,6 +68,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { hashPassword } from '@/utils/crypto'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -97,11 +98,19 @@ async function handleLogin() {
 
     loading.value = true
     try {
-      await userStore.doLogin(form.username, form.password)
+      // 在发送前使用 SHA-256 哈希密码
+      const hashedPassword = hashPassword(form.password)
+
+      // 立即清空明文密码
+      const originalPassword = form.password
+      form.password = ''
+
+      await userStore.doLogin(form.username, hashedPassword)
       ElMessage.success('登录成功')
       router.push('/')
     } catch (error) {
       console.error(error)
+      // 登录失败时不恢复密码,让用户重新输入
     } finally {
       loading.value = false
     }

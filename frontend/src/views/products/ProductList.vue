@@ -252,8 +252,6 @@ function handlePageChange() {
 }
 
 function getPromoTagType(type) {
-  if (type === 'elastic_boost') return 'primary'
-  if (type === 'discount_28') return 'success'
   return 'info'
 }
 </script>

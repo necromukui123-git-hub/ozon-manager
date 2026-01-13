@@ -146,26 +146,6 @@ func (r *PromotionRepository) FindPromotionActionsByShopID(shopID uint) ([]model
 	return pas, err
 }
 
-// FindElasticBoostAction 获取弹性提升活动
-func (r *PromotionRepository) FindElasticBoostAction(shopID uint) (*model.PromotionAction, error) {
-	var pa model.PromotionAction
-	err := r.db.Where("shop_id = ? AND is_elastic_boost = ?", shopID, true).First(&pa).Error
-	if err != nil {
-		return nil, err
-	}
-	return &pa, nil
-}
-
-// FindDiscount28Action 获取28%折扣活动
-func (r *PromotionRepository) FindDiscount28Action(shopID uint) (*model.PromotionAction, error) {
-	var pa model.PromotionAction
-	err := r.db.Where("shop_id = ? AND is_discount_28 = ?", shopID, true).First(&pa).Error
-	if err != nil {
-		return nil, err
-	}
-	return &pa, nil
-}
-
 // UpsertPromotionAction 创建或更新促销活动
 func (r *PromotionRepository) UpsertPromotionAction(pa *model.PromotionAction) error {
 	return r.db.Where("shop_id = ? AND action_id = ?", pa.ShopID, pa.ActionID).

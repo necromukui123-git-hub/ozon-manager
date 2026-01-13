@@ -50,7 +50,7 @@ func (u *User) IsStaff() bool {
 	return u.Role == RoleStaff
 }
 
-// IsAdmin 判断是否是管理员（兼容旧代码，super_admin 和 shop_admin 都算管理员）
+// IsAdmin 判断是否是管理员（super_admin 和 shop_admin 都算管理员）
 func (u *User) IsAdmin() bool {
 	return u.Role == RoleSuperAdmin || u.Role == RoleShopAdmin
 }

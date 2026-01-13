@@ -5,7 +5,7 @@ import "time"
 // 认证相关请求
 type LoginRequest struct {
 	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
+	Password string `json:"password" binding:"required,len=64,hexadecimal"` // SHA-256 哈希固定64位十六进制
 }
 
 type LoginResponse struct {
@@ -31,7 +31,7 @@ type ShopInfo struct {
 // 用户管理相关请求
 type CreateUserRequest struct {
 	Username    string `json:"username" binding:"required,min=3,max=50"`
-	Password    string `json:"password" binding:"required,min=6"`
+	Password    string `json:"password" binding:"required,len=64,hexadecimal"` // SHA-256 哈希
 	DisplayName string `json:"display_name" binding:"required,max=100"`
 	ShopIDs     []uint `json:"shop_ids"`
 }
@@ -41,12 +41,12 @@ type UpdateUserStatusRequest struct {
 }
 
 type UpdateUserPasswordRequest struct {
-	NewPassword string `json:"new_password" binding:"required,min=6"`
+	NewPassword string `json:"new_password" binding:"required,len=64,hexadecimal"` // SHA-256 哈希
 }
 
 type ChangePasswordRequest struct {
-	OldPassword string `json:"old_password" binding:"required"`
-	NewPassword string `json:"new_password" binding:"required,min=6"`
+	OldPassword string `json:"old_password" binding:"required,len=64,hexadecimal"` // SHA-256 哈希
+	NewPassword string `json:"new_password" binding:"required,len=64,hexadecimal"` // SHA-256 哈希
 }
 
 type UpdateUserShopsRequest struct {
@@ -138,14 +138,14 @@ type ShopAdminDetail struct {
 // 创建店铺管理员请求
 type CreateShopAdminRequest struct {
 	Username    string `json:"username" binding:"required,min=3,max=50"`
-	Password    string `json:"password" binding:"required,min=6"`
+	Password    string `json:"password" binding:"required,len=64,hexadecimal"` // SHA-256 哈希
 	DisplayName string `json:"display_name" binding:"required,max=100"`
 }
 
 // 创建员工请求（店铺管理员使用）
 type CreateStaffRequest struct {
 	Username    string `json:"username" binding:"required,min=3,max=50"`
-	Password    string `json:"password" binding:"required,min=6"`
+	Password    string `json:"password" binding:"required,len=64,hexadecimal"` // SHA-256 哈希
 	DisplayName string `json:"display_name" binding:"required,max=100"`
 	ShopIDs     []uint `json:"shop_ids"`
 }

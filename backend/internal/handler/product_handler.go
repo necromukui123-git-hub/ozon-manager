@@ -37,7 +37,7 @@ func (h *ProductHandler) GetProducts(c *gin.Context) {
 
 	// 检查店铺访问权限
 	claims := middleware.GetCurrentUser(c)
-	if err := h.shopService.CheckUserAccess(claims.UserID, req.ShopID, claims.Role == "admin"); err != nil {
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, req.ShopID, claims.Role); err != nil {
 		c.JSON(http.StatusForbidden, dto.Response{
 			Code:    403,
 			Message: "无权访问该店铺",
@@ -103,7 +103,7 @@ func (h *ProductHandler) SyncProducts(c *gin.Context) {
 
 	// 检查店铺访问权限
 	claims := middleware.GetCurrentUser(c)
-	if err := h.shopService.CheckUserAccess(claims.UserID, req.ShopID, claims.Role == "admin"); err != nil {
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, req.ShopID, claims.Role); err != nil {
 		c.JSON(http.StatusForbidden, dto.Response{
 			Code:    403,
 			Message: "无权访问该店铺",
@@ -143,7 +143,7 @@ func (h *ProductHandler) GetStats(c *gin.Context) {
 
 	// 检查店铺访问权限
 	claims := middleware.GetCurrentUser(c)
-	if err := h.shopService.CheckUserAccess(claims.UserID, uint(shopID), claims.Role == "admin"); err != nil {
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, uint(shopID), claims.Role); err != nil {
 		c.JSON(http.StatusForbidden, dto.Response{
 			Code:    403,
 			Message: "无权访问该店铺",
@@ -181,7 +181,7 @@ func (h *ProductHandler) ExportPromotable(c *gin.Context) {
 
 	// 检查权限
 	claims := middleware.GetCurrentUser(c)
-	if err := h.shopService.CheckUserAccess(claims.UserID, uint(shopID), claims.Role == "admin"); err != nil {
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, uint(shopID), claims.Role); err != nil {
 		c.JSON(http.StatusForbidden, dto.Response{
 			Code:    403,
 			Message: "无权访问该店铺",

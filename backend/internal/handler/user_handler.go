@@ -4,10 +4,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
 	"ozon-manager/internal/dto"
 	"ozon-manager/internal/middleware"
 	"ozon-manager/internal/service"
+
+	"github.com/gin-gonic/gin"
 )
 
 type UserHandler struct {

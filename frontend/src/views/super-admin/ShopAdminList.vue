@@ -176,6 +176,7 @@ import {
   updateShopAdminStatus,
   resetShopAdminPassword
 } from '@/api/admin'
+import { hashPassword } from '@/utils/crypto'
 
 const loading = ref(false)
 const saving = ref(false)
@@ -239,7 +240,10 @@ async function handleCreate() {
 
     saving.value = true
     try {
-      await createShopAdmin(form)
+      await createShopAdmin({
+        ...form,
+        password: hashPassword(form.password)
+      })
       ElMessage.success('创建成功')
       dialogVisible.value = false
       await fetchShopAdmins()
@@ -278,7 +282,7 @@ async function handleResetPassword() {
 
     saving.value = true
     try {
-      await resetShopAdminPassword(editingUser.value.id, passwordForm.new_password)
+      await resetShopAdminPassword(editingUser.value.id, hashPassword(passwordForm.new_password))
       ElMessage.success('密码重置成功')
       passwordDialogVisible.value = false
     } catch (error) {

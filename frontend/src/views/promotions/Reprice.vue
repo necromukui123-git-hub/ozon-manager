@@ -109,8 +109,6 @@
                 <div class="action-item">
                   <span class="action-title">{{ action.title || `活动 #${action.action_id}` }}</span>
                   <span class="action-id">ID: {{ action.action_id }}</span>
-                  <el-tag v-if="action.is_elastic_boost" type="success" size="small">弹性</el-tag>
-                  <el-tag v-if="action.is_discount_28" type="warning" size="small">28折</el-tag>
                 </div>
               </el-checkbox>
             </el-checkbox-group>

@@ -5,8 +5,6 @@ type BatchEnrollRequest struct {
 	ShopID             uint `json:"shop_id" binding:"required"`
 	ExcludeLoss        bool `json:"exclude_loss"`
 	ExcludePromoted    bool `json:"exclude_promoted"`
-	EnrollElasticBoost bool `json:"enroll_elastic_boost"`
-	EnrollDiscount28   bool `json:"enroll_discount_28"`
 }
 
 type BatchEnrollResponse struct {
@@ -35,9 +33,9 @@ type ProcessLossResponse struct {
 }
 
 type ProcessSteps struct {
-	ExitPromotion     StepResult `json:"exit_promotion"`
-	PriceUpdate       StepResult `json:"price_update"`
-	RejoinDiscount28  StepResult `json:"rejoin_discount_28"`
+	ExitPromotion    StepResult `json:"exit_promotion"`
+	PriceUpdate      StepResult `json:"price_update"`
+	RejoinPromotions StepResult `json:"rejoin_promotions"`
 }
 
 type StepResult struct {
@@ -114,6 +112,4 @@ type StatsOverview struct {
 	LossProducts       int64 `json:"loss_products"`
 	PromotedProducts   int64 `json:"promoted_products"`
 	PromotableProducts int64 `json:"promotable_products"`
-	ElasticBoostCount  int64 `json:"elastic_boost_count"`
-	Discount28Count    int64 `json:"discount_28_count"`
 }

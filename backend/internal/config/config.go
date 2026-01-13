@@ -12,8 +12,15 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port int    `mapstructure:"port"`
-	Mode string `mapstructure:"mode"`
+	Port int         `mapstructure:"port"`
+	Mode string      `mapstructure:"mode"`
+	TLS  TLSConfig   `mapstructure:"tls"`
+}
+
+type TLSConfig struct {
+	Enabled  bool   `mapstructure:"enabled"`
+	CertFile string `mapstructure:"cert_file"`
+	KeyFile  string `mapstructure:"key_file"`
 }
 
 type DatabaseConfig struct {

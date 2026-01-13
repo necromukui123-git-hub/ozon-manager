@@ -31,7 +31,6 @@ func NewPromotionService(
 
 // 功能1: BatchEnrollPromotions 批量报名促销活动
 func (s *PromotionService) BatchEnrollPromotions(req *dto.BatchEnrollRequest) (*dto.BatchEnrollResponse, error) {
-	// 获取店铺凭证
 	shop, err := s.shopRepo.GetWithCredentials(req.ShopID)
 	if err != nil {
 		return nil, fmt.Errorf("shop not found: %w", err)
@@ -39,19 +38,17 @@ func (s *PromotionService) BatchEnrollPromotions(req *dto.BatchEnrollRequest) (*
 
 	client := ozon.NewClient(shop.ClientID, shop.ApiKey)
 
-	// 获取符合条件的商品
 	products, err := s.productRepo.FindEligible(req.ShopID, req.ExcludeLoss, req.ExcludePromoted)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get eligible products: %w", err)
 	}
 
-	// 获取促销活动
-	var elasticBoostAction, discount28Action *model.PromotionAction
-	if req.EnrollElasticBoost {
-		elasticBoostAction, _ = s.promotionRepo.FindElasticBoostAction(req.ShopID)
+	actions, err := s.promotionRepo.FindActivePromotionActions(req.ShopID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get actions: %w", err)
 	}
-	if req.EnrollDiscount28 {
-		discount28Action, _ = s.promotionRepo.FindDiscount28Action(req.ShopID)
+	if len(actions) == 0 {
+		return nil, fmt.Errorf("no active actions found")
 	}
 
 	response := &dto.BatchEnrollResponse{
@@ -59,7 +56,6 @@ func (s *PromotionService) BatchEnrollPromotions(req *dto.BatchEnrollRequest) (*
 		Details: make([]dto.EnrollDetail, 0),
 	}
 
-	// 批量处理商品
 	for _, product := range products {
 		detail := dto.EnrollDetail{
 			ProductID: product.ID,
@@ -67,30 +63,22 @@ func (s *PromotionService) BatchEnrollPromotions(req *dto.BatchEnrollRequest) (*
 			Status:    "success",
 		}
 
-		// 添加到弹性提升活动
-		if req.EnrollElasticBoost && elasticBoostAction != nil {
-			err := s.enrollProductToAction(client, elasticBoostAction.ActionID, product, "elastic_boost")
+		hasSuccess := false
+		for _, action := range actions {
+			err := s.enrollProductToAction(client, action.ActionID, product, "custom")
 			if err != nil {
-				detail.Status = "failed"
 				detail.Error = err.Error()
-				response.FailedCount++
+			} else {
+				hasSuccess = true
 			}
 		}
 
-		// 添加到28%折扣活动
-		if req.EnrollDiscount28 && discount28Action != nil {
-			err := s.enrollProductToAction(client, discount28Action.ActionID, product, "discount_28")
-			if err != nil {
-				detail.Status = "failed"
-				detail.Error = err.Error()
-				response.FailedCount++
-			}
-		}
-
-		if detail.Status == "success" {
+		if hasSuccess {
 			response.EnrolledCount++
-			// 更新商品推广状态
 			s.productRepo.UpdatePromotedStatus(product.ID, true)
+		} else {
+			detail.Status = "failed"
+			response.FailedCount++
 		}
 
 		response.Details = append(response.Details, detail)
@@ -99,12 +87,11 @@ func (s *PromotionService) BatchEnrollPromotions(req *dto.BatchEnrollRequest) (*
 	return response, nil
 }
 
-// enrollProductToAction 添加商品到促销活动
 func (s *PromotionService) enrollProductToAction(client *ozon.Client, actionID int64, product model.Product, promotionType string) error {
 	items := []ozon.ActivateProductItem{
 		{
 			ProductID:   product.OzonProductID,
-			ActionPrice: product.CurrentPrice * 0.72, // 28%折扣后的价格
+			ActionPrice: product.CurrentPrice,
 		},
 	}
 
@@ -135,21 +122,24 @@ func (s *PromotionService) ProcessLossProducts(req *dto.ProcessLossRequest) (*dt
 
 	client := ozon.NewClient(shop.ClientID, shop.ApiKey)
 
-	// 获取亏损商品记录
 	lossProducts, err := s.promotionRepo.FindLossProductsByIDs(req.LossProductIDs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get loss products: %w", err)
 	}
 
+	actions, err := s.promotionRepo.FindActivePromotionActions(req.ShopID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get actions: %w", err)
+	}
+
 	response := &dto.ProcessLossResponse{
 		Success: true,
-		Steps: dto.ProcessSteps{},
+		Steps:   dto.ProcessSteps{},
 	}
 
 	for _, lp := range lossProducts {
 		product := lp.Product
 
-		// Step 1: 退出所有促销活动
 		err := s.exitAllPromotions(client, req.ShopID, product)
 		if err != nil {
 			response.Steps.ExitPromotion.Failed++
@@ -158,7 +148,6 @@ func (s *PromotionService) ProcessLossProducts(req *dto.ProcessLossRequest) (*dt
 			s.promotionRepo.UpdateLossProductStep(lp.ID, "promotion_exited", true)
 		}
 
-		// Step 2: 改价
 		priceStr := strconv.FormatFloat(lp.NewPrice, 'f', 2, 64)
 		err = client.UpdateSinglePrice(product.OzonProductID, priceStr, "", "")
 		if err != nil {
@@ -169,19 +158,23 @@ func (s *PromotionService) ProcessLossProducts(req *dto.ProcessLossRequest) (*dt
 			s.promotionRepo.UpdateLossProductStep(lp.ID, "price_updated", true)
 		}
 
-		// Step 3: 重新报名28%折扣促销
-		discount28Action, _ := s.promotionRepo.FindDiscount28Action(req.ShopID)
-		if discount28Action != nil {
-			err := s.enrollProductToAction(client, discount28Action.ActionID, product, "discount_28")
-			if err != nil {
-				response.Steps.RejoinDiscount28.Failed++
+		if len(actions) > 0 {
+			stepFailed := false
+			for _, action := range actions {
+				err := s.enrollProductToAction(client, action.ActionID, product, "custom")
+				if err != nil {
+					stepFailed = true
+				}
+			}
+
+			if stepFailed {
+				response.Steps.RejoinPromotions.Failed++
 			} else {
-				response.Steps.RejoinDiscount28.Success++
+				response.Steps.RejoinPromotions.Success++
 				s.promotionRepo.UpdateLossProductStep(lp.ID, "promotion_rejoined", true)
 			}
 		}
 
-		// 标记处理完成
 		s.promotionRepo.UpdateLossProductProcessed(lp.ID)
 		response.ProcessedCount++
 	}
@@ -189,7 +182,6 @@ func (s *PromotionService) ProcessLossProducts(req *dto.ProcessLossRequest) (*dt
 	return response, nil
 }
 
-// exitAllPromotions 退出所有促销活动
 func (s *PromotionService) exitAllPromotions(client *ozon.Client, shopID uint, product model.Product) error {
 	// 获取商品参与的所有促销
 	promotedProducts, err := s.promotionRepo.FindPromotedProductsByProductID(product.ID)
@@ -221,39 +213,30 @@ func (s *PromotionService) RemoveRepricePromote(req *dto.RemoveRepricePromoteReq
 	client := ozon.NewClient(shop.ClientID, shop.ApiKey)
 
 	for _, item := range req.Products {
-		// 查找商品
 		product, err := s.productRepo.FindBySourceSKU(req.ShopID, item.SourceSKU)
 		if err != nil {
 			continue
 		}
 
-		// Step 1: 从所有促销活动中移除
 		s.exitAllPromotions(client, req.ShopID, *product)
 
-		// Step 2: 改价
 		priceStr := strconv.FormatFloat(item.NewPrice, 'f', 2, 64)
 		client.UpdateSinglePrice(product.OzonProductID, priceStr, "", "")
 		s.productRepo.UpdatePrice(product.ID, item.NewPrice)
 
-		// Step 3: 重新添加到所有促销活动
-		elasticBoostAction, _ := s.promotionRepo.FindElasticBoostAction(req.ShopID)
-		if elasticBoostAction != nil {
-			s.enrollProductToAction(client, elasticBoostAction.ActionID, *product, "elastic_boost")
+		actions, _ := s.promotionRepo.FindActivePromotionActions(req.ShopID)
+		for _, action := range actions {
+			s.enrollProductToAction(client, action.ActionID, *product, "custom")
 		}
 
-		discount28Action, _ := s.promotionRepo.FindDiscount28Action(req.ShopID)
-		if discount28Action != nil {
-			s.enrollProductToAction(client, discount28Action.ActionID, *product, "discount_28")
+		if len(actions) > 0 {
+			s.productRepo.UpdatePromotedStatus(product.ID, true)
 		}
-
-		// 更新推广状态
-		s.productRepo.UpdatePromotedStatus(product.ID, true)
 	}
 
 	return nil
 }
 
-// SyncPromotionActions 同步促销活动并返回更新后的列表
 func (s *PromotionService) SyncPromotionActions(shopID uint) ([]model.PromotionAction, error) {
 	shop, err := s.shopRepo.GetWithCredentials(shopID)
 	if err != nil {
@@ -292,17 +275,11 @@ func (s *PromotionService) SyncPromotionActions(shopID uint) ([]model.PromotionA
 			}
 		}
 
-		// 检测是否是弹性提升活动
-		if containsKeyword(action.Title, []string{"弹性", "elastic", "boost"}) {
-			pa.IsElasticBoost = true
-		}
 
-		// 检测是否是28%折扣活动
-		if containsKeyword(action.Title, []string{"28", "折扣"}) {
-			pa.IsDiscount28 = true
-		}
 
-		s.promotionRepo.UpsertPromotionAction(pa)
+		if err := s.promotionRepo.UpsertPromotionAction(pa); err != nil {
+			return nil, fmt.Errorf("failed to upsert action %d: %w", action.ID, err)
+		}
 	}
 
 	// 返回更新后的活动列表
@@ -341,20 +318,6 @@ func (s *PromotionService) ImportLossProducts(shopID uint, items []struct {
 	return lossProductIDs, nil
 }
 
-func containsKeyword(s string, keywords []string) bool {
-	for _, kw := range keywords {
-		if len(s) > 0 && len(kw) > 0 {
-			for i := 0; i <= len(s)-len(kw); i++ {
-				if s[i:i+len(kw)] == kw {
-					return true
-				}
-			}
-		}
-	}
-	return false
-}
-
-// GetPromotionActions 获取店铺的促销活动列表
 func (s *PromotionService) GetPromotionActions(shopID uint) ([]model.PromotionAction, error) {
 	return s.promotionRepo.FindPromotionActionsByShopID(shopID)
 }
@@ -453,11 +416,6 @@ func (s *PromotionService) BatchEnrollToActions(req *dto.BatchEnrollV2Request) (
 		for _, action := range actions {
 			// 确定促销类型
 			promotionType := "custom"
-			if action.IsElasticBoost {
-				promotionType = "elastic_boost"
-			} else if action.IsDiscount28 {
-				promotionType = "discount_28"
-			}
 
 			err := s.enrollProductToAction(client, action.ActionID, product, promotionType)
 			if err != nil {
@@ -533,17 +491,12 @@ func (s *PromotionService) ProcessLossProductsV2(req *dto.ProcessLossV2Request) 
 		// Step 3: 重新报名指定活动
 		if rejoinAction != nil {
 			promotionType := "custom"
-			if rejoinAction.IsDiscount28 {
-				promotionType = "discount_28"
-			} else if rejoinAction.IsElasticBoost {
-				promotionType = "elastic_boost"
-			}
 
 			err := s.enrollProductToAction(client, rejoinAction.ActionID, product, promotionType)
 			if err != nil {
-				response.Steps.RejoinDiscount28.Failed++
+				response.Steps.RejoinPromotions.Failed++
 			} else {
-				response.Steps.RejoinDiscount28.Success++
+				response.Steps.RejoinPromotions.Success++
 				s.promotionRepo.UpdateLossProductStep(lp.ID, "promotion_rejoined", true)
 			}
 		}
@@ -589,11 +542,6 @@ func (s *PromotionService) RemoveRepricePromoteV2(req *dto.RemoveRepricePromoteV
 		// Step 3: 重新添加到指定的促销活动
 		for _, action := range reenrollActions {
 			promotionType := "custom"
-			if action.IsElasticBoost {
-				promotionType = "elastic_boost"
-			} else if action.IsDiscount28 {
-				promotionType = "discount_28"
-			}
 			s.enrollProductToAction(client, action.ActionID, *product, promotionType)
 		}
 

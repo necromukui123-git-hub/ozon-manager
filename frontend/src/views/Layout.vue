@@ -182,6 +182,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getShops } from '@/api/shop'
 import { changePassword } from '@/api/user'
+import { hashPassword } from '@/utils/crypto'
 import { ElMessage } from 'element-plus'
 import { DataLine, Goods, Promotion, Document, User, Shop, SwitchButton, Lock, UserFilled, DataAnalysis, Management, InfoFilled } from '@element-plus/icons-vue'
 
@@ -265,7 +266,10 @@ async function handleChangePassword() {
 
     passwordLoading.value = true
     try {
-      await changePassword(passwordForm.old_password, passwordForm.new_password)
+      await changePassword(
+        hashPassword(passwordForm.old_password),
+        hashPassword(passwordForm.new_password)
+      )
       ElMessage.success('密码修改成功')
       passwordDialogVisible.value = false
     } catch (error) {
