@@ -620,3 +620,57 @@ func (h *PromotionHandler) DownloadLossTemplate(c *gin.Context) {
 		})
 	}
 }
+
+// UpdateActionDisplayName 更新促销活动显示名称
+// PUT /api/v1/promotions/actions/:id/display-name
+func (h *PromotionHandler) UpdateActionDisplayName(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "无效的活动ID",
+		})
+		return
+	}
+
+	shopID, _ := strconv.ParseUint(c.Query("shop_id"), 10, 32)
+	if shopID == 0 {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "缺少shop_id参数",
+		})
+		return
+	}
+
+	// 检查权限
+	claims := middleware.GetCurrentUser(c)
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, uint(shopID), claims.Role); err != nil {
+		c.JSON(http.StatusForbidden, dto.Response{
+			Code:    403,
+			Message: "无权访问该店铺",
+		})
+		return
+	}
+
+	var req dto.UpdateActionDisplayNameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "请求参数错误",
+		})
+		return
+	}
+
+	if err := h.promotionService.UpdateActionDisplayName(uint(shopID), uint(id), req.DisplayName); err != nil {
+		c.JSON(http.StatusInternalServerError, dto.Response{
+			Code:    500,
+			Message: "更新失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Response{
+		Code:    200,
+		Message: "更新成功",
+	})
+}

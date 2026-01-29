@@ -80,6 +80,7 @@ type PromotionAction struct {
 	ShopID             uint       `gorm:"not null;uniqueIndex:idx_shop_action" json:"shop_id"`
 	ActionID           int64      `gorm:"not null;uniqueIndex:idx_shop_action" json:"action_id"`
 	Title              string     `gorm:"size:200" json:"title"`
+	DisplayName        string     `gorm:"size:200" json:"display_name"` // 自定义中文显示名称
 	ActionType         string     `gorm:"size:50" json:"action_type"`
 	DateStart          *time.Time `json:"date_start"`
 	DateEnd            *time.Time `json:"date_end"`

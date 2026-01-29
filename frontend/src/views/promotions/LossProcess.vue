@@ -52,7 +52,7 @@
             <el-option
               v-for="action in actions"
               :key="action.action_id"
-              :label="`${action.title || '活动 #' + action.action_id} (ID: ${action.action_id})`"
+              :label="`${action.display_name || action.title || '活动 #' + action.action_id} (ID: ${action.action_id})`"
               :value="action.action_id"
             />
           </el-select>

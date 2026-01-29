@@ -51,7 +51,7 @@
                     class="action-checkbox"
                   >
                     <div class="action-item">
-                      <span class="action-title">{{ action.title || `活动 #${action.action_id}` }}</span>
+                      <span class="action-title">{{ action.display_name || action.title || `活动 #${action.action_id}` }}</span>
                       <span class="action-id">ID: {{ action.action_id }}</span>
                     </div>
                   </el-checkbox>

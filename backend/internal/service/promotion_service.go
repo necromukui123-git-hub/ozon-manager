@@ -553,3 +553,15 @@ func (s *PromotionService) RemoveRepricePromoteV2(req *dto.RemoveRepricePromoteV
 
 	return nil
 }
+
+// UpdateActionDisplayName 更新促销活动显示名称
+func (s *PromotionService) UpdateActionDisplayName(shopID uint, id uint, displayName string) error {
+	action, err := s.promotionRepo.FindPromotionActionByID(id)
+	if err != nil {
+		return fmt.Errorf("活动不存在")
+	}
+	if action.ShopID != shopID {
+		return fmt.Errorf("无权修改此活动")
+	}
+	return s.promotionRepo.UpdatePromotionActionDisplayName(id, displayName)
+}

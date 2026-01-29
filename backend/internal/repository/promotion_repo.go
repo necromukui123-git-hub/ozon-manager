@@ -146,11 +146,19 @@ func (r *PromotionRepository) FindPromotionActionsByShopID(shopID uint) ([]model
 	return pas, err
 }
 
-// UpsertPromotionAction 创建或更新促销活动
+// UpsertPromotionAction 创建或更新促销活动（保留自定义显示名称）
 func (r *PromotionRepository) UpsertPromotionAction(pa *model.PromotionAction) error {
-	return r.db.Where("shop_id = ? AND action_id = ?", pa.ShopID, pa.ActionID).
-		Assign(pa).
-		FirstOrCreate(pa).Error
+	var existing model.PromotionAction
+	err := r.db.Where("shop_id = ? AND action_id = ?", pa.ShopID, pa.ActionID).First(&existing).Error
+	if err == gorm.ErrRecordNotFound {
+		return r.db.Create(pa).Error
+	} else if err != nil {
+		return err
+	}
+	// 保留自定义显示名称
+	pa.ID = existing.ID
+	pa.DisplayName = existing.DisplayName
+	return r.db.Save(pa).Error
 }
 
 // FindPromotionActionByID 根据数据库ID查找促销活动
@@ -185,4 +193,9 @@ func (r *PromotionRepository) FindActivePromotionActions(shopID uint) ([]model.P
 // UpdatePromotionActionStatus 更新促销活动状态
 func (r *PromotionRepository) UpdatePromotionActionStatus(id uint, status string) error {
 	return r.db.Model(&model.PromotionAction{}).Where("id = ?", id).Update("status", status).Error
+}
+
+// UpdatePromotionActionDisplayName 更新促销活动显示名称
+func (r *PromotionRepository) UpdatePromotionActionDisplayName(id uint, displayName string) error {
+	return r.db.Model(&model.PromotionAction{}).Where("id = ?", id).Update("display_name", displayName).Error
 }

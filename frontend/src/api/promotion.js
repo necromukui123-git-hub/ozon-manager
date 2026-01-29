@@ -22,6 +22,14 @@ export function deleteAction(id, shopId) {
   return request.delete(`/promotions/actions/${id}`, { params: { shop_id: shopId } })
 }
 
+// 更新促销活动显示名称
+export function updateActionDisplayName(id, shopId, displayName) {
+  return request.put(`/promotions/actions/${id}/display-name`,
+    { display_name: displayName },
+    { params: { shop_id: shopId } }
+  )
+}
+
 // ========== V1 接口（保持兼容）==========
 
 // 批量报名促销活动

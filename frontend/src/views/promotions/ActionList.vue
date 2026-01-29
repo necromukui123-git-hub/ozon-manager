@@ -30,8 +30,16 @@
           </el-table-column>
           <el-table-column prop="title" label="活动名称" min-width="200">
             <template #default="{ row }">
-              <div class="action-title">
-                {{ row.title || '未命名活动' }}
+              <div class="action-title-cell">
+                <div class="action-title">
+                  {{ row.display_name || row.title || '未命名活动' }}
+                </div>
+                <div v-if="row.display_name && row.title" class="action-original-title">
+                  原名: {{ row.title }}
+                </div>
+                <el-button type="primary" text size="small" @click="openEditDialog(row)" class="edit-btn">
+                  <el-icon><Edit /></el-icon>
+                </el-button>
               </div>
             </template>
           </el-table-column>
@@ -106,6 +114,34 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 编辑显示名称对话框 -->
+    <el-dialog
+      v-model="showEditDialog"
+      title="设置中文显示名称"
+      width="420px"
+      :close-on-click-modal="false"
+    >
+      <el-form :model="editForm" label-width="100px">
+        <el-form-item label="原始名称">
+          <span class="original-name">{{ editForm.originalTitle || '未命名活动' }}</span>
+        </el-form-item>
+        <el-form-item label="中文显示名称">
+          <el-input
+            v-model="editForm.displayName"
+            placeholder="输入中文显示名称（留空则显示原始名称）"
+            maxlength="200"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditDialog = false">取消</el-button>
+        <el-button type="primary" :loading="updating" @click="handleUpdateDisplayName">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -113,21 +149,29 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { getActions, syncActions, createManualAction, deleteAction } from '@/api/promotion'
-import { Refresh, Plus } from '@element-plus/icons-vue'
+import { getActions, syncActions, createManualAction, deleteAction, updateActionDisplayName } from '@/api/promotion'
+import { Refresh, Plus, Edit } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 
 const loading = ref(false)
 const syncing = ref(false)
 const adding = ref(false)
+const updating = ref(false)
 const showManualDialog = ref(false)
+const showEditDialog = ref(false)
 const actions = ref([])
 const manualFormRef = ref(null)
 
 const manualForm = reactive({
   action_id: null,
   title: ''
+})
+
+const editForm = reactive({
+  id: null,
+  originalTitle: '',
+  displayName: ''
 })
 
 const manualRules = {
@@ -230,6 +274,34 @@ async function handleDelete(row) {
   }
 }
 
+function openEditDialog(row) {
+  editForm.id = row.id
+  editForm.originalTitle = row.title
+  editForm.displayName = row.display_name || ''
+  showEditDialog.value = true
+}
+
+async function handleUpdateDisplayName() {
+  const shopId = userStore.currentShopId
+  if (!shopId) {
+    ElMessage.warning('请先选择店铺')
+    return
+  }
+
+  updating.value = true
+  try {
+    await updateActionDisplayName(editForm.id, shopId, editForm.displayName)
+    ElMessage.success('更新成功')
+    showEditDialog.value = false
+    await fetchActions()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error.response?.data?.message || '更新失败')
+  } finally {
+    updating.value = false
+  }
+}
+
 onMounted(() => {
   fetchActions()
 })
@@ -288,5 +360,35 @@ onMounted(() => {
 .sync-time {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.action-title-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-title-cell .action-title {
+  flex: 1;
+}
+
+.action-original-title {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-left: 8px;
+}
+
+.edit-btn {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.edit-btn:hover {
+  opacity: 1;
+}
+
+.original-name {
+  color: var(--text-muted);
+  font-size: 13px;
 }
 </style>

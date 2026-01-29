@@ -218,3 +218,8 @@ type RemoveRepricePromoteV2Request struct {
 	Products          []RepriceItem `json:"products" binding:"required,dive"`
 	ReenrollActionIDs []int64       `json:"reenroll_action_ids"`
 }
+
+// 更新促销活动显示名称请求
+type UpdateActionDisplayNameRequest struct {
+	DisplayName string `json:"display_name" binding:"max=200"`
+}
