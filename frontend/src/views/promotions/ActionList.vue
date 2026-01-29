@@ -40,7 +40,7 @@
     <!-- 排序模式提示 -->
     <div v-if="sortMode" class="sort-mode-tip">
       <el-icon><InfoFilled /></el-icon>
-      <span>拖拽活动卡片调整顺序，完成后点击"完成排序"保存</span>
+      <span>拖拽列表项调整顺序，完成后点击"完成排序"保存</span>
     </div>
 
     <!-- 统计卡片 -->
@@ -82,53 +82,34 @@
         <p>点击"同步活动"从 Ozon 获取，或手动添加活动</p>
       </div>
 
-      <!-- 拖拽排序模式 -->
+      <!-- 拖拽排序模式 - 列表视图 -->
       <draggable
         v-if="sortMode && actions.length > 0"
         v-model="sortableActions"
         item-key="id"
-        class="draggable-grid"
-        ghost-class="ghost-card"
-        drag-class="dragging-card"
+        class="draggable-list"
+        ghost-class="ghost-item"
+        drag-class="dragging-item"
         :animation="200"
       >
-        <template #item="{ element: action }">
-          <div
-            class="action-card sortable"
-            :class="{ 'is-active': isActionActive(action) }"
-          >
-            <!-- 拖拽手柄 -->
-            <div class="drag-handle">
+        <template #item="{ element: action, index }">
+          <div class="sort-item">
+            <div class="sort-handle">
               <el-icon><Rank /></el-icon>
             </div>
-            <!-- 状态指示条 -->
-            <div class="status-indicator" :class="getStatusClass(action)"></div>
-            <!-- 卡片头部 -->
-            <div class="card-top">
-              <div class="type-badge" :class="getTypeClass(action.action_type)">
-                {{ formatActionType(action.action_type) }}
-              </div>
+            <div class="sort-type" :class="getTypeClass(action.action_type)">
+              {{ formatActionType(action.action_type) }}
             </div>
-            <!-- 活动名称 -->
-            <div class="card-title">
-              <h3>{{ action.display_name || action.title || '未命名活动' }}</h3>
+            <div class="sort-id">
+              {{ action.action_id }}
             </div>
-            <!-- 活动信息 -->
-            <div class="card-meta">
-              <div class="meta-row">
-                <div class="meta-item">
-                  <el-icon><Calendar /></el-icon>
-                  <span>{{ formatDateRange(action) }}</span>
-                </div>
-              </div>
+            <div class="sort-title">
+              {{ action.display_name || action.title || '未命名活动' }}
             </div>
-            <!-- 卡片底部 -->
-            <div class="card-footer">
-              <div class="action-id">
-                <span class="label">ID:</span>
-                <span class="value">{{ action.action_id }}</span>
-              </div>
+            <div class="sort-date">
+              {{ formatDateRange(action) }}
             </div>
+            <div class="sort-index">#{{ index + 1 }}</div>
           </div>
         </template>
       </draggable>
@@ -852,56 +833,160 @@ onMounted(() => {
   font-size: 16px;
 }
 
-/* 拖拽网格 */
-.draggable-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
+/* 拖拽列表 */
+.draggable-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: 100%;
+  grid-column: 1 / -1;
 }
 
-/* 可排序卡片 */
-.action-card.sortable {
+/* 排序列表项 */
+.sort-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
   cursor: grab;
   user-select: none;
+  transition: all var(--transition-fast);
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.action-card.sortable:active {
+.sort-item:hover {
+  border-color: var(--surface-border-hover);
+  background: var(--bg-tertiary);
+}
+
+.sort-item:active {
   cursor: grabbing;
 }
 
 /* 拖拽手柄 */
-.drag-handle {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 28px;
-  height: 28px;
+.sort-handle {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-sm);
+  width: 24px;
+  height: 24px;
   color: var(--text-muted);
-  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  transition: color var(--transition-fast);
 }
 
-.action-card.sortable:hover .drag-handle {
-  background: var(--primary);
-  color: white;
+.sort-item:hover .sort-handle {
+  color: var(--primary);
 }
 
-/* 拖拽时的幽灵卡片 */
-.ghost-card {
+/* 类型标签 */
+.sort-type {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+  min-width: 70px;
+  text-align: center;
+}
+
+.sort-type.type-discount {
+  background: rgba(196, 113, 78, 0.1);
+  color: var(--primary);
+}
+
+.sort-type.type-market {
+  background: rgba(90, 123, 175, 0.1);
+  color: var(--info);
+}
+
+.sort-type.type-default {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+/* 活动ID */
+.sort-id {
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text-primary);
+  font-weight: 600;
+  flex-shrink: 0;
+  width: 80px;
+}
+
+/* 活动名称 */
+.sort-title {
+  flex: 1 1 200px;
+  min-width: 120px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 日期范围 */
+.sort-date {
+  font-size: 13px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  width: 160px;
+  text-align: right;
+}
+
+/* 序号 */
+.sort-index {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 32px;
+  text-align: right;
+}
+
+/* 拖拽时的幽灵项 */
+.ghost-item {
   opacity: 0.5;
   background: var(--primary-bg, rgba(196, 113, 78, 0.1));
   border: 2px dashed var(--primary);
 }
 
-/* 正在拖拽的卡片 */
-.dragging-card {
-  opacity: 0.9;
-  transform: rotate(2deg);
+/* 正在拖拽的项 */
+.dragging-item {
+  opacity: 0.95;
   box-shadow: var(--shadow-lg);
+  background: var(--bg-secondary);
+  border-color: var(--primary);
+}
+
+@media (max-width: 768px) {
+  .sort-item {
+    height: auto;
+    min-height: 48px;
+    padding: 12px 16px;
+    flex-wrap: wrap;
+  }
+
+  .sort-date {
+    min-width: auto;
+    width: 100%;
+    text-align: left;
+    margin-top: 4px;
+    padding-left: 36px;
+  }
+
+  .sort-index {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
 }
 </style>
