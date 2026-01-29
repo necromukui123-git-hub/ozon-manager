@@ -1449,6 +1449,57 @@ html, body, #app {
   animation: fadeIn 0.2s ease-out;
 }
 
+// ========== Bento Grid 系统 ==========
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+
+  &--3col {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  &--2col {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+// Bento Grid 响应式
+@media (max-width: 1400px) {
+  .bento-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (max-width: 1200px) {
+  .bento-grid {
+    grid-template-columns: repeat(3, 1fr);
+
+    &--3col {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+}
+
+@media (max-width: 992px) {
+  .bento-grid {
+    grid-template-columns: repeat(2, 1fr);
+
+    &--3col,
+    &--2col {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .bento-grid,
+  .bento-grid--3col,
+  .bento-grid--2col {
+    grid-template-columns: 1fr;
+  }
+}
+
 // ========== 响应式 ==========
 @media (max-width: 1200px) {
   .stat-cards {

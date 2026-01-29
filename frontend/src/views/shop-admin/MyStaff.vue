@@ -8,7 +8,29 @@
       </el-button>
     </div>
 
-    <div class="glass-card">
+    <!-- 统计卡片 -->
+    <div class="stats-row">
+      <StatCard
+        :value="staffList.length"
+        label="员工总数"
+        :icon="UserFilled"
+        variant="primary"
+      />
+      <StatCard
+        :value="activeCount"
+        label="正常状态"
+        :icon="CircleCheckFilled"
+        variant="success"
+      />
+      <StatCard
+        :value="disabledCount"
+        label="已禁用"
+        :icon="WarningFilled"
+        variant="warning"
+      />
+    </div>
+
+    <BentoCard title="员工列表" :icon="List" size="4x1" no-padding>
       <div class="card-body">
         <el-table :data="staffList" v-loading="loading">
           <el-table-column prop="id" label="ID" width="80" />
@@ -66,7 +88,7 @@
           </el-table-column>
         </el-table>
       </div>
-    </div>
+    </BentoCard>
 
     <!-- 创建员工对话框 -->
     <el-dialog v-model="dialogVisible" title="添加员工" width="500px">
@@ -155,9 +177,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, ArrowDown } from '@element-plus/icons-vue'
+import { Plus, ArrowDown, UserFilled, CircleCheckFilled, WarningFilled, List } from '@element-plus/icons-vue'
 import {
   getMyShops,
   getMyStaff,
@@ -167,11 +189,16 @@ import {
   updateStaffShops
 } from '@/api/shopAdmin'
 import { hashPassword } from '@/utils/crypto'
+import { StatCard, BentoCard } from '@/components/bento'
 
 const loading = ref(false)
 const saving = ref(false)
 const staffList = ref([])
 const myShops = ref([])
+
+// 计算统计数据
+const activeCount = computed(() => staffList.value.filter(s => s.status === 'active').length)
+const disabledCount = computed(() => staffList.value.filter(s => s.status !== 'active').length)
 
 const dialogVisible = ref(false)
 const formRef = ref(null)
@@ -339,6 +366,26 @@ function formatTime(time) {
 <style scoped>
 .my-staff {
   min-height: 100%;
+}
+
+/* 统计卡片行 */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 992px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .code-text {

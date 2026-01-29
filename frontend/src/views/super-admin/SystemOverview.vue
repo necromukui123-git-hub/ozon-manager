@@ -2,99 +2,111 @@
   <div class="system-overview">
     <div class="page-header">
       <h2 class="gradient">系统概览</h2>
+      <el-button @click="fetchOverview" :loading="loading">
+        <el-icon><Refresh /></el-icon>
+        刷新数据
+      </el-button>
     </div>
 
-    <div class="stats-grid" v-loading="loading">
-      <div class="glass-card stat-card">
-        <div class="stat-icon shop-admin">
-          <el-icon><User /></el-icon>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ overview.shop_admin_count || 0 }}</div>
-          <div class="stat-label">店铺管理员</div>
-        </div>
-      </div>
+    <!-- Bento Grid 布局 -->
+    <div class="bento-grid">
+      <!-- 统计卡片 -->
+      <StatCard
+        :value="overview.shop_admin_count || 0"
+        label="店铺管理员"
+        :icon="User"
+        variant="primary"
+      />
+      <StatCard
+        :value="overview.staff_count || 0"
+        label="员工总数"
+        :icon="UserFilled"
+        variant="accent"
+      />
+      <StatCard
+        :value="overview.shop_count || 0"
+        label="店铺总数"
+        :icon="Shop"
+        variant="info"
+      />
+      <StatCard
+        :value="overview.product_count || 0"
+        label="商品总数"
+        :icon="Goods"
+        variant="success"
+      />
 
-      <div class="glass-card stat-card">
-        <div class="stat-icon staff">
-          <el-icon><UserFilled /></el-icon>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ overview.staff_count || 0 }}</div>
-          <div class="stat-label">员工总数</div>
-        </div>
-      </div>
+      <!-- 用户分布图表 -->
+      <ChartCard
+        title="用户分布"
+        :icon="PieChart"
+        size="2x2"
+        :option="pieChartOption"
+        :loading="loading"
+        height="280px"
+      />
 
-      <div class="glass-card stat-card">
-        <div class="stat-icon shop">
-          <el-icon><Shop /></el-icon>
+      <!-- 店铺管理员列表 -->
+      <BentoCard title="店铺管理员列表" :icon="UserFilled" size="2x2" no-padding>
+        <template #actions>
+          <el-tag type="info" effect="plain" size="small">
+            {{ overview.shop_admins?.length || 0 }} 人
+          </el-tag>
+        </template>
+        <div class="admin-list-wrapper">
+          <el-table :data="overview.shop_admins || []" size="small" :show-header="false">
+            <el-table-column width="50">
+              <template #default="{ row }">
+                <div class="admin-avatar">
+                  {{ row.display_name?.charAt(0) || 'A' }}
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column>
+              <template #default="{ row }">
+                <div class="admin-info">
+                  <span class="admin-name">{{ row.display_name }}</span>
+                  <span class="admin-username">@{{ row.username }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column width="80" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 'active' ? 'success' : 'info'" size="small">
+                  {{ row.status === 'active' ? '正常' : '禁用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column width="100" align="right">
+              <template #default="{ row }">
+                <div class="admin-stats">
+                  <span>{{ row.shop_count || 0 }} 店铺</span>
+                  <span>{{ row.staff_count || 0 }} 员工</span>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
         </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ overview.shop_count || 0 }}</div>
-          <div class="stat-label">店铺总数</div>
-        </div>
-      </div>
+      </BentoCard>
 
-      <div class="glass-card stat-card">
-        <div class="stat-icon product">
-          <el-icon><Goods /></el-icon>
-        </div>
-        <div class="stat-content">
-          <div class="stat-value">{{ overview.product_count || 0 }}</div>
-          <div class="stat-label">商品总数</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="glass-card">
-      <div class="card-header">
-        <h3>店铺管理员列表</h3>
-      </div>
-      <div class="card-body">
-        <el-table :data="overview.shop_admins || []" v-loading="loading">
-          <el-table-column prop="id" label="ID" width="80" />
-          <el-table-column prop="username" label="用户名" width="120">
-            <template #default="{ row }">
-              <span class="code-text">{{ row.username }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="display_name" label="显示名称" width="120" />
-          <el-table-column label="状态" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.status === 'active' ? 'success' : 'info'" effect="dark" size="small">
-                {{ row.status === 'active' ? '正常' : '禁用' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="店铺数量" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag type="primary" effect="plain" size="small">
-                {{ row.shop_count || 0 }} 个
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="员工数量" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag type="info" effect="plain" size="small">
-                {{ row.staff_count || 0 }} 人
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="last_login_at" label="最后登录" width="180">
-            <template #default="{ row }">
-              <span class="time-text">{{ formatTime(row.last_login_at) || '-' }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+      <!-- 资源统计柱状图 -->
+      <ChartCard
+        title="资源统计"
+        :icon="DataAnalysis"
+        size="4x1"
+        :option="barChartOption"
+        :loading="loading"
+        height="180px"
+      />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { User, UserFilled, Shop, Goods } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onMounted } from 'vue'
+import { User, UserFilled, Shop, Goods, Refresh, PieChart, DataAnalysis } from '@element-plus/icons-vue'
 import { getSystemOverview } from '@/api/admin'
+import { StatCard, ChartCard, BentoCard } from '@/components/bento'
 
 const loading = ref(false)
 const overview = reactive({
@@ -104,6 +116,112 @@ const overview = reactive({
   product_count: 0,
   shop_admins: []
 })
+
+// 饼图配置
+const pieChartOption = computed(() => ({
+  tooltip: {
+    trigger: 'item',
+    formatter: '{b}: {c} ({d}%)'
+  },
+  legend: {
+    orient: 'vertical',
+    right: '5%',
+    top: 'center',
+    itemWidth: 12,
+    itemHeight: 12
+  },
+  series: [
+    {
+      name: '用户分布',
+      type: 'pie',
+      radius: ['45%', '70%'],
+      center: ['35%', '50%'],
+      avoidLabelOverlap: false,
+      itemStyle: {
+        borderRadius: 6,
+        borderColor: '#fff',
+        borderWidth: 2
+      },
+      label: {
+        show: false
+      },
+      emphasis: {
+        label: {
+          show: true,
+          fontSize: 14,
+          fontWeight: 'bold'
+        }
+      },
+      data: [
+        { value: overview.shop_admin_count, name: '店铺管理员', itemStyle: { color: '#C4714E' } },
+        { value: overview.staff_count, name: '员工', itemStyle: { color: '#D77757' } }
+      ]
+    }
+  ]
+}))
+
+// 柱状图配置
+const barChartOption = computed(() => ({
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: {
+      type: 'shadow'
+    }
+  },
+  grid: {
+    left: '3%',
+    right: '4%',
+    bottom: '3%',
+    top: '15%',
+    containLabel: true
+  },
+  xAxis: {
+    type: 'category',
+    data: ['店铺管理员', '员工', '店铺', '商品'],
+    axisLine: {
+      lineStyle: {
+        color: 'rgba(0, 0, 0, 0.08)'
+      }
+    },
+    axisLabel: {
+      color: '#8a8780'
+    }
+  },
+  yAxis: {
+    type: 'value',
+    axisLine: {
+      show: false
+    },
+    splitLine: {
+      lineStyle: {
+        color: 'rgba(0, 0, 0, 0.05)'
+      }
+    },
+    axisLabel: {
+      color: '#8a8780'
+    }
+  },
+  series: [
+    {
+      name: '数量',
+      type: 'bar',
+      barWidth: '50%',
+      itemStyle: {
+        borderRadius: [4, 4, 0, 0],
+        color: function(params) {
+          const colors = ['#C4714E', '#D77757', '#5A7BAF', '#4A9668']
+          return colors[params.dataIndex]
+        }
+      },
+      data: [
+        overview.shop_admin_count,
+        overview.staff_count,
+        overview.shop_count,
+        overview.product_count
+      ]
+    }
+  ]
+}))
 
 onMounted(async () => {
   await fetchOverview()
@@ -120,11 +238,6 @@ async function fetchOverview() {
     loading.value = false
   }
 }
-
-function formatTime(time) {
-  if (!time) return ''
-  return new Date(time).toLocaleString('zh-CN')
-}
 </script>
 
 <style scoped>
@@ -132,99 +245,65 @@ function formatTime(time) {
   min-height: 100%;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  margin-bottom: 20px;
+.admin-list-wrapper {
+  height: 100%;
+  padding: 8px;
 }
 
+.admin-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.admin-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.admin-username {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.admin-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 响应式调整 */
 @media (max-width: 1200px) {
-  .stats-grid {
+  .bento-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 992px) {
+  .bento-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 768px) {
-  .stats-grid {
+  .bento-grid {
     grid-template-columns: 1fr;
   }
-}
-
-.stat-card {
-  display: flex;
-  align-items: center;
-  padding: 24px;
-  gap: 20px;
-}
-
-.stat-icon {
-  width: 60px;
-  height: 60px;
-  border-radius: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-}
-
-.stat-icon.shop-admin {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.stat-icon.staff {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-  color: white;
-}
-
-.stat-icon.shop {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-  color: white;
-}
-
-.stat-icon.product {
-  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-  color: white;
-}
-
-.stat-content {
-  flex: 1;
-}
-
-.stat-value {
-  font-size: 32px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-
-.stat-label {
-  font-size: 14px;
-  color: var(--text-muted);
-  margin-top: 4px;
-}
-
-.card-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.card-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.code-text {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
-  color: var(--accent);
-}
-
-.time-text {
-  font-size: 13px;
-  color: var(--text-muted);
 }
 </style>

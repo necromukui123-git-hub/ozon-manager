@@ -9,9 +9,38 @@
       </el-button>
     </div>
 
-    <!-- 筛选器 -->
-    <div class="glass-card filter-card">
-      <div class="card-body">
+    <!-- 统计卡片 -->
+    <div class="stats-row">
+      <StatCard
+        :value="pagination.total"
+        label="商品总数"
+        :icon="Goods"
+        variant="primary"
+      />
+      <StatCard
+        :value="promotedCount"
+        label="推广中"
+        :icon="Promotion"
+        variant="success"
+      />
+      <StatCard
+        :value="lossCount"
+        label="亏损商品"
+        :icon="WarningFilled"
+        variant="warning"
+      />
+      <StatCard
+        :value="normalCount"
+        label="正常商品"
+        :icon="CircleCheckFilled"
+        variant="info"
+      />
+    </div>
+
+    <!-- Bento Grid 布局 -->
+    <div class="bento-grid--2col">
+      <!-- 筛选器卡片 -->
+      <BentoCard title="筛选条件" :icon="Filter" size="2x1">
         <el-form :inline="true" :model="filters" class="filter-form">
           <el-form-item label="亏损状态">
             <el-select v-model="filters.is_loss" placeholder="全部" clearable style="width: 140px">
@@ -49,106 +78,109 @@
             </el-button>
           </el-form-item>
         </el-form>
-      </div>
+      </BentoCard>
     </div>
 
     <!-- 数据表格 -->
-    <div class="glass-card table-card">
-      <div class="card-body">
-        <el-table :data="products" v-loading="loading">
-          <el-table-column prop="source_sku" label="SKU" width="150">
-            <template #default="{ row }">
-              <span class="sku-text">{{ row.source_sku }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="name" label="商品名称" min-width="220" show-overflow-tooltip>
-            <template #default="{ row }">
-              <span class="product-name">{{ row.name }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="current_price" label="当前价格" width="110" align="right">
-            <template #default="{ row }">
-              <span class="price-text">¥{{ row.current_price?.toFixed(2) || '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="160" align="center">
-            <template #default="{ row }">
-              <div class="status-tags">
-                <el-tag v-if="row.is_loss" type="danger" size="small" effect="dark">
-                  <el-icon><WarningFilled /></el-icon>
-                  亏损
+    <BentoCard title="商品数据" :icon="List" size="4x1" class="table-card" no-padding>
+      <el-table :data="products" v-loading="loading">
+        <el-table-column prop="source_sku" label="SKU" width="150">
+          <template #default="{ row }">
+            <span class="sku-text">{{ row.source_sku }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="name" label="商品名称" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="product-name">{{ row.name }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="current_price" label="当前价格" width="110" align="right">
+          <template #default="{ row }">
+            <span class="price-text">¥{{ row.current_price?.toFixed(2) || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="160" align="center">
+          <template #default="{ row }">
+            <div class="status-tags">
+              <el-tag v-if="row.is_loss" type="danger" size="small" effect="dark">
+                <el-icon><WarningFilled /></el-icon>
+                亏损
+              </el-tag>
+              <el-tag v-if="row.is_promoted" type="success" size="small" effect="dark">
+                <el-icon><Promotion /></el-icon>
+                推广中
+              </el-tag>
+              <span v-if="!row.is_loss && !row.is_promoted" class="status-normal">正常</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="参与的促销" min-width="200">
+          <template #default="{ row }">
+            <template v-if="row.promotions && row.promotions.length > 0">
+              <div class="promo-tags">
+                <el-tag
+                  v-for="promo in row.promotions"
+                  :key="promo.action_id"
+                  size="small"
+                  :type="getPromoTagType(promo.type)"
+                >
+                  {{ promo.title }}
                 </el-tag>
-                <el-tag v-if="row.is_promoted" type="success" size="small" effect="dark">
-                  <el-icon><Promotion /></el-icon>
-                  推广中
-                </el-tag>
-                <span v-if="!row.is_loss && !row.is_promoted" class="status-normal">正常</span>
               </div>
             </template>
-          </el-table-column>
-          <el-table-column label="参与的促销" min-width="200">
-            <template #default="{ row }">
-              <template v-if="row.promotions && row.promotions.length > 0">
-                <div class="promo-tags">
-                  <el-tag
-                    v-for="promo in row.promotions"
-                    :key="promo.action_id"
-                    size="small"
-                    :type="getPromoTagType(promo.type)"
-                  >
-                    {{ promo.title }}
-                  </el-tag>
+            <span v-else class="no-data">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="亏损信息" width="140">
+          <template #default="{ row }">
+            <template v-if="row.loss_info">
+              <div class="loss-info">
+                <div class="loss-row">
+                  <span class="loss-label">原价</span>
+                  <span class="loss-value old">¥{{ row.loss_info.original_price }}</span>
                 </div>
-              </template>
-              <span v-else class="no-data">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="亏损信息" width="140">
-            <template #default="{ row }">
-              <template v-if="row.loss_info">
-                <div class="loss-info">
-                  <div class="loss-row">
-                    <span class="loss-label">原价</span>
-                    <span class="loss-value old">¥{{ row.loss_info.original_price }}</span>
-                  </div>
-                  <div class="loss-row">
-                    <span class="loss-label">新价</span>
-                    <span class="loss-value new">¥{{ row.loss_info.new_price }}</span>
-                  </div>
+                <div class="loss-row">
+                  <span class="loss-label">新价</span>
+                  <span class="loss-value new">¥{{ row.loss_info.new_price }}</span>
                 </div>
-              </template>
-              <span v-else class="no-data">-</span>
+              </div>
             </template>
-          </el-table-column>
-        </el-table>
+            <span v-else class="no-data">-</span>
+          </template>
+        </el-table-column>
+      </el-table>
 
-        <div class="table-footer">
-          <el-pagination
-            v-model:current-page="pagination.page"
-            v-model:page-size="pagination.page_size"
-            :total="pagination.total"
-            :page-sizes="[20, 50, 100]"
-            layout="total, sizes, prev, pager, next, jumper"
-            @size-change="handleSizeChange"
-            @current-change="handlePageChange"
-          />
-        </div>
-      </div>
-    </div>
+      <template #footer>
+        <el-pagination
+          v-model:current-page="pagination.page"
+          v-model:page-size="pagination.page_size"
+          :total="pagination.total"
+          :page-sizes="[20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @size-change="handleSizeChange"
+          @current-change="handlePageChange"
+        />
+      </template>
+    </BentoCard>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getProducts, syncProducts } from '@/api/product'
+import { StatCard, BentoCard } from '@/components/bento'
 import {
   Refresh,
   RefreshLeft,
   Search,
   WarningFilled,
-  Promotion
+  Promotion,
+  Goods,
+  CircleCheckFilled,
+  Filter,
+  List
 } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
@@ -156,6 +188,13 @@ const userStore = useUserStore()
 const loading = ref(false)
 const syncing = ref(false)
 const products = ref([])
+
+// 统计数据
+const promotedCount = ref(0)
+const lossCount = ref(0)
+const normalCount = computed(() => {
+  return pagination.total - promotedCount.value - lossCount.value
+})
 
 const filters = reactive({
   is_loss: null,
@@ -202,6 +241,13 @@ async function fetchProducts() {
     const res = await getProducts(params)
     products.value = res.data.items || []
     pagination.total = res.data.total || 0
+
+    // 获取统计数据
+    const promotedRes = await getProducts({ shop_id: shopId, is_promoted: true, page_size: 1 })
+    promotedCount.value = promotedRes.data.total || 0
+
+    const lossRes = await getProducts({ shop_id: shopId, is_loss: true, page_size: 1 })
+    lossCount.value = lossRes.data.total || 0
   } catch (error) {
     console.error(error)
   } finally {
@@ -261,7 +307,30 @@ function getPromoTagType(type) {
   min-height: 100%;
 }
 
-.filter-card {
+/* 统计卡片行 */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1200px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bento-grid--2col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
   margin-bottom: 24px;
 }
 
@@ -272,15 +341,8 @@ function getPromoTagType(type) {
   align-items: flex-end;
 }
 
-.table-card .card-body {
-  padding: 0;
-}
-
-.table-footer {
-  padding: 16px 20px;
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px solid var(--glass-border);
+.table-card {
+  margin-bottom: 24px;
 }
 
 .sku-text {

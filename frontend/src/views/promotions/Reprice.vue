@@ -5,12 +5,10 @@
       <h2 class="gradient">改价推广</h2>
     </div>
 
-    <!-- 导入区域 -->
-    <div class="glass-card">
-      <div class="card-header">
-        <span class="card-title">导入改价数据</span>
-      </div>
-      <div class="card-body">
+    <!-- Bento Grid 布局 -->
+    <div class="bento-grid--2col">
+      <!-- 导入区域 -->
+      <BentoCard title="导入改价数据" :icon="UploadFilled" size="1x1">
         <el-upload
           ref="uploadRef"
           class="upload-area"
@@ -26,7 +24,7 @@
               <el-icon><UploadFilled /></el-icon>
             </div>
             <div class="upload-text">
-              <p>将 Excel 文件拖到此处</p>
+              <p>拖拽 Excel 文件到此处</p>
               <p class="sub">或 <em>点击上传</em></p>
             </div>
           </div>
@@ -37,92 +35,97 @@
         </div>
 
         <div class="manual-input">
-          <el-form :inline="true" :model="manualForm">
-            <el-form-item label="SKU">
-              <el-input v-model="manualForm.source_sku" placeholder="输入商品 SKU" style="width: 180px" />
-            </el-form-item>
-            <el-form-item label="新价格">
-              <el-input-number v-model="manualForm.new_price" :min="0" :precision="2" style="width: 140px" />
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="addManualItem">
-                <el-icon><Plus /></el-icon>
-                添加
-              </el-button>
-            </el-form-item>
-          </el-form>
+          <el-input v-model="manualForm.source_sku" placeholder="SKU" style="width: 140px" />
+          <el-input-number v-model="manualForm.new_price" :min="0" :precision="2" placeholder="新价格" style="width: 120px" />
+          <el-button type="primary" @click="addManualItem">
+            <el-icon><Plus /></el-icon>
+          </el-button>
         </div>
-      </div>
+      </BentoCard>
+
+      <!-- 重新推广活动选择 -->
+      <BentoCard title="重新推广活动" :icon="Ticket" size="1x1">
+        <template #actions>
+          <el-button type="primary" text size="small" @click="fetchActions" :loading="actionsLoading">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
+        </template>
+
+        <div class="process-info">
+          <el-icon><InfoFilled /></el-icon>
+          <span>流程：取消促销 → 更新价格 → 重新推广</span>
+        </div>
+
+        <div v-if="actionsLoading" class="loading-state">
+          <el-skeleton :rows="2" animated />
+        </div>
+        <div v-else-if="actions.length === 0" class="empty-state-small">
+          <el-icon><Box /></el-icon>
+          <p>暂无可用活动</p>
+        </div>
+        <div v-else class="action-list">
+          <el-checkbox-group v-model="selectedActionIds">
+            <el-checkbox
+              v-for="action in actions"
+              :key="action.action_id"
+              :value="action.action_id"
+              class="action-checkbox"
+            >
+              <div class="action-item">
+                <span class="action-title">{{ action.display_name || action.title || `活动 #${action.action_id}` }}</span>
+                <span class="action-id">ID: {{ action.action_id }}</span>
+              </div>
+            </el-checkbox>
+          </el-checkbox-group>
+        </div>
+        <div class="action-hint">留空则不重新添加推广，仅执行取消促销和更新价格</div>
+      </BentoCard>
     </div>
 
     <!-- 待处理商品 -->
-    <div v-if="products.length > 0" class="glass-card products-card">
-      <div class="card-header">
-        <span class="card-title">待处理商品</span>
-        <div class="header-actions">
-          <el-tag type="info" effect="plain">共 {{ products.length }} 个</el-tag>
-          <el-button type="danger" text size="small" @click="clearProducts">
-            <el-icon><Delete /></el-icon>
-            清空
-          </el-button>
-        </div>
-      </div>
-      <div class="card-body">
-        <el-table :data="products" size="small">
-          <el-table-column prop="source_sku" label="SKU">
-            <template #default="{ row }">
-              <span class="sku-text">{{ row.source_sku }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="new_price" label="新价格" align="right">
-            <template #default="{ row }">
-              <span class="price-text">¥{{ row.new_price.toFixed(2) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="80" align="center">
-            <template #default="{ $index }">
-              <el-button type="danger" size="small" text @click="removeProduct($index)">
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+    <BentoCard
+      v-if="products.length > 0"
+      title="待处理商品"
+      :icon="Goods"
+      size="4x1"
+      no-padding
+      class="products-card"
+    >
+      <template #actions>
+        <el-tag type="info" effect="plain" size="small">共 {{ products.length }} 个</el-tag>
+        <el-button type="danger" text size="small" @click="clearProducts">
+          <el-icon><Delete /></el-icon>
+          清空
+        </el-button>
+      </template>
 
-        <!-- 重新推广活动选择 -->
-        <div class="reenroll-section">
-          <h4 class="section-title">重新推广活动（可选）</h4>
-          <el-skeleton v-if="actionsLoading" :rows="2" animated />
-          <el-empty v-else-if="actions.length === 0" description="暂无可用活动" :image-size="40">
-            <el-button type="primary" text size="small" @click="fetchActions" :loading="actionsLoading">
-              <el-icon><Refresh /></el-icon>
-              刷新
+      <el-table :data="products" size="small" max-height="300">
+        <el-table-column prop="source_sku" label="SKU">
+          <template #default="{ row }">
+            <span class="sku-text">{{ row.source_sku }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="new_price" label="新价格" align="right">
+          <template #default="{ row }">
+            <span class="price-text">¥{{ row.new_price.toFixed(2) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" align="center">
+          <template #default="{ $index }">
+            <el-button type="danger" size="small" text @click="removeProduct($index)">
+              <el-icon><Delete /></el-icon>
             </el-button>
-          </el-empty>
-          <div v-else class="action-selector">
-            <el-checkbox-group v-model="selectedActionIds">
-              <el-checkbox
-                v-for="action in actions"
-                :key="action.action_id"
-                :value="action.action_id"
-                class="action-checkbox"
-              >
-                <div class="action-item">
-                  <span class="action-title">{{ action.display_name || action.title || `活动 #${action.action_id}` }}</span>
-                  <span class="action-id">ID: {{ action.action_id }}</span>
-                </div>
-              </el-checkbox>
-            </el-checkbox-group>
-            <el-button type="primary" text size="small" @click="fetchActions" :loading="actionsLoading">
-              <el-icon><Refresh /></el-icon>
-              刷新列表
-            </el-button>
-          </div>
-          <div class="reenroll-hint">
-            留空则不重新添加推广，仅执行：取消促销 → 更新价格
-          </div>
-        </div>
+          </template>
+        </el-table-column>
+      </el-table>
 
-        <div class="action-section">
+      <template #footer>
+        <div class="action-footer">
+          <div class="process-hint">
+            <el-icon><InfoFilled /></el-icon>
+            处理流程：取消促销 → 更新价格{{ selectedActionIds.length > 0 ? ' → 重新添加推广' : '' }}
+          </div>
           <el-button
             type="primary"
             size="large"
@@ -132,77 +135,59 @@
             <el-icon v-if="!processing"><Check /></el-icon>
             {{ processing ? '处理中...' : '开始处理' }}
           </el-button>
-          <div class="process-hint">
-            <el-icon><InfoFilled /></el-icon>
-            处理流程：取消促销 → 更新价格{{ selectedActionIds.length > 0 ? ' → 重新添加推广' : '' }}
-          </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </BentoCard>
 
     <!-- 处理结果 -->
-    <div v-if="result" class="glass-card result-card">
-      <div class="card-header">
-        <span class="card-title">处理结果</span>
-        <el-tag :type="result.success ? 'success' : 'danger'" effect="dark">
-          {{ result.success ? '成功' : '失败' }}
-        </el-tag>
-      </div>
-      <div class="card-body">
-        <!-- 处理步骤 -->
-        <div class="process-steps">
-          <div class="step-item">
-            <div class="step-icon success">
-              <el-icon><CircleCheckFilled /></el-icon>
-            </div>
-            <div class="step-info">
-              <span class="step-title">取消促销</span>
-              <span class="step-count">{{ result.remove_count }} 个商品</span>
-            </div>
-          </div>
-          <div class="step-line"></div>
-          <div class="step-item">
-            <div class="step-icon success">
-              <el-icon><CircleCheckFilled /></el-icon>
-            </div>
-            <div class="step-info">
-              <span class="step-title">更新价格</span>
-              <span class="step-count">{{ result.price_update_count }} 个商品</span>
-            </div>
-          </div>
-          <div class="step-line"></div>
-          <div class="step-item">
-            <div class="step-icon success">
-              <el-icon><CircleCheckFilled /></el-icon>
-            </div>
-            <div class="step-info">
-              <span class="step-title">重新推广</span>
-              <span class="step-count">{{ result.promote_count }} 个商品</span>
-            </div>
-          </div>
-        </div>
+    <div v-if="result" class="bento-grid">
+      <StatCard
+        :value="result.remove_count"
+        label="取消促销"
+        :icon="CircleCloseFilled"
+        variant="warning"
+      />
+      <StatCard
+        :value="result.price_update_count"
+        label="更新价格"
+        :icon="PriceTag"
+        variant="primary"
+      />
+      <StatCard
+        :value="result.promote_count"
+        label="重新推广"
+        :icon="Promotion"
+        variant="success"
+      />
+      <StatCard
+        :value="result.success ? '成功' : '失败'"
+        label="执行状态"
+        :icon="result.success ? CircleCheckFilled : WarningFilled"
+        :variant="result.success ? 'success' : 'danger'"
+      />
 
-        <!-- 失败详情 -->
-        <div v-if="result.failed_items && result.failed_items.length > 0" class="failed-section">
-          <h4 class="failed-title">
-            <el-icon><WarningFilled /></el-icon>
-            失败详情
-          </h4>
-          <el-table :data="result.failed_items" size="small" max-height="300">
-            <el-table-column prop="sku" label="SKU" width="150">
-              <template #default="{ row }">
-                <span class="sku-text">{{ row.sku }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="step" label="失败步骤" width="120">
-              <template #default="{ row }">
-                <el-tag size="small" type="warning">{{ row.step }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="error" label="错误信息" />
-          </el-table>
-        </div>
-      </div>
+      <!-- 失败详情 -->
+      <BentoCard
+        v-if="result.failed_items && result.failed_items.length > 0"
+        title="失败详情"
+        :icon="WarningFilled"
+        size="4x1"
+        no-padding
+      >
+        <el-table :data="result.failed_items" size="small" max-height="300">
+          <el-table-column prop="sku" label="SKU" width="150">
+            <template #default="{ row }">
+              <span class="sku-text">{{ row.sku }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="step" label="失败步骤" width="120">
+            <template #default="{ row }">
+              <el-tag size="small" type="warning">{{ row.step }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="error" label="错误信息" />
+        </el-table>
+      </BentoCard>
     </div>
   </div>
 </template>
@@ -211,17 +196,13 @@
 import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  UploadFilled,
-  Plus,
-  Delete,
-  Check,
-  InfoFilled,
-  CircleCheckFilled,
-  WarningFilled,
-  Refresh
+  UploadFilled, Plus, Delete, Check, InfoFilled, Refresh, Box,
+  CircleCheckFilled, CircleCloseFilled, WarningFilled, PriceTag,
+  Promotion, Goods, Ticket
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { getActions, removeRepricePromoteV2 } from '@/api/promotion'
+import { StatCard, BentoCard } from '@/components/bento'
 import * as XLSX from 'xlsx'
 
 const userStore = useUserStore()
@@ -392,101 +373,177 @@ onMounted(() => {
   min-height: 100%;
 }
 
+.bento-grid--2col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 992px) {
+  .bento-grid--2col {
+    grid-template-columns: 1fr;
+  }
+}
+
 .upload-area {
   width: 100%;
 }
 
 .upload-area :deep(.el-upload-dragger) {
-  background: var(--glass-bg);
-  border: 2px dashed var(--glass-border);
+  background: var(--bg-tertiary);
+  border: 2px dashed var(--surface-border);
   border-radius: var(--radius-lg);
-  padding: 40px;
+  padding: 24px;
   transition: all var(--transition-normal);
+}
 
-  &:hover {
-    border-color: var(--primary);
-    background: var(--glass-bg-hover);
-  }
+.upload-area :deep(.el-upload-dragger:hover) {
+  border-color: var(--primary);
+  background: var(--surface-bg-hover);
 }
 
 .upload-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
 }
 
 .upload-icon {
-  width: 64px;
-  height: 64px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
-  border-radius: var(--radius-lg);
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
+}
 
-  .el-icon {
-    font-size: 28px;
-    color: var(--primary);
-  }
+.upload-icon .el-icon {
+  font-size: 20px;
+  color: white;
 }
 
 .upload-text {
   text-align: center;
+}
 
-  p {
-    color: var(--text-primary);
-    font-size: 15px;
-    margin: 0;
+.upload-text p {
+  color: var(--text-primary);
+  font-size: 13px;
+  margin: 0;
+}
 
-    &.sub {
-      color: var(--text-muted);
-      font-size: 13px;
-      margin-top: 4px;
-    }
+.upload-text p.sub {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
 
-    em {
-      color: var(--primary);
-      font-style: normal;
-      cursor: pointer;
-    }
-  }
+.upload-text em {
+  color: var(--primary);
+  font-style: normal;
+  cursor: pointer;
 }
 
 .divider {
   display: flex;
   align-items: center;
-  margin: 24px 0;
+  margin: 16px 0;
+}
 
-  &::before,
-  &::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--glass-border);
-  }
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--surface-border);
+}
 
-  span {
-    padding: 0 16px;
-    font-size: 13px;
-    color: var(--text-muted);
-  }
+.divider span {
+  padding: 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .manual-input {
   display: flex;
-  justify-content: center;
+  gap: 8px;
+  align-items: center;
 }
 
-.products-card,
-.result-card {
-  margin-top: 24px;
-}
-
-.header-actions {
+.process-info {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(196, 113, 78, 0.1);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: var(--primary);
+}
+
+.loading-state {
+  padding: 16px 0;
+}
+
+.empty-state-small {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--text-muted);
+}
+
+.empty-state-small .el-icon {
+  font-size: 28px;
+  opacity: 0.5;
+}
+
+.empty-state-small p {
+  font-size: 12px;
+  margin: 0;
+}
+
+.action-list {
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.action-checkbox {
+  display: block;
+  margin-bottom: 8px;
+  margin-right: 0;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.action-title {
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.action-id {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.action-hint {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.products-card {
+  margin-bottom: 24px;
 }
 
 .sku-text {
@@ -500,14 +557,10 @@ onMounted(() => {
   color: var(--warning);
 }
 
-.action-section {
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid var(--glass-border);
+.action-footer {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between;
 }
 
 .process-hint {
@@ -516,137 +569,21 @@ onMounted(() => {
   gap: 6px;
   font-size: 13px;
   color: var(--text-muted);
-
-  .el-icon {
-    color: var(--primary);
-  }
 }
 
-.process-steps {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  margin-bottom: 24px;
+.process-hint .el-icon {
+  color: var(--primary);
 }
 
-.step-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-
-  .step-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--glass-bg);
-    border: 2px solid var(--glass-border);
-
-    .el-icon {
-      font-size: 24px;
-      color: var(--text-muted);
-    }
-
-    &.success {
-      background: rgba(16, 185, 129, 0.15);
-      border-color: var(--success);
-
-      .el-icon {
-        color: var(--success);
-      }
-    }
-  }
-
-  .step-info {
-    display: flex;
+/* 响应式 */
+@media (max-width: 768px) {
+  .action-footer {
     flex-direction: column;
-    align-items: center;
-    gap: 4px;
-
-    .step-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
-
-    .step-count {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
+    gap: 12px;
   }
-}
 
-.step-line {
-  width: 60px;
-  height: 2px;
-  background: var(--success);
-  margin: 0 16px;
-  margin-bottom: 50px;
-}
-
-.failed-section {
-  padding-top: 20px;
-  border-top: 1px solid var(--glass-border);
-}
-
-.failed-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--danger);
-  margin-bottom: 16px;
-}
-
-.reenroll-section {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid var(--glass-border);
-}
-
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 16px;
-  padding-left: 12px;
-  border-left: 3px solid var(--primary);
-}
-
-.reenroll-hint {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.action-selector {
-  width: 100%;
-}
-
-.action-checkbox {
-  display: block;
-  margin-bottom: 12px;
-  margin-right: 0;
-}
-
-.action-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.action-title {
-  font-weight: 500;
-}
-
-.action-id {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 12px;
-  color: var(--text-muted);
+  .manual-input {
+    flex-wrap: wrap;
+  }
 }
 </style>

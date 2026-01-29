@@ -4,110 +4,116 @@
       <h2 class="gradient">操作日志</h2>
     </div>
 
-    <div class="glass-card filter-card">
-      <div class="card-body">
-        <el-form :inline="true" :model="filters" class="filter-form">
-          <el-form-item label="操作人">
-            <el-select v-model="filters.user_id" placeholder="全部" clearable style="width: 140px">
-              <el-option
-                v-for="user in users"
-                :key="user.id"
-                :label="user.display_name"
-                :value="user.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="店铺">
-            <el-select v-model="filters.shop_id" placeholder="全部" clearable style="width: 140px">
-              <el-option
-                v-for="shop in shops"
-                :key="shop.id"
-                :label="shop.name"
-                :value="shop.id"
-              />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="操作类型">
-            <el-select v-model="filters.operation_type" placeholder="全部" clearable style="width: 140px">
-              <el-option label="批量报名" value="batch_enroll" />
-              <el-option label="处理亏损" value="process_loss" />
-              <el-option label="改价推广" value="remove_reprice_promote" />
-              <el-option label="同步商品" value="sync_products" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="时间范围">
-            <el-date-picker
-              v-model="filters.date_range"
-              type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              value-format="YYYY-MM-DD"
-              style="width: 240px"
+    <!-- 筛选器卡片 -->
+    <BentoCard title="筛选条件" :icon="Filter" size="4x1">
+      <el-form :inline="true" :model="filters" class="filter-form">
+        <el-form-item label="操作人">
+          <el-select v-model="filters.user_id" placeholder="全部" clearable style="width: 140px">
+            <el-option
+              v-for="user in users"
+              :key="user.id"
+              :label="user.display_name"
+              :value="user.id"
             />
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" @click="handleSearch">
-              <el-icon><Search /></el-icon>
-              搜索
-            </el-button>
-            <el-button @click="handleReset">
-              <el-icon><RefreshLeft /></el-icon>
-              重置
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </div>
-    </div>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="店铺">
+          <el-select v-model="filters.shop_id" placeholder="全部" clearable style="width: 140px">
+            <el-option
+              v-for="shop in shops"
+              :key="shop.id"
+              :label="shop.name"
+              :value="shop.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="操作类型">
+          <el-select v-model="filters.operation_type" placeholder="全部" clearable style="width: 140px">
+            <el-option label="批量报名" value="batch_enroll" />
+            <el-option label="处理亏损" value="process_loss" />
+            <el-option label="改价推广" value="remove_reprice_promote" />
+            <el-option label="同步商品" value="sync_products" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="时间范围">
+          <el-date-picker
+            v-model="filters.date_range"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 240px"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleSearch">
+            <el-icon><Search /></el-icon>
+            搜索
+          </el-button>
+          <el-button @click="handleReset">
+            <el-icon><RefreshLeft /></el-icon>
+            重置
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </BentoCard>
 
-    <div class="glass-card">
-      <div class="card-body table-wrapper">
-        <el-table :data="logs" v-loading="loading">
-          <el-table-column prop="id" label="ID" width="80" />
-          <el-table-column label="操作人" width="120">
-            <template #default="{ row }">
-              {{ row.user?.display_name || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="店铺" width="120">
-            <template #default="{ row }">
-              {{ row.shop?.name || '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作类型" width="120">
-            <template #default="{ row }">
-              <el-tag size="small" :type="getOperationTagType(row.operation_type)">
-                {{ formatOperationType(row.operation_type) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="affected_count" label="影响数量" width="100" align="center" />
-          <el-table-column label="状态" width="100" align="center">
-            <template #default="{ row }">
-              <el-tag :type="getStatusType(row.status)" effect="dark" size="small">
-                {{ formatStatus(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="ip_address" label="IP 地址" width="140">
-            <template #default="{ row }">
-              <span class="code-text">{{ row.ip_address }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_at" label="操作时间" width="180">
-            <template #default="{ row }">
-              <span class="time-text">{{ formatTime(row.created_at) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="80" align="center">
-            <template #default="{ row }">
-              <el-button type="primary" size="small" text @click="showDetail(row)">
-                详情
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+    <!-- 日志表格 -->
+    <BentoCard title="日志记录" :icon="Document" size="4x1" no-padding class="table-card">
+      <template #actions>
+        <el-tag type="info" effect="plain" size="small">
+          共 {{ pagination.total }} 条
+        </el-tag>
+      </template>
 
+      <el-table :data="logs" v-loading="loading">
+        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column label="操作人" width="120">
+          <template #default="{ row }">
+            {{ row.user?.display_name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="店铺" width="120">
+          <template #default="{ row }">
+            {{ row.shop?.name || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column label="操作类型" width="120">
+          <template #default="{ row }">
+            <el-tag size="small" :type="getOperationTagType(row.operation_type)">
+              {{ formatOperationType(row.operation_type) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="affected_count" label="影响数量" width="100" align="center" />
+        <el-table-column label="状态" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag :type="getStatusType(row.status)" effect="dark" size="small">
+              {{ formatStatus(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="ip_address" label="IP 地址" width="140">
+          <template #default="{ row }">
+            <span class="code-text">{{ row.ip_address }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="created_at" label="操作时间" width="180">
+          <template #default="{ row }">
+            <span class="time-text">{{ formatTime(row.created_at) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" align="center">
+          <template #default="{ row }">
+            <el-button type="primary" size="small" text @click="showDetail(row)">
+              详情
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <template #footer>
         <div class="table-footer">
           <el-pagination
             v-model:current-page="pagination.page"
@@ -119,8 +125,8 @@
             @current-change="handlePageChange"
           />
         </div>
-      </div>
-    </div>
+      </template>
+    </BentoCard>
 
     <el-dialog v-model="detailVisible" title="操作详情" width="600px">
       <el-descriptions :column="2" border>
@@ -162,11 +168,12 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
-import { Search, RefreshLeft } from '@element-plus/icons-vue'
+import { Search, RefreshLeft, Filter, Document } from '@element-plus/icons-vue'
 import { getOperationLogs } from '@/api/log'
 import { getMyStaff } from '@/api/shopAdmin'
 import { getShops } from '@/api/shop'
 import { useUserStore } from '@/stores/user'
+import { BentoCard } from '@/components/bento'
 
 const userStore = useUserStore()
 
@@ -333,10 +340,6 @@ function formatTime(time) {
   min-height: 100%;
 }
 
-.filter-card {
-  margin-bottom: 24px;
-}
-
 .filter-form {
   display: flex;
   flex-wrap: wrap;
@@ -344,15 +347,15 @@ function formatTime(time) {
   align-items: flex-end;
 }
 
-.table-wrapper {
-  padding: 0;
+.table-card {
+  margin-top: 24px;
 }
 
 .table-footer {
   padding: 16px 20px;
   display: flex;
   justify-content: flex-end;
-  border-top: 1px solid var(--glass-border);
+  border-top: 1px solid var(--surface-border);
 }
 
 .code-text {
@@ -382,8 +385,8 @@ function formatTime(time) {
 }
 
 .detail-json {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--surface-border);
   border-radius: var(--radius-md);
   padding: 16px;
   overflow: auto;

@@ -5,16 +5,17 @@
       <h2 class="gradient">亏损商品处理</h2>
     </div>
 
-    <!-- 上传区域 -->
-    <div class="glass-card">
-      <div class="card-header">
-        <span class="card-title">导入亏损商品</span>
-        <el-button text size="small" @click="downloadTemplate">
-          <el-icon><Download /></el-icon>
-          下载模板
-        </el-button>
-      </div>
-      <div class="card-body">
+    <!-- Bento Grid 布局 -->
+    <div class="bento-grid--2col">
+      <!-- 上传区域卡片 -->
+      <BentoCard title="导入亏损商品" :icon="UploadFilled" size="1x1">
+        <template #actions>
+          <el-button text size="small" @click="downloadTemplate">
+            <el-icon><Download /></el-icon>
+            下载模板
+          </el-button>
+        </template>
+
         <el-upload
           ref="uploadRef"
           class="upload-area"
@@ -30,41 +31,79 @@
               <el-icon><UploadFilled /></el-icon>
             </div>
             <div class="upload-text">
-              <p>将 Excel 文件拖到此处</p>
+              <p>拖拽 Excel 文件到此处</p>
               <p class="sub">或 <em>点击上传</em></p>
             </div>
           </div>
         </el-upload>
         <div class="upload-tip">
-          支持 .xlsx / .xls 格式，文件需包含 source_sku、new_price 列
+          支持 .xlsx / .xls 格式，需包含 source_sku、new_price 列
+        </div>
+      </BentoCard>
+
+      <!-- 重新报名活动选择 -->
+      <BentoCard title="重新报名活动" :icon="Ticket" size="1x1">
+        <template #actions>
+          <el-button type="primary" text size="small" @click="fetchActions" :loading="actionsLoading">
+            <el-icon><Refresh /></el-icon>
+            刷新
+          </el-button>
+        </template>
+
+        <div class="rejoin-info">
+          <el-icon><InfoFilled /></el-icon>
+          <span>处理流程：退出促销 → 改价 → 重新报名</span>
         </div>
 
-        <!-- 重新报名活动选择 -->
-        <div class="rejoin-section">
-          <h4 class="section-title">重新报名活动（可选）</h4>
-          <el-select
-            v-model="rejoinActionId"
-            placeholder="选择重新报名的活动（留空则不重新报名）"
-            clearable
-            style="width: 100%; max-width: 400px"
-            :loading="actionsLoading"
-          >
-            <el-option
-              v-for="action in actions"
-              :key="action.action_id"
-              :label="`${action.display_name || action.title || '活动 #' + action.action_id} (ID: ${action.action_id})`"
-              :value="action.action_id"
-            />
-          </el-select>
-          <div class="rejoin-hint">
-            处理流程：退出促销 → 改价 → 重新报名选定活动
-          </div>
-        </div>
+        <el-select
+          v-model="rejoinActionId"
+          placeholder="选择重新报名的活动（可选）"
+          clearable
+          style="width: 100%"
+          :loading="actionsLoading"
+        >
+          <el-option
+            v-for="action in actions"
+            :key="action.action_id"
+            :label="`${action.display_name || action.title || '活动 #' + action.action_id}`"
+            :value="action.action_id"
+          />
+        </el-select>
+        <div class="rejoin-hint">留空则不重新报名，仅执行退出促销和改价</div>
+      </BentoCard>
+    </div>
 
-        <div class="action-buttons">
+    <!-- 预览数据 -->
+    <BentoCard
+      v-if="previewData.length > 0"
+      title="预览数据"
+      :icon="Document"
+      size="4x1"
+      no-padding
+      class="preview-card"
+    >
+      <template #actions>
+        <el-tag type="info" effect="plain" size="small">共 {{ previewData.length }} 条</el-tag>
+      </template>
+      <el-table :data="previewData.slice(0, 10)" size="small">
+        <el-table-column prop="source_sku" label="SKU">
+          <template #default="{ row }">
+            <span class="sku-text">{{ row.source_sku }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="new_price" label="新价格" align="right">
+          <template #default="{ row }">
+            <span class="price-text">¥{{ row.new_price }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <div class="preview-footer">
+          <span v-if="previewData.length > 10" class="preview-hint">
+            仅显示前 10 条，共 {{ previewData.length }} 条数据
+          </span>
           <el-button
             type="primary"
-            size="large"
             :loading="importing"
             :disabled="!file"
             @click="handleImport"
@@ -73,79 +112,53 @@
             {{ importing ? '处理中...' : '导入并处理' }}
           </el-button>
         </div>
-      </div>
-    </div>
-
-    <!-- 预览数据 -->
-    <div v-if="previewData.length > 0" class="glass-card preview-card">
-      <div class="card-header">
-        <span class="card-title">预览数据</span>
-        <el-tag type="info" effect="plain">共 {{ previewData.length }} 条</el-tag>
-      </div>
-      <div class="card-body">
-        <el-table :data="previewData.slice(0, 10)" size="small">
-          <el-table-column prop="source_sku" label="SKU">
-            <template #default="{ row }">
-              <span class="sku-text">{{ row.source_sku }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="new_price" label="新价格" align="right">
-            <template #default="{ row }">
-              <span class="price-text">¥{{ row.new_price }}</span>
-            </template>
-          </el-table-column>
-        </el-table>
-        <div v-if="previewData.length > 10" class="preview-hint">
-          仅显示前 10 条，共 {{ previewData.length }} 条数据
-        </div>
-      </div>
-    </div>
+      </template>
+    </BentoCard>
 
     <!-- 处理结果 -->
-    <div v-if="result" class="glass-card result-card">
-      <div class="card-header">
-        <span class="card-title">处理结果</span>
+    <div v-if="result" class="result-section">
+      <div class="result-header">
+        <h3>处理结果</h3>
         <el-tag :type="result.success ? 'success' : 'danger'" effect="dark">
           {{ result.success ? '成功' : '失败' }}
         </el-tag>
       </div>
-      <div class="card-body">
-        <!-- 处理步骤 -->
-        <div class="process-steps">
-          <div class="step-item" :class="{ active: true }">
-            <div class="step-icon success">
-              <el-icon><CircleCheckFilled /></el-icon>
-            </div>
-            <div class="step-info">
-              <span class="step-title">退出促销</span>
-              <span class="step-count">{{ result.steps?.exit_promotion?.success || 0 }} 成功</span>
-            </div>
-          </div>
-          <div class="step-line"></div>
-          <div class="step-item" :class="{ active: true }">
-            <div class="step-icon success">
-              <el-icon><CircleCheckFilled /></el-icon>
-            </div>
-            <div class="step-info">
-              <span class="step-title">更新价格</span>
-              <span class="step-count">{{ result.steps?.price_update?.success || 0 }} 成功</span>
-            </div>
-          </div>
-          <div class="step-line"></div>
-          <div class="step-item" :class="{ active: true }">
-            <div class="step-icon success">
-              <el-icon><CircleCheckFilled /></el-icon>
-            </div>
-            <div class="step-info">
-              <span class="step-title">重新报名</span>
-              <span class="step-count">{{ result.steps?.rejoin_promotions?.success || 0 }} 成功</span>
-            </div>
-          </div>
-        </div>
 
-        <div class="result-summary">
-          共处理 {{ result.processed_count || 0 }} 个商品
+      <!-- 处理步骤 -->
+      <div class="process-steps">
+        <div class="step-item">
+          <div class="step-icon success">
+            <el-icon><CircleCheckFilled /></el-icon>
+          </div>
+          <div class="step-info">
+            <span class="step-title">退出促销</span>
+            <span class="step-count">{{ result.steps?.exit_promotion?.success || 0 }} 成功</span>
+          </div>
         </div>
+        <div class="step-line"></div>
+        <div class="step-item">
+          <div class="step-icon success">
+            <el-icon><CircleCheckFilled /></el-icon>
+          </div>
+          <div class="step-info">
+            <span class="step-title">更新价格</span>
+            <span class="step-count">{{ result.steps?.price_update?.success || 0 }} 成功</span>
+          </div>
+        </div>
+        <div class="step-line"></div>
+        <div class="step-item">
+          <div class="step-icon success">
+            <el-icon><CircleCheckFilled /></el-icon>
+          </div>
+          <div class="step-info">
+            <span class="step-title">重新报名</span>
+            <span class="step-count">{{ result.steps?.rejoin_promotions?.success || 0 }} 成功</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="result-summary">
+        共处理 {{ result.processed_count || 0 }} 个商品
       </div>
     </div>
   </div>
@@ -154,9 +167,13 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { UploadFilled, Upload, Download, CircleCheckFilled } from '@element-plus/icons-vue'
+import {
+  UploadFilled, Upload, Download, CircleCheckFilled, Ticket,
+  Refresh, InfoFilled, Document
+} from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { importLoss, processLossV2, getActions } from '@/api/promotion'
+import { BentoCard } from '@/components/bento'
 import * as XLSX from 'xlsx'
 
 const userStore = useUserStore()
@@ -232,7 +249,6 @@ async function handleImport() {
   result.value = null
 
   try {
-    // 先导入亏损商品
     const formData = new FormData()
     formData.append('file', file.value)
     formData.append('shop_id', shopId)
@@ -246,7 +262,6 @@ async function handleImport() {
       return
     }
 
-    // 然后处理亏损商品
     const processRes = await processLossV2({
       shop_id: shopId,
       loss_product_ids: lossProductIds,
@@ -289,65 +304,78 @@ onMounted(() => {
   min-height: 100%;
 }
 
+.bento-grid--2col {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 992px) {
+  .bento-grid--2col {
+    grid-template-columns: 1fr;
+  }
+}
+
 .upload-area {
   width: 100%;
 }
 
 .upload-area :deep(.el-upload-dragger) {
-  background: var(--glass-bg);
-  border: 2px dashed var(--glass-border);
+  background: var(--bg-tertiary);
+  border: 2px dashed var(--surface-border);
   border-radius: var(--radius-lg);
-  padding: 40px;
+  padding: 30px;
   transition: all var(--transition-normal);
+}
 
-  &:hover {
-    border-color: var(--primary);
-    background: var(--glass-bg-hover);
-  }
+.upload-area :deep(.el-upload-dragger:hover) {
+  border-color: var(--primary);
+  background: var(--surface-bg-hover);
 }
 
 .upload-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
 }
 
 .upload-icon {
-  width: 64px;
-  height: 64px;
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(139, 92, 246, 0.1));
-  border-radius: var(--radius-lg);
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
+}
 
-  .el-icon {
-    font-size: 28px;
-    color: var(--primary);
-  }
+.upload-icon .el-icon {
+  font-size: 24px;
+  color: white;
 }
 
 .upload-text {
   text-align: center;
+}
 
-  p {
-    color: var(--text-primary);
-    font-size: 15px;
-    margin: 0;
+.upload-text p {
+  color: var(--text-primary);
+  font-size: 14px;
+  margin: 0;
+}
 
-    &.sub {
-      color: var(--text-muted);
-      font-size: 13px;
-      margin-top: 4px;
-    }
+.upload-text p.sub {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
 
-    em {
-      color: var(--primary);
-      font-style: normal;
-      cursor: pointer;
-    }
-  }
+.upload-text em {
+  color: var(--primary);
+  font-style: normal;
+  cursor: pointer;
 }
 
 .upload-tip {
@@ -357,19 +385,16 @@ onMounted(() => {
   text-align: center;
 }
 
-.rejoin-section {
-  margin-top: 24px;
-  padding-top: 24px;
-  border-top: 1px solid var(--glass-border);
-}
-
-.section-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
+.rejoin-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(196, 113, 78, 0.1);
+  border-radius: var(--radius-md);
   margin-bottom: 16px;
-  padding-left: 12px;
-  border-left: 3px solid var(--primary);
+  font-size: 13px;
+  color: var(--primary);
 }
 
 .rejoin-hint {
@@ -378,22 +403,19 @@ onMounted(() => {
   color: var(--text-muted);
 }
 
-.action-buttons {
-  margin-top: 24px;
-  display: flex;
-  justify-content: center;
+.preview-card {
+  margin-bottom: 24px;
 }
 
-.preview-card,
-.result-card {
-  margin-top: 24px;
+.preview-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .preview-hint {
-  margin-top: 12px;
   font-size: 12px;
   color: var(--text-muted);
-  text-align: center;
 }
 
 .sku-text {
@@ -405,6 +427,27 @@ onMounted(() => {
 .price-text {
   font-weight: 600;
   color: var(--warning);
+}
+
+.result-section {
+  background: var(--bg-secondary);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.result-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
 }
 
 .process-steps {
@@ -420,49 +463,49 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 12px;
+}
 
-  .step-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--glass-bg);
-    border: 2px solid var(--glass-border);
+.step-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--surface-border);
+}
 
-    .el-icon {
-      font-size: 24px;
-      color: var(--text-muted);
-    }
+.step-icon .el-icon {
+  font-size: 24px;
+  color: var(--text-muted);
+}
 
-    &.success {
-      background: rgba(16, 185, 129, 0.15);
-      border-color: var(--success);
+.step-icon.success {
+  background: rgba(74, 150, 104, 0.15);
+  border-color: var(--success);
+}
 
-      .el-icon {
-        color: var(--success);
-      }
-    }
-  }
+.step-icon.success .el-icon {
+  color: var(--success);
+}
 
-  .step-info {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
+.step-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
 
-    .step-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: var(--text-primary);
-    }
+.step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
 
-    .step-count {
-      font-size: 12px;
-      color: var(--text-muted);
-    }
-  }
+.step-count {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .step-line {
@@ -478,6 +521,6 @@ onMounted(() => {
   font-size: 14px;
   color: var(--text-secondary);
   padding-top: 16px;
-  border-top: 1px solid var(--glass-border);
+  border-top: 1px solid var(--surface-border);
 }
 </style>

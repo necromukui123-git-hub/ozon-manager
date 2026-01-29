@@ -1,7 +1,10 @@
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ 'layout--mobile-open': mobileMenuOpen }">
+    <!-- 移动端遮罩 -->
+    <div v-if="mobileMenuOpen" class="layout-overlay" @click="closeMobileMenu"></div>
+
     <!-- 侧边栏 -->
-    <aside class="layout-aside">
+    <aside class="layout-aside" :class="{ 'open': mobileMenuOpen }">
       <div class="logo">
         <div class="logo-icon">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -17,6 +20,7 @@
         :default-active="currentRoute"
         router
         class="sidebar-menu"
+        @select="handleMenuSelect"
       >
         <!-- 仪表盘 - 所有用户可见 -->
         <el-menu-item index="/">
@@ -79,12 +83,20 @@
     <main class="layout-main">
       <header class="layout-header">
         <div class="header-left">
+          <!-- 移动端菜单按钮 -->
+          <button class="mobile-menu-btn" @click="toggleMobileMenu">
+            <el-icon :size="22">
+              <Fold v-if="mobileMenuOpen" />
+              <Expand v-else />
+            </el-icon>
+          </button>
+
           <!-- 店铺选择器 - 仅业务用户可见 -->
           <el-select
             v-if="userStore.canOperateBusiness"
             v-model="currentShopId"
             placeholder="选择店铺"
-            style="width: 220px"
+            class="shop-selector"
             @change="handleShopChange"
           >
             <template #prefix>
@@ -177,14 +189,17 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getShops } from '@/api/shop'
 import { changePassword } from '@/api/user'
 import { hashPassword } from '@/utils/crypto'
 import { ElMessage } from 'element-plus'
-import { DataLine, Goods, Promotion, Document, User, Shop, SwitchButton, Lock, UserFilled, DataAnalysis, Management, InfoFilled } from '@element-plus/icons-vue'
+import {
+  DataLine, Goods, Promotion, Document, User, Shop, SwitchButton, Lock,
+  UserFilled, DataAnalysis, Management, InfoFilled, Fold, Expand
+} from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -193,6 +208,9 @@ const userStore = useUserStore()
 const shops = ref([])
 const currentShopId = ref(userStore.currentShopId)
 const currentRoute = computed(() => route.path)
+
+// 移动端菜单状态
+const mobileMenuOpen = ref(false)
 
 // 修改密码相关
 const passwordDialogVisible = ref(false)
@@ -224,8 +242,20 @@ const passwordRules = {
   ]
 }
 
+// 响应式处理
+function handleResize() {
+  if (window.innerWidth > 768) {
+    mobileMenuOpen.value = false
+  }
+}
+
 onMounted(async () => {
   await fetchShops()
+  window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
 })
 
 async function fetchShops() {
@@ -279,6 +309,21 @@ async function handleChangePassword() {
     }
   })
 }
+
+function toggleMobileMenu() {
+  mobileMenuOpen.value = !mobileMenuOpen.value
+}
+
+function closeMobileMenu() {
+  mobileMenuOpen.value = false
+}
+
+function handleMenuSelect() {
+  // 移动端选择菜单后自动关闭
+  if (window.innerWidth <= 768) {
+    mobileMenuOpen.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -299,6 +344,70 @@ async function handleChangePassword() {
 
 .role-tag {
   margin-right: 12px;
+}
+
+/* 移动端菜单按钮 */
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-normal);
+}
+
+.mobile-menu-btn:hover {
+  background: var(--surface-bg-hover);
+  color: var(--primary);
+}
+
+/* 移动端遮罩 */
+.layout-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 99;
+}
+
+/* 店铺选择器 */
+.shop-selector {
+  width: 220px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: flex;
+  }
+
+  .layout-overlay {
+    display: block;
+  }
+
+  .shop-selector {
+    width: 160px;
+  }
+
+  .user-name {
+    display: none;
+  }
+
+  .role-tag {
+    display: none;
+  }
+
+  .admin-hint span {
+    display: none;
+  }
 }
 
 /* 页面切换动画 */

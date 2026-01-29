@@ -8,7 +8,29 @@
       </el-button>
     </div>
 
-    <div class="glass-card">
+    <!-- 统计卡片 -->
+    <div class="stats-row">
+      <StatCard
+        :value="shops.length"
+        label="店铺总数"
+        :icon="Shop"
+        variant="primary"
+      />
+      <StatCard
+        :value="activeCount"
+        label="正常运营"
+        :icon="CircleCheckFilled"
+        variant="success"
+      />
+      <StatCard
+        :value="disabledCount"
+        label="已禁用"
+        :icon="WarningFilled"
+        variant="warning"
+      />
+    </div>
+
+    <BentoCard title="店铺列表" :icon="List" size="4x1" no-padding>
       <div class="card-body">
         <el-table :data="shops" v-loading="loading">
           <el-table-column prop="id" label="ID" width="80" />
@@ -52,7 +74,7 @@
           </el-table-column>
         </el-table>
       </div>
-    </div>
+    </BentoCard>
 
     <!-- 创建/编辑店铺对话框 -->
     <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑店铺' : '添加店铺'" width="500px">
@@ -83,14 +105,19 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Shop, CircleCheckFilled, WarningFilled, List } from '@element-plus/icons-vue'
 import { getMyShops, createMyShop, updateMyShop, deleteMyShop } from '@/api/shopAdmin'
+import { StatCard, BentoCard } from '@/components/bento'
 
 const loading = ref(false)
 const saving = ref(false)
 const shops = ref([])
+
+// 计算统计数据
+const activeCount = computed(() => shops.value.filter(s => s.is_active).length)
+const disabledCount = computed(() => shops.value.filter(s => !s.is_active).length)
 
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -209,6 +236,26 @@ function formatTime(time) {
 <style scoped>
 .my-shops {
   min-height: 100%;
+}
+
+/* 统计卡片行 */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 992px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .code-text {

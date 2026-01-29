@@ -11,97 +11,66 @@
       </div>
     </div>
 
-    <!-- 统计卡片 -->
-    <div class="stat-cards">
-      <div class="stat-card">
-        <div class="stat-icon primary">
-          <el-icon><Goods /></el-icon>
-        </div>
-        <div class="stat-value">{{ stats.totalProducts }}</div>
-        <div class="stat-label">商品总数</div>
-      </div>
+    <!-- Bento Grid 布局 -->
+    <div class="bento-grid">
+      <!-- 统计卡片行 -->
+      <StatCard
+        :value="stats.totalProducts"
+        label="商品总数"
+        :icon="Goods"
+        variant="primary"
+      />
+      <StatCard
+        :value="stats.promotedProducts"
+        label="已推广商品"
+        :icon="TrendCharts"
+        variant="accent"
+      />
+      <StatCard
+        :value="stats.lossProducts"
+        label="亏损商品"
+        :icon="WarningFilled"
+        variant="warning"
+      />
+      <StatCard
+        :value="stats.promotableProducts"
+        label="可推广商品"
+        :icon="CircleCheckFilled"
+        variant="success"
+      />
 
-      <div class="stat-card">
-        <div class="stat-icon accent">
-          <el-icon><TrendCharts /></el-icon>
-        </div>
-        <div class="stat-value">{{ stats.promotedProducts }}</div>
-        <div class="stat-label">已推广商品</div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon warning">
-          <el-icon><WarningFilled /></el-icon>
-        </div>
-        <div class="stat-value">{{ stats.lossProducts }}</div>
-        <div class="stat-label">亏损商品</div>
-      </div>
-
-      <div class="stat-card">
-        <div class="stat-icon success">
-          <el-icon><CircleCheckFilled /></el-icon>
-        </div>
-        <div class="stat-value">{{ stats.promotableProducts }}</div>
-        <div class="stat-label">可推广商品</div>
-      </div>
-    </div>
-
-    <!-- 内容区 -->
-    <div class="dashboard-grid">
-      <!-- 快捷操作 -->
-      <div class="glass-card">
-        <div class="card-header">
-          <span class="card-title">快捷操作</span>
-        </div>
-        <div class="card-body">
-          <div class="quick-actions">
-            <div class="action-btn" @click="$router.push('/promotions/batch-enroll')">
-              <div class="action-icon primary">
-                <el-icon><Upload /></el-icon>
-              </div>
-              <span class="action-text">批量报名</span>
-            </div>
-            <div class="action-btn" @click="$router.push('/promotions/loss-process')">
-              <div class="action-icon warning">
-                <el-icon><Edit /></el-icon>
-              </div>
-              <span class="action-text">亏损处理</span>
-            </div>
-            <div class="action-btn" @click="$router.push('/promotions/reprice')">
-              <div class="action-icon success">
-                <el-icon><PriceTag /></el-icon>
-              </div>
-              <span class="action-text">改价推广</span>
-            </div>
-            <div class="action-btn" @click="handleExport">
-              <div class="action-icon accent">
-                <el-icon><Download /></el-icon>
-              </div>
-              <span class="action-text">导出数据</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <!-- 商品状态分布饼图 -->
+      <ChartCard
+        title="商品状态分布"
+        :icon="PieChart"
+        size="2x2"
+        :option="pieChartOption"
+        :loading="loading"
+        height="280px"
+      />
 
       <!-- 最近操作 -->
-      <div class="glass-card">
-        <div class="card-header">
-          <span class="card-title">最近操作</span>
+      <BentoCard title="最近操作" :icon="Clock" size="2x2" no-padding>
+        <template #actions>
           <el-button text size="small" @click="$router.push('/admin/logs')">
             查看全部
           </el-button>
-        </div>
-        <div class="card-body">
-          <el-table :data="recentLogs" size="small" max-height="280">
-            <el-table-column prop="operation_type" label="操作类型" width="120">
+        </template>
+        <div class="recent-logs-wrapper">
+          <el-table :data="recentLogs" size="small" :show-header="false">
+            <el-table-column prop="operation_type" width="100">
               <template #default="{ row }">
                 <el-tag size="small" :type="getOperationTagType(row.operation_type)">
                   {{ formatOperationType(row.operation_type) }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="affected_count" label="数量" width="80" align="center" />
-            <el-table-column prop="status" label="状态" width="80" align="center">
+            <el-table-column prop="affected_count" width="60" align="center">
+              <template #default="{ row }">
+                <span class="count-badge">{{ row.affected_count }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" width="50" align="center">
               <template #default="{ row }">
                 <el-icon v-if="row.status === 'success'" class="status-icon success">
                   <CircleCheckFilled />
@@ -111,7 +80,7 @@
                 </el-icon>
               </template>
             </el-table-column>
-            <el-table-column prop="created_at" label="时间">
+            <el-table-column prop="created_at">
               <template #default="{ row }">
                 <span class="time-text">{{ formatTime(row.created_at) }}</span>
               </template>
@@ -123,17 +92,58 @@
             <p>暂无操作记录</p>
           </div>
         </div>
-      </div>
+      </BentoCard>
+
+      <!-- 快捷操作 -->
+      <QuickActionCard
+        title="批量报名"
+        description="将商品批量添加到促销活动"
+        :icon="Upload"
+        variant="primary"
+        @click="$router.push('/promotions/batch-enroll')"
+      />
+      <QuickActionCard
+        title="亏损处理"
+        description="处理亏损商品退出促销"
+        :icon="Edit"
+        variant="warning"
+        @click="$router.push('/promotions/loss-process')"
+      />
+      <QuickActionCard
+        title="改价推广"
+        description="调整价格后重新推广"
+        :icon="PriceTag"
+        variant="success"
+        @click="$router.push('/promotions/reprice')"
+      />
+      <QuickActionCard
+        title="导出数据"
+        description="导出可推广商品列表"
+        :icon="Download"
+        variant="accent"
+        @click="handleExport"
+      />
+
+      <!-- 促销趋势折线图 -->
+      <ChartCard
+        title="近7天操作趋势"
+        :icon="TrendCharts"
+        size="4x1"
+        :option="lineChartOption"
+        :loading="loading"
+        height="180px"
+      />
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getProducts } from '@/api/product'
 import { exportPromotable } from '@/api/promotion'
+import { StatCard, ChartCard, BentoCard, QuickActionCard } from '@/components/bento'
 import {
   Goods,
   TrendCharts,
@@ -145,7 +155,9 @@ import {
   PriceTag,
   Download,
   Refresh,
-  DocumentDelete
+  DocumentDelete,
+  Clock,
+  PieChart
 } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
@@ -160,6 +172,139 @@ const stats = ref({
 })
 
 const recentLogs = ref([])
+
+// 饼图配置
+const pieChartOption = computed(() => ({
+  tooltip: {
+    trigger: 'item',
+    formatter: '{b}: {c} ({d}%)'
+  },
+  legend: {
+    orient: 'vertical',
+    right: '5%',
+    top: 'center',
+    itemWidth: 12,
+    itemHeight: 12,
+    textStyle: {
+      fontSize: 12
+    }
+  },
+  series: [
+    {
+      name: '商品状态',
+      type: 'pie',
+      radius: ['45%', '70%'],
+      center: ['35%', '50%'],
+      avoidLabelOverlap: false,
+      itemStyle: {
+        borderRadius: 6,
+        borderColor: '#fff',
+        borderWidth: 2
+      },
+      label: {
+        show: false
+      },
+      emphasis: {
+        label: {
+          show: true,
+          fontSize: 14,
+          fontWeight: 'bold'
+        }
+      },
+      data: [
+        { value: stats.value.promotedProducts, name: '已推广', itemStyle: { color: '#D77757' } },
+        { value: stats.value.lossProducts, name: '亏损', itemStyle: { color: '#C4883A' } },
+        { value: stats.value.promotableProducts, name: '可推广', itemStyle: { color: '#4A9668' } }
+      ]
+    }
+  ]
+}))
+
+// 折线图配置 (模拟数据)
+const lineChartOption = computed(() => {
+  const days = []
+  const data = []
+  for (let i = 6; i >= 0; i--) {
+    const date = new Date()
+    date.setDate(date.getDate() - i)
+    days.push(`${date.getMonth() + 1}/${date.getDate()}`)
+    data.push(Math.floor(Math.random() * 50) + 10)
+  }
+
+  return {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow'
+      }
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      top: '15%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: days,
+      axisLine: {
+        lineStyle: {
+          color: 'rgba(0, 0, 0, 0.08)'
+        }
+      },
+      axisLabel: {
+        color: '#8a8780'
+      }
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: {
+        show: false
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(0, 0, 0, 0.05)'
+        }
+      },
+      axisLabel: {
+        color: '#8a8780'
+      }
+    },
+    series: [
+      {
+        name: '操作次数',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 8,
+        lineStyle: {
+          width: 3,
+          color: '#C4714E'
+        },
+        itemStyle: {
+          color: '#C4714E',
+          borderWidth: 2,
+          borderColor: '#fff'
+        },
+        areaStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 0,
+            y2: 1,
+            colorStops: [
+              { offset: 0, color: 'rgba(196, 113, 78, 0.25)' },
+              { offset: 1, color: 'rgba(196, 113, 78, 0.02)' }
+            ]
+          }
+        },
+        data: data
+      }
+    ]
+  }
+})
 
 watch(() => userStore.currentShopId, () => {
   fetchStats()
@@ -251,28 +396,35 @@ function formatTime(time) {
   gap: 12px;
 }
 
-.dashboard-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 24px;
+.recent-logs-wrapper {
+  height: 100%;
+  padding: 12px;
 }
 
-@media (max-width: 1200px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
-  }
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 20px;
+  padding: 0 6px;
+  background: var(--bg-tertiary);
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
 }
 
 .status-icon {
   font-size: 18px;
+}
 
-  &.success {
-    color: var(--success);
-  }
+.status-icon.success {
+  color: var(--success);
+}
 
-  &.danger {
-    color: var(--danger);
-  }
+.status-icon.danger {
+  color: var(--danger);
 }
 
 .time-text {
@@ -287,15 +439,34 @@ function formatTime(time) {
   justify-content: center;
   padding: 40px 20px;
   color: var(--text-muted);
+}
 
-  .el-icon {
-    font-size: 48px;
-    margin-bottom: 12px;
-    opacity: 0.5;
+.empty-state .el-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.empty-state p {
+  font-size: 14px;
+}
+
+/* 响应式调整 */
+@media (max-width: 1200px) {
+  .bento-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
+}
 
-  p {
-    font-size: 14px;
+@media (max-width: 992px) {
+  .bento-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .bento-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
