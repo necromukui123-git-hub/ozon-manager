@@ -139,25 +139,30 @@ func (r *PromotionRepository) FindPromotionActionByActionID(shopID uint, actionI
 	return &pa, nil
 }
 
-// FindPromotionActionsByShopID 获取店铺所有促销活动
+// FindPromotionActionsByShopID 获取店铺所有促销活动（按排序顺序）
 func (r *PromotionRepository) FindPromotionActionsByShopID(shopID uint) ([]model.PromotionAction, error) {
 	var pas []model.PromotionAction
-	err := r.db.Where("shop_id = ?", shopID).Find(&pas).Error
+	err := r.db.Where("shop_id = ?", shopID).Order("sort_order ASC, id ASC").Find(&pas).Error
 	return pas, err
 }
 
-// UpsertPromotionAction 创建或更新促销活动（保留自定义显示名称）
+// UpsertPromotionAction 创建或更新促销活动（保留自定义显示名称和排序）
 func (r *PromotionRepository) UpsertPromotionAction(pa *model.PromotionAction) error {
 	var existing model.PromotionAction
 	err := r.db.Where("shop_id = ? AND action_id = ?", pa.ShopID, pa.ActionID).First(&existing).Error
 	if err == gorm.ErrRecordNotFound {
+		// 新活动，设置 sort_order 为最大值+1
+		var maxSortOrder int
+		r.db.Model(&model.PromotionAction{}).Where("shop_id = ?", pa.ShopID).Select("COALESCE(MAX(sort_order), -1)").Scan(&maxSortOrder)
+		pa.SortOrder = maxSortOrder + 1
 		return r.db.Create(pa).Error
 	} else if err != nil {
 		return err
 	}
-	// 保留自定义显示名称
+	// 保留自定义显示名称和排序
 	pa.ID = existing.ID
 	pa.DisplayName = existing.DisplayName
+	pa.SortOrder = existing.SortOrder
 	return r.db.Save(pa).Error
 }
 
@@ -183,10 +188,10 @@ func (r *PromotionRepository) FindPromotionActionsByActionIDs(shopID uint, actio
 	return pas, err
 }
 
-// FindActivePromotionActions 查找活跃的促销活动
+// FindActivePromotionActions 查找活跃的促销活动（按排序顺序）
 func (r *PromotionRepository) FindActivePromotionActions(shopID uint) ([]model.PromotionAction, error) {
 	var pas []model.PromotionAction
-	err := r.db.Where("shop_id = ? AND status = ?", shopID, "active").Order("created_at DESC").Find(&pas).Error
+	err := r.db.Where("shop_id = ? AND status = ?", shopID, "active").Order("sort_order ASC, id ASC").Find(&pas).Error
 	return pas, err
 }
 
@@ -198,4 +203,18 @@ func (r *PromotionRepository) UpdatePromotionActionStatus(id uint, status string
 // UpdatePromotionActionDisplayName 更新促销活动显示名称
 func (r *PromotionRepository) UpdatePromotionActionDisplayName(id uint, displayName string) error {
 	return r.db.Model(&model.PromotionAction{}).Where("id = ?", id).Update("display_name", displayName).Error
+}
+
+// UpdatePromotionActionsSortOrder 批量更新促销活动排序
+func (r *PromotionRepository) UpdatePromotionActionsSortOrder(shopID uint, sortOrders map[uint]int) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for id, sortOrder := range sortOrders {
+			if err := tx.Model(&model.PromotionAction{}).
+				Where("id = ? AND shop_id = ?", id, shopID).
+				Update("sort_order", sortOrder).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

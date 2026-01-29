@@ -121,6 +121,7 @@ CREATE TABLE IF NOT EXISTS promotion_actions (
     potential_count     INTEGER DEFAULT 0,
     is_manual           BOOLEAN DEFAULT false,
     status              VARCHAR(20) DEFAULT 'active',  -- active / expired / disabled
+    sort_order          INTEGER DEFAULT 0,  -- 排序顺序
     last_synced_at      TIMESTAMP,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -160,6 +161,7 @@ CREATE INDEX IF NOT EXISTS idx_promoted_products_status ON promoted_products(sta
 CREATE INDEX IF NOT EXISTS idx_operation_logs_user_id ON operation_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_created_at ON operation_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_promotion_actions_shop_id ON promotion_actions(shop_id);
+CREATE INDEX IF NOT EXISTS idx_promotion_actions_sort_order ON promotion_actions(shop_id, sort_order);
 
 -- ============================================================
 -- 初始数据：超级管理员账户

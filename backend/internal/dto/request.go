@@ -223,3 +223,15 @@ type RemoveRepricePromoteV2Request struct {
 type UpdateActionDisplayNameRequest struct {
 	DisplayName string `json:"display_name" binding:"max=200"`
 }
+
+// 更新促销活动排序请求
+type UpdateActionsSortOrderRequest struct {
+	ShopID     uint            `json:"shop_id" binding:"required"`
+	SortOrders []SortOrderItem `json:"sort_orders" binding:"required,min=1,dive"`
+}
+
+// 排序项
+type SortOrderItem struct {
+	ID        uint `json:"id" binding:"required"`
+	SortOrder int  `json:"sort_order" binding:"min=0"`
+}

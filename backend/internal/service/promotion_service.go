@@ -565,3 +565,13 @@ func (s *PromotionService) UpdateActionDisplayName(shopID uint, id uint, display
 	}
 	return s.promotionRepo.UpdatePromotionActionDisplayName(id, displayName)
 }
+
+// UpdateActionsSortOrder 批量更新促销活动排序
+func (s *PromotionService) UpdateActionsSortOrder(shopID uint, sortOrders []dto.SortOrderItem) error {
+	// 转换为 map
+	sortOrderMap := make(map[uint]int)
+	for _, item := range sortOrders {
+		sortOrderMap[item.ID] = item.SortOrder
+	}
+	return s.promotionRepo.UpdatePromotionActionsSortOrder(shopID, sortOrderMap)
+}

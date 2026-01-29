@@ -674,3 +674,39 @@ func (h *PromotionHandler) UpdateActionDisplayName(c *gin.Context) {
 		Message: "更新成功",
 	})
 }
+
+// UpdateActionsSortOrder 批量更新促销活动排序
+// PUT /api/v1/promotions/actions/sort-order
+func (h *PromotionHandler) UpdateActionsSortOrder(c *gin.Context) {
+	var req dto.UpdateActionsSortOrderRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "请求参数错误",
+		})
+		return
+	}
+
+	// 检查权限
+	claims := middleware.GetCurrentUser(c)
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, req.ShopID, claims.Role); err != nil {
+		c.JSON(http.StatusForbidden, dto.Response{
+			Code:    403,
+			Message: "无权访问该店铺",
+		})
+		return
+	}
+
+	if err := h.promotionService.UpdateActionsSortOrder(req.ShopID, req.SortOrders); err != nil {
+		c.JSON(http.StatusInternalServerError, dto.Response{
+			Code:    500,
+			Message: "排序更新失败: " + err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Response{
+		Code:    200,
+		Message: "排序更新成功",
+	})
+}

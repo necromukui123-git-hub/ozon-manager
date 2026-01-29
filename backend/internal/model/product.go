@@ -88,6 +88,7 @@ type PromotionAction struct {
 	PotentialCount     int        `gorm:"default:0" json:"potential_products_count"`
 	IsManual           bool       `gorm:"default:false" json:"is_manual"`
 	Status             string     `gorm:"size:20;default:active" json:"status"` // active / expired / disabled
+	SortOrder          int        `gorm:"default:0" json:"sort_order"`          // 排序顺序
 	LastSyncedAt       *time.Time `json:"last_synced_at"`
 	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updated_at"`

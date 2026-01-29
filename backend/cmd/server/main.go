@@ -160,6 +160,7 @@ func main() {
 					promotions.POST("/actions/manual", promotionHandler.CreateManualAction)
 					promotions.DELETE("/actions/:id", promotionHandler.DeleteAction)
 					promotions.PUT("/actions/:id/display-name", promotionHandler.UpdateActionDisplayName)
+					promotions.PUT("/actions/sort-order", promotionHandler.UpdateActionsSortOrder)
 					promotions.POST("/sync-actions", promotionHandler.SyncActions)
 
 					// V1 接口（保持兼容）

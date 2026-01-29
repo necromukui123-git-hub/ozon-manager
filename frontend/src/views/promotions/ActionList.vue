@@ -2,88 +2,219 @@
   <div class="action-list">
     <!-- 页面标题 -->
     <div class="page-header">
-      <h2 class="gradient">促销活动管理</h2>
+      <div class="header-left">
+        <h2 class="gradient">促销活动管理</h2>
+        <span class="action-count">{{ actions.length }} 个活动</span>
+      </div>
       <div class="header-actions">
-        <el-button type="primary" :loading="syncing" @click="handleSync">
+        <el-button
+          v-if="!sortMode"
+          type="info"
+          plain
+          @click="enterSortMode"
+          :disabled="actions.length < 2"
+        >
+          <el-icon><Rank /></el-icon>
+          调整顺序
+        </el-button>
+        <template v-else>
+          <el-button type="primary" :loading="savingSortOrder" @click="saveSortOrder">
+            <el-icon><Check /></el-icon>
+            完成排序
+          </el-button>
+          <el-button @click="cancelSortMode">
+            取消
+          </el-button>
+        </template>
+        <el-button v-if="!sortMode" type="primary" :loading="syncing" @click="handleSync">
           <el-icon><Refresh /></el-icon>
           同步活动
         </el-button>
-        <el-button @click="showManualDialog = true">
+        <el-button v-if="!sortMode" @click="showManualDialog = true">
           <el-icon><Plus /></el-icon>
           手动添加
         </el-button>
       </div>
     </div>
 
-    <!-- 活动列表 -->
-    <div class="glass-card">
-      <div class="card-header">
-        <span class="card-title">活动列表</span>
-        <span class="card-subtitle">共 {{ actions.length }} 个活动</span>
+    <!-- 排序模式提示 -->
+    <div v-if="sortMode" class="sort-mode-tip">
+      <el-icon><InfoFilled /></el-icon>
+      <span>拖拽活动卡片调整顺序，完成后点击"完成排序"保存</span>
+    </div>
+
+    <!-- 统计卡片 -->
+    <div class="stats-row" v-if="!sortMode">
+      <StatCard
+        :value="actions.length"
+        label="活动总数"
+        :icon="Ticket"
+        variant="primary"
+      />
+      <StatCard
+        :value="activeCount"
+        label="进行中"
+        :icon="Clock"
+        variant="success"
+      />
+      <StatCard
+        :value="upcomingCount"
+        label="即将开始"
+        :icon="Calendar"
+        variant="info"
+      />
+      <StatCard
+        :value="totalProducts"
+        label="参与商品"
+        :icon="Goods"
+        variant="accent"
+      />
+    </div>
+
+    <!-- 活动卡片网格 -->
+    <div class="action-grid" v-loading="loading">
+      <!-- 空状态 -->
+      <div v-if="actions.length === 0 && !loading" class="empty-state">
+        <div class="empty-icon">
+          <el-icon :size="48"><Box /></el-icon>
+        </div>
+        <h3>暂无促销活动</h3>
+        <p>点击"同步活动"从 Ozon 获取，或手动添加活动</p>
       </div>
-      <div class="card-body">
-        <el-table :data="actions" v-loading="loading" empty-text="暂无活动，请先同步或手动添加">
-          <el-table-column prop="action_id" label="活动ID" width="120">
-            <template #default="{ row }">
-              <span class="action-id">{{ row.action_id }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="title" label="活动名称" min-width="200">
-            <template #default="{ row }">
-              <div class="action-title-cell">
-                <div class="action-title">
-                  {{ row.display_name || row.title || '未命名活动' }}
-                </div>
-                <div v-if="row.display_name && row.title" class="action-original-title">
-                  原名: {{ row.title }}
-                </div>
-                <el-button type="primary" text size="small" @click="openEditDialog(row)" class="edit-btn">
-                  <el-icon><Edit /></el-icon>
-                </el-button>
+
+      <!-- 拖拽排序模式 -->
+      <draggable
+        v-if="sortMode && actions.length > 0"
+        v-model="sortableActions"
+        item-key="id"
+        class="draggable-grid"
+        ghost-class="ghost-card"
+        drag-class="dragging-card"
+        :animation="200"
+      >
+        <template #item="{ element: action }">
+          <div
+            class="action-card sortable"
+            :class="{ 'is-active': isActionActive(action) }"
+          >
+            <!-- 拖拽手柄 -->
+            <div class="drag-handle">
+              <el-icon><Rank /></el-icon>
+            </div>
+            <!-- 状态指示条 -->
+            <div class="status-indicator" :class="getStatusClass(action)"></div>
+            <!-- 卡片头部 -->
+            <div class="card-top">
+              <div class="type-badge" :class="getTypeClass(action.action_type)">
+                {{ formatActionType(action.action_type) }}
               </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="action_type" label="类型" width="100" />
-          <el-table-column label="日期范围" width="200">
-            <template #default="{ row }">
-              <span class="date-range">{{ formatDateRange(row) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="participating_products_count" label="参与商品" width="100" align="center">
-            <template #default="{ row }">
-              <span class="count-badge">{{ row.participating_products_count || 0 }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="来源" width="90" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.is_manual ? 'warning' : 'success'" size="small" effect="plain">
-                {{ row.is_manual ? '手动' : 'API' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="同步时间" width="160">
-            <template #default="{ row }">
-              <span class="sync-time">{{ formatTime(row.last_synced_at) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="100" fixed="right">
-            <template #default="{ row }">
-              <el-popconfirm
-                title="确定要删除这个活动吗？"
-                confirm-button-text="删除"
-                cancel-button-text="取消"
-                @confirm="handleDelete(row)"
-              >
-                <template #reference>
-                  <el-button type="danger" text size="small">
-                    删除
-                  </el-button>
-                </template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
-      </div>
+            </div>
+            <!-- 活动名称 -->
+            <div class="card-title">
+              <h3>{{ action.display_name || action.title || '未命名活动' }}</h3>
+            </div>
+            <!-- 活动信息 -->
+            <div class="card-meta">
+              <div class="meta-row">
+                <div class="meta-item">
+                  <el-icon><Calendar /></el-icon>
+                  <span>{{ formatDateRange(action) }}</span>
+                </div>
+              </div>
+            </div>
+            <!-- 卡片底部 -->
+            <div class="card-footer">
+              <div class="action-id">
+                <span class="label">ID:</span>
+                <span class="value">{{ action.action_id }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </draggable>
+
+      <!-- 普通模式 -->
+      <template v-else-if="!sortMode">
+        <div
+          v-for="action in actions"
+          :key="action.id"
+          class="action-card"
+          :class="{ 'is-active': isActionActive(action) }"
+        >
+          <!-- 状态指示条 -->
+          <div class="status-indicator" :class="getStatusClass(action)"></div>
+
+          <!-- 卡片头部 -->
+          <div class="card-top">
+            <div class="type-badge" :class="getTypeClass(action.action_type)">
+              {{ formatActionType(action.action_type) }}
+            </div>
+            <el-dropdown trigger="click" @command="(cmd) => handleCommand(cmd, action)">
+              <el-button text circle size="small" class="more-btn">
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="edit">
+                    <el-icon><Edit /></el-icon>
+                    设置中文名称
+                  </el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>
+                    <el-icon><Delete /></el-icon>
+                    删除活动
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+
+          <!-- 活动名称 -->
+          <div class="card-title">
+            <h3>{{ action.display_name || action.title || '未命名活动' }}</h3>
+            <el-tooltip
+              v-if="action.display_name && action.title"
+              :content="action.title"
+              placement="top"
+              :show-after="300"
+            >
+              <span class="original-title">{{ truncateText(action.title, 40) }}</span>
+            </el-tooltip>
+          </div>
+
+          <!-- 活动信息 -->
+          <div class="card-meta">
+            <div class="meta-row">
+              <div class="meta-item">
+                <el-icon><Calendar /></el-icon>
+                <span>{{ formatDateRange(action) }}</span>
+              </div>
+            </div>
+            <div class="meta-row">
+              <div class="meta-item">
+                <el-icon><Goods /></el-icon>
+                <span class="product-count">{{ action.participating_products_count || 0 }}</span>
+                <span>件商品参与</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 卡片底部 -->
+          <div class="card-footer">
+            <div class="action-id">
+              <span class="label">ID:</span>
+              <span class="value">{{ action.action_id }}</span>
+            </div>
+            <el-tag
+              :type="action.is_manual ? 'warning' : 'success'"
+              size="small"
+              effect="light"
+              round
+            >
+              {{ action.is_manual ? '手动' : 'API' }}
+            </el-tag>
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- 手动添加对话框 -->
@@ -146,11 +277,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { getActions, syncActions, createManualAction, deleteAction, updateActionDisplayName } from '@/api/promotion'
-import { Refresh, Plus, Edit } from '@element-plus/icons-vue'
+import { getActions, syncActions, createManualAction, deleteAction, updateActionDisplayName, updateActionsSortOrder } from '@/api/promotion'
+import { StatCard } from '@/components/bento'
+import draggable from 'vuedraggable'
+import { Refresh, Plus, Edit, MoreFilled, Delete, Calendar, Goods, Box, Ticket, Clock, Rank, Check, InfoFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 
@@ -162,6 +295,29 @@ const showManualDialog = ref(false)
 const showEditDialog = ref(false)
 const actions = ref([])
 const manualFormRef = ref(null)
+
+// 排序模式相关
+const sortMode = ref(false)
+const sortableActions = ref([])
+const savingSortOrder = ref(false)
+
+// 计算统计数据
+const activeCount = computed(() => {
+  return actions.value.filter(a => isActionActive(a)).length
+})
+
+const upcomingCount = computed(() => {
+  return actions.value.filter(a => {
+    if (!a.date_start) return false
+    const now = new Date()
+    const start = new Date(a.date_start)
+    return now < start
+  }).length
+})
+
+const totalProducts = computed(() => {
+  return actions.value.reduce((sum, a) => sum + (a.participating_products_count || 0), 0)
+})
 
 const manualForm = reactive({
   action_id: null,
@@ -281,6 +437,58 @@ function openEditDialog(row) {
   showEditDialog.value = true
 }
 
+function handleCommand(command, action) {
+  if (command === 'edit') {
+    openEditDialog(action)
+  } else if (command === 'delete') {
+    handleDelete(action)
+  }
+}
+
+function isActionActive(action) {
+  if (!action.date_start || !action.date_end) return false
+  const now = new Date()
+  const start = new Date(action.date_start)
+  const end = new Date(action.date_end)
+  return now >= start && now <= end
+}
+
+function getStatusClass(action) {
+  if (!action.date_start || !action.date_end) return 'status-unknown'
+  const now = new Date()
+  const start = new Date(action.date_start)
+  const end = new Date(action.date_end)
+  if (now < start) return 'status-upcoming'
+  if (now > end) return 'status-ended'
+  return 'status-active'
+}
+
+function getTypeClass(type) {
+  if (!type) return 'type-default'
+  const t = type.toUpperCase()
+  if (t.includes('STOCK') || t.includes('DISCOUNT')) return 'type-discount'
+  if (t.includes('MARKET') || t.includes('MULTI')) return 'type-market'
+  return 'type-default'
+}
+
+function formatActionType(type) {
+  if (!type) return '未知'
+  const typeMap = {
+    'STOCK_DISCOUNT': '库存折扣',
+    'MARKETPLACE_MULTI_LEVEL_DISCOUNT_ON_AMOUNT': '满减折扣',
+    'DISCOUNT': '折扣',
+    'FLASH_SALE': '限时特卖',
+    'BUNDLE': '捆绑销售'
+  }
+  return typeMap[type] || type.replace(/_/g, ' ').toLowerCase()
+}
+
+function truncateText(text, maxLength) {
+  if (!text) return ''
+  if (text.length <= maxLength) return text
+  return text.substring(0, maxLength) + '...'
+}
+
 async function handleUpdateDisplayName() {
   const shopId = userStore.currentShopId
   if (!shopId) {
@@ -302,6 +510,44 @@ async function handleUpdateDisplayName() {
   }
 }
 
+// 进入排序模式
+function enterSortMode() {
+  sortableActions.value = [...actions.value]
+  sortMode.value = true
+}
+
+// 取消排序模式
+function cancelSortMode() {
+  sortMode.value = false
+  sortableActions.value = []
+}
+
+// 保存排序
+async function saveSortOrder() {
+  const shopId = userStore.currentShopId
+  if (!shopId) {
+    ElMessage.warning('请先选择店铺')
+    return
+  }
+
+  savingSortOrder.value = true
+  try {
+    const sortOrders = sortableActions.value.map((action, index) => ({
+      id: action.id,
+      sort_order: index
+    }))
+    await updateActionsSortOrder(shopId, sortOrders)
+    ElMessage.success('排序保存成功')
+    sortMode.value = false
+    await fetchActions()
+  } catch (error) {
+    console.error(error)
+    ElMessage.error(error.response?.data?.message || '保存排序失败')
+  } finally {
+    savingSortOrder.value = false
+  }
+}
+
 onMounted(() => {
   fetchActions()
 })
@@ -319,76 +565,343 @@ onMounted(() => {
   margin-bottom: 24px;
 }
 
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.action-count {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 .header-actions {
   display: flex;
   gap: 12px;
 }
 
-.card-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+/* 统计卡片行 */
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-.card-subtitle {
-  font-size: 13px;
+@media (max-width: 1200px) {
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 卡片网格布局 */
+.action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  min-height: 200px;
+}
+
+/* 空状态 */
+.empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-state .empty-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
   color: var(--text-muted);
 }
 
-.action-id {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 13px;
-  color: var(--accent);
+.empty-state h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
 }
 
-.action-title {
+.empty-state p {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+/* 活动卡片 */
+.action-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  position: relative;
+  overflow: hidden;
+  transition: all var(--transition-normal);
   display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.action-card:hover {
+  border-color: var(--surface-border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.action-card.is-active {
+  border-color: var(--success);
+}
+
+/* 状态指示条 */
+.status-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.status-indicator.status-active {
+  background: linear-gradient(90deg, var(--success), #5DBB7A);
+}
+
+.status-indicator.status-upcoming {
+  background: linear-gradient(90deg, var(--info), #7A9FD4);
+}
+
+.status-indicator.status-ended {
+  background: linear-gradient(90deg, var(--text-muted), #A5A29D);
+}
+
+.status-indicator.status-unknown {
+  background: var(--border-color);
+}
+
+/* 卡片头部 */
+.card-top {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+}
+
+.type-badge {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.type-badge.type-discount {
+  background: rgba(196, 113, 78, 0.1);
+  color: var(--primary);
+}
+
+.type-badge.type-market {
+  background: rgba(90, 123, 175, 0.1);
+  color: var(--info);
+}
+
+.type-badge.type-default {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+}
+
+.more-btn {
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.more-btn:hover {
+  opacity: 1;
+}
+
+/* 卡片标题 */
+.card-title h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.original-title {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* 卡片信息 */
+.card-meta {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
-.date-range {
+.meta-row {
+  display: flex;
+  align-items: center;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   color: var(--text-secondary);
 }
 
-.count-badge {
+.meta-item .el-icon {
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.meta-item .product-count {
   font-weight: 600;
   color: var(--primary);
 }
 
-.sync-time {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.action-title-cell {
+/* 卡片底部 */
+.card-footer {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color-light);
+  margin-top: auto;
 }
 
-.action-title-cell .action-title {
-  flex: 1;
+.action-id {
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
-.action-original-title {
-  font-size: 11px;
+.action-id .label {
   color: var(--text-muted);
-  margin-left: 8px;
+  margin-right: 4px;
 }
 
-.edit-btn {
-  opacity: 0.6;
-  transition: opacity 0.2s;
+.action-id .value {
+  color: var(--text-secondary);
 }
 
-.edit-btn:hover {
-  opacity: 1;
-}
-
+/* 对话框中的原始名称 */
 .original-name {
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .action-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+/* 排序模式提示 */
+.sort-mode-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--info-bg, rgba(90, 123, 175, 0.1));
+  border: 1px solid var(--info, #5A7BAF);
+  border-radius: var(--radius-md);
+  margin-bottom: 20px;
+  color: var(--info, #5A7BAF);
+  font-size: 14px;
+}
+
+.sort-mode-tip .el-icon {
+  font-size: 16px;
+}
+
+/* 拖拽网格 */
+.draggable-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 20px;
+  width: 100%;
+}
+
+/* 可排序卡片 */
+.action-card.sortable {
+  cursor: grab;
+  user-select: none;
+}
+
+.action-card.sortable:active {
+  cursor: grabbing;
+}
+
+/* 拖拽手柄 */
+.drag-handle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+}
+
+.action-card.sortable:hover .drag-handle {
+  background: var(--primary);
+  color: white;
+}
+
+/* 拖拽时的幽灵卡片 */
+.ghost-card {
+  opacity: 0.5;
+  background: var(--primary-bg, rgba(196, 113, 78, 0.1));
+  border: 2px dashed var(--primary);
+}
+
+/* 正在拖拽的卡片 */
+.dragging-card {
+  opacity: 0.9;
+  transform: rotate(2deg);
+  box-shadow: var(--shadow-lg);
 }
 </style>

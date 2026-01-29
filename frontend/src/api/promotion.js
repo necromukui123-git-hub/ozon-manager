@@ -30,6 +30,14 @@ export function updateActionDisplayName(id, shopId, displayName) {
   )
 }
 
+// 更新促销活动排序
+export function updateActionsSortOrder(shopId, sortOrders) {
+  return request.put('/promotions/actions/sort-order', {
+    shop_id: shopId,
+    sort_orders: sortOrders
+  })
+}
+
 // ========== V1 接口（保持兼容）==========
 
 // 批量报名促销活动
