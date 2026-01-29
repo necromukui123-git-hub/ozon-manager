@@ -1,8 +1,9 @@
 package repository
 
 import (
-	"gorm.io/gorm"
 	"ozon-manager/internal/model"
+
+	"gorm.io/gorm"
 )
 
 type ShopRepository struct {
@@ -128,4 +129,19 @@ func (r *ShopRepository) FindAllWithOwner() ([]model.Shop, error) {
 	var shops []model.Shop
 	err := r.db.Preload("Owner").Find(&shops).Error
 	return shops, err
+}
+
+// UpdateStatusByOwnerID 更新某个店铺管理员的所有店铺状态
+func (r *ShopRepository) UpdateStatusByOwnerID(ownerID uint, isActive bool) error {
+	return r.db.Model(&model.Shop{}).Where("owner_id = ?", ownerID).Update("is_active", isActive).Error
+}
+
+// FindActiveByClientID 查找同 ClientID 且可用的店铺
+func (r *ShopRepository) FindActiveByClientID(clientID string) (*model.Shop, error) {
+	var shop model.Shop
+	err := r.db.Where("client_id = ? AND is_active = ?", clientID, true).First(&shop).Error
+	if err != nil {
+		return nil, err
+	}
+	return &shop, nil
 }

@@ -9,10 +9,11 @@ import (
 )
 
 var (
-	ErrShopNotFound       = errors.New("店铺不存在")
-	ErrClientIDExists     = errors.New("Client ID已存在")
-	ErrNoAccessToShop     = errors.New("无权访问该店铺")
-	ErrShopNotBelongToYou = errors.New("该店铺不属于您")
+	ErrShopNotFound         = errors.New("店铺不存在")
+	ErrClientIDExists       = errors.New("Client ID已存在")
+	ErrNoAccessToShop       = errors.New("无权访问该店铺")
+	ErrShopNotBelongToYou   = errors.New("该店铺不属于您")
+	ErrActiveClientIDExists = errors.New("已存在使用该 Client ID 的可用店铺")
 )
 
 type ShopService struct {
@@ -130,10 +131,10 @@ func (s *ShopService) GetShopCredentials(shopID uint) (clientID, apiKey string, 
 
 // CreateMyShop 店铺管理员创建自己的店铺
 func (s *ShopService) CreateMyShop(req *dto.CreateShopRequest, ownerID uint) (*dto.ShopInfo, error) {
-	// 检查ClientID是否已存在
-	existing, _ := s.shopRepo.FindByClientID(req.ClientID)
-	if existing != nil {
-		return nil, ErrClientIDExists
+	// 检查是否存在同 ClientID 且为可用的店铺
+	activeShop, _ := s.shopRepo.FindActiveByClientID(req.ClientID)
+	if activeShop != nil {
+		return nil, ErrActiveClientIDExists
 	}
 
 	shop := &model.Shop{

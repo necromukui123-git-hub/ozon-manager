@@ -370,6 +370,13 @@ func (s *UserService) UpdateShopAdminStatus(shopAdminID uint, status string) err
 		return ErrNotShopAdmin
 	}
 
+	// 如果是禁用操作，同步禁用该店铺管理员的所有店铺
+	if status == "disabled" {
+		if err := s.shopRepo.UpdateStatusByOwnerID(shopAdminID, false); err != nil {
+			return err
+		}
+	}
+
 	return s.userRepo.UpdateStatus(shopAdminID, status)
 }
 
