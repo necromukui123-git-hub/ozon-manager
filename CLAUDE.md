@@ -13,7 +13,7 @@ Ozon店铺管理系统 - 用于管理Ozon电商平台的商品促销活动。主
 ## 技术栈
 
 **后端**: Go 1.21 + Gin + GORM
-**前端**: Vue 3 + Vite + Element Plus + Pinia
+**前端**: Vue 3 + Vite + Element Plus + Pinia + SCSS + ECharts
 **数据库**: PostgreSQL
 
 ## 常用命令
@@ -50,7 +50,9 @@ npm run build
 
 ### 开发工作流
 
-同时启动前后端进行开发：
+**Windows 一键启动**：双击项目根目录的 `start-dev.bat`
+
+或手动启动：
 1. 终端1: `cd backend && go run cmd/server/main.go`
 2. 终端2: `cd frontend && npm run dev`
 3. 访问 http://localhost:5173
@@ -103,10 +105,13 @@ views/                 → 页面组件
   promotions/          → 促销操作（批量报名、亏损处理、改价推广）
   shop-admin/          → 店铺管理员功能
   super-admin/         → 系统管理员功能
+components/bento/      → Bento 风格 UI 组件（StatCard、ChartCard 等）
 api/                   → API 调用封装
 stores/                → Pinia 状态管理
 router/                → Vue Router 路由
+styles/                → 全局 SCSS 样式
 utils/request.js       → Axios 封装
+utils/echarts-theme.js → ECharts 图表主题配置
 ```
 
 ## 用户角色与权限
