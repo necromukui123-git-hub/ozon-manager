@@ -12,6 +12,8 @@ tmpclaude-*
 
 # IDE 和编辑器
 .idea/
+.codex/
+.claude/
 .vscode/
 *.swp
 *.swo
