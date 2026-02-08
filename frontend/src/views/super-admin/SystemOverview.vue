@@ -107,6 +107,8 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { User, UserFilled, Shop, Goods, Refresh, PieChart, DataAnalysis } from '@element-plus/icons-vue'
 import { getSystemOverview } from '@/api/admin'
 import { StatCard, ChartCard, BentoCard } from '@/components/bento'
+import { getThemeChartTokens } from '@/utils/echarts-theme'
+import { getTheme } from '@/utils/theme'
 
 const loading = ref(false)
 const overview = reactive({
@@ -115,6 +117,11 @@ const overview = reactive({
   shop_count: 0,
   product_count: 0,
   shop_admins: []
+})
+const currentTheme = getTheme()
+const chartToken = computed(() => {
+  currentTheme.value
+  return getThemeChartTokens()
 })
 
 // 饼图配置
@@ -138,8 +145,8 @@ const pieChartOption = computed(() => ({
       center: ['35%', '50%'],
       avoidLabelOverlap: false,
       itemStyle: {
-        borderRadius: 6,
-        borderColor: '#fff',
+        borderRadius: 0,
+        borderColor: chartToken.value.border,
         borderWidth: 2
       },
       label: {
@@ -153,8 +160,8 @@ const pieChartOption = computed(() => ({
         }
       },
       data: [
-        { value: overview.shop_admin_count, name: '店铺管理员', itemStyle: { color: '#C4714E' } },
-        { value: overview.staff_count, name: '员工', itemStyle: { color: '#D77757' } }
+        { value: overview.shop_admin_count, name: '店铺管理员', itemStyle: { color: chartToken.value.color[0] } },
+        { value: overview.staff_count, name: '员工', itemStyle: { color: chartToken.value.color[1] } }
       ]
     }
   ]
@@ -180,11 +187,12 @@ const barChartOption = computed(() => ({
     data: ['店铺管理员', '员工', '店铺', '商品'],
     axisLine: {
       lineStyle: {
-        color: 'rgba(0, 0, 0, 0.08)'
+        color: chartToken.value.border,
+        width: 2
       }
     },
     axisLabel: {
-      color: '#8a8780'
+      color: chartToken.value.muted
     }
   },
   yAxis: {
@@ -194,11 +202,12 @@ const barChartOption = computed(() => ({
     },
     splitLine: {
       lineStyle: {
-        color: 'rgba(0, 0, 0, 0.05)'
+        color: chartToken.value.border,
+        opacity: 0.2
       }
     },
     axisLabel: {
-      color: '#8a8780'
+      color: chartToken.value.muted
     }
   },
   series: [
@@ -207,9 +216,11 @@ const barChartOption = computed(() => ({
       type: 'bar',
       barWidth: '50%',
       itemStyle: {
-        borderRadius: [4, 4, 0, 0],
+        borderRadius: [0, 0, 0, 0],
+        borderColor: chartToken.value.border,
+        borderWidth: 2,
         color: function(params) {
-          const colors = ['#C4714E', '#D77757', '#5A7BAF', '#4A9668']
+          const colors = chartToken.value.color
           return colors[params.dataIndex]
         }
       },
@@ -253,8 +264,10 @@ async function fetchOverview() {
 .admin-avatar {
   width: 36px;
   height: 36px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--primary), var(--accent));
+  border-radius: var(--neo-radius);
+  background: var(--primary);
+  border: 2px solid var(--neo-border-color);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
   color: white;
   display: flex;
   align-items: center;

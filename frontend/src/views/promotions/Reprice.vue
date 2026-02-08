@@ -392,8 +392,9 @@ onMounted(() => {
 
 .upload-area :deep(.el-upload-dragger) {
   background: var(--bg-tertiary);
-  border: 2px dashed var(--surface-border);
-  border-radius: var(--radius-lg);
+  border: 3px dashed var(--neo-border-color);
+  border-radius: var(--neo-radius);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
   padding: 24px;
   transition: all var(--transition-normal);
 }
@@ -413,8 +414,10 @@ onMounted(() => {
 .upload-icon {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, var(--primary), var(--accent));
-  border-radius: var(--radius-md);
+  background: var(--primary);
+  border-radius: var(--neo-radius);
+  border: 2px solid var(--neo-border-color);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -478,8 +481,10 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px;
-  background: rgba(196, 113, 78, 0.1);
-  border-radius: var(--radius-md);
+  background: #dbeafe;
+  border-radius: var(--neo-radius);
+  border: 2px solid var(--neo-border-color);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
   margin-bottom: 16px;
   font-size: 13px;
   color: var(--primary);

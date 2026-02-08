@@ -117,6 +117,20 @@
         </div>
 
         <div class="header-right">
+          <el-select
+            v-model="selectedTheme"
+            size="small"
+            class="theme-switcher"
+            aria-label="主题切换"
+            @change="handleThemeChange"
+          >
+            <el-option
+              v-for="item in themeOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
           <el-tag :type="userStore.getRoleTagType()" effect="dark" size="small" class="role-tag">
             {{ userStore.getRoleLabel() }}
           </el-tag>
@@ -195,6 +209,7 @@ import { useUserStore } from '@/stores/user'
 import { getShops } from '@/api/shop'
 import { changePassword } from '@/api/user'
 import { hashPassword } from '@/utils/crypto'
+import { THEMES, getTheme, applyTheme } from '@/utils/theme'
 import { ElMessage } from 'element-plus'
 import {
   DataLine, Goods, Promotion, Document, User, Shop, SwitchButton, Lock,
@@ -208,6 +223,8 @@ const userStore = useUserStore()
 const shops = ref([])
 const currentShopId = ref(userStore.currentShopId)
 const currentRoute = computed(() => route.path)
+const themeOptions = THEMES
+const selectedTheme = getTheme()
 
 // 移动端菜单状态
 const mobileMenuOpen = ref(false)
@@ -324,6 +341,9 @@ function handleMenuSelect() {
     mobileMenuOpen.value = false
   }
 }
+function handleThemeChange(theme) {
+  applyTheme(theme)
+}
 </script>
 
 <style scoped>
@@ -346,6 +366,11 @@ function handleMenuSelect() {
   margin-right: 12px;
 }
 
+.theme-switcher {
+  width: 110px;
+  margin-right: 12px;
+}
+
 /* 移动端菜单按钮 */
 .mobile-menu-btn {
   display: none;
@@ -354,8 +379,9 @@ function handleMenuSelect() {
   width: 40px;
   height: 40px;
   background: var(--bg-tertiary);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-md);
+  border: 2px solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
   cursor: pointer;
   color: var(--text-secondary);
   transition: all var(--transition-normal);
@@ -364,6 +390,7 @@ function handleMenuSelect() {
 .mobile-menu-btn:hover {
   background: var(--surface-bg-hover);
   color: var(--primary);
+  box-shadow: 3px 3px 0 var(--neo-border-color);
 }
 
 /* 移动端遮罩 */
@@ -403,6 +430,11 @@ function handleMenuSelect() {
 
   .role-tag {
     display: none;
+  }
+
+  .theme-switcher {
+    width: 90px;
+    margin-right: 8px;
   }
 
   .admin-hint span {

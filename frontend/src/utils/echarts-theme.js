@@ -1,176 +1,130 @@
-// ECharts Claude 风格主题配置
-// 温暖米色/赭色配色方案
+export function getThemeChartTokens() {
+  const styles = getComputedStyle(document.documentElement)
 
-export const claudeTheme = {
-  // 调色板
-  color: [
-    '#C4714E',  // 主色 - 赭色
-    '#4A9668',  // 成功绿
-    '#C4883A',  // 警告橙
-    '#5A7BAF',  // 信息蓝
-    '#D77757',  // 辅助色
-    '#8B7355',  // 棕色
-    '#6B8E7B',  // 灰绿
-    '#A67B5B',  // 浅棕
-  ],
+  return {
+    color: [
+      styles.getPropertyValue('--chart-color-1').trim() || '#1d4ed8',
+      styles.getPropertyValue('--chart-color-2').trim() || '#dc2626',
+      styles.getPropertyValue('--chart-color-3').trim() || '#f59e0b',
+      styles.getPropertyValue('--chart-color-4').trim() || '#16a34a',
+      styles.getPropertyValue('--chart-color-5').trim() || '#6b21a8'
+    ],
+    text: styles.getPropertyValue('--text-primary').trim() || '#171717',
+    muted: styles.getPropertyValue('--text-muted').trim() || '#525252',
+    border: styles.getPropertyValue('--neo-border-color').trim() || '#000000',
+    surface: styles.getPropertyValue('--surface-bg').trim() || '#ffffff',
+    primary: styles.getPropertyValue('--primary').trim() || '#1d4ed8'
+  }
+}
 
-  // 背景色
-  backgroundColor: 'transparent',
+export function buildTheme() {
+  const token = getThemeChartTokens()
 
-  // 文字样式
-  textStyle: {
-    fontFamily: "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
-    color: '#5a5754'
-  },
-
-  // 标题
-  title: {
+  return {
+    color: token.color,
+    backgroundColor: 'transparent',
     textStyle: {
-      color: '#1a1a1a',
-      fontWeight: 600,
-      fontSize: 16
+      fontFamily: "'Fira Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      color: token.text
     },
-    subtextStyle: {
-      color: '#8a8780',
-      fontSize: 12
-    }
-  },
-
-  // 图例
-  legend: {
-    textStyle: {
-      color: '#5a5754'
-    },
-    pageTextStyle: {
-      color: '#8a8780'
-    }
-  },
-
-  // 提示框
-  tooltip: {
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
-    borderColor: 'rgba(0, 0, 0, 0.08)',
-    borderWidth: 1,
-    borderRadius: 8,
-    textStyle: {
-      color: '#1a1a1a'
-    },
-    extraCssText: 'box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);'
-  },
-
-  // 坐标轴
-  categoryAxis: {
-    axisLine: {
-      show: true,
-      lineStyle: {
-        color: 'rgba(0, 0, 0, 0.08)'
+    title: {
+      textStyle: {
+        color: token.text,
+        fontWeight: 700,
+        fontSize: 16
+      },
+      subtextStyle: {
+        color: token.muted,
+        fontSize: 12
       }
     },
-    axisTick: {
-      show: false
-    },
-    axisLabel: {
-      color: '#8a8780'
-    },
-    splitLine: {
-      show: false
-    }
-  },
-
-  valueAxis: {
-    axisLine: {
-      show: false
-    },
-    axisTick: {
-      show: false
-    },
-    axisLabel: {
-      color: '#8a8780'
-    },
-    splitLine: {
-      lineStyle: {
-        color: 'rgba(0, 0, 0, 0.05)'
+    legend: {
+      textStyle: {
+        color: token.text
       }
-    }
-  },
-
-  // 折线图
-  line: {
-    smooth: true,
-    symbol: 'circle',
-    symbolSize: 6,
-    lineStyle: {
-      width: 2
     },
-    itemStyle: {
-      borderWidth: 2
+    tooltip: {
+      backgroundColor: token.surface,
+      borderColor: token.border,
+      borderWidth: 2,
+      borderRadius: 2,
+      textStyle: {
+        color: token.text
+      },
+      extraCssText: 'box-shadow: 4px 4px 0 #000;'
     },
-    emphasis: {
-      scale: true,
-      focus: 'series'
-    }
-  },
-
-  // 柱状图
-  bar: {
-    barMaxWidth: 40,
-    itemStyle: {
-      borderRadius: [4, 4, 0, 0]
+    categoryAxis: {
+      axisLine: {
+        show: true,
+        lineStyle: {
+          color: token.border,
+          width: 2
+        }
+      },
+      axisTick: {
+        show: false
+      },
+      axisLabel: {
+        color: token.muted
+      },
+      splitLine: {
+        show: false
+      }
     },
-    emphasis: {
-      focus: 'series'
-    }
-  },
-
-  // 饼图
-  pie: {
-    itemStyle: {
-      borderColor: '#ffffff',
-      borderWidth: 2
+    valueAxis: {
+      axisLine: {
+        show: false
+      },
+      axisTick: {
+        show: false
+      },
+      axisLabel: {
+        color: token.muted
+      },
+      splitLine: {
+        lineStyle: {
+          color: token.border,
+          opacity: 0.2
+        }
+      }
     },
-    label: {
-      color: '#5a5754'
+    line: {
+      smooth: false,
+      symbol: 'circle',
+      symbolSize: 8,
+      lineStyle: {
+        width: 3
+      },
+      itemStyle: {
+        borderWidth: 2,
+        borderColor: token.border
+      }
     },
-    emphasis: {
-      scale: true,
-      scaleSize: 5
-    }
-  },
-
-  // 数据区域缩放
-  dataZoom: {
-    backgroundColor: 'rgba(0, 0, 0, 0.02)',
-    dataBackgroundColor: 'rgba(196, 113, 78, 0.1)',
-    fillerColor: 'rgba(196, 113, 78, 0.15)',
-    handleColor: '#C4714E',
-    handleSize: '100%',
-    textStyle: {
-      color: '#8a8780'
+    bar: {
+      barMaxWidth: 40,
+      itemStyle: {
+        borderRadius: [0, 0, 0, 0],
+        borderWidth: 2,
+        borderColor: token.border
+      }
+    },
+    pie: {
+      itemStyle: {
+        borderColor: token.border,
+        borderWidth: 2
+      },
+      label: {
+        color: token.text
+      }
     }
   }
 }
 
-// 注册主题的辅助函数
-export function registerClaudeTheme(echarts) {
-  echarts.registerTheme('claude', claudeTheme)
+export function registerNeoTheme(echarts) {
+  echarts.registerTheme('neo', buildTheme())
 }
 
-// 通用图表配置
-export const chartConfig = {
-  // 响应式配置
-  responsive: {
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      top: '15%',
-      containLabel: true
-    }
-  },
-
-  // 动画配置
-  animation: {
-    animationDuration: 800,
-    animationEasing: 'cubicOut'
-  }
+export function rebuildNeoTheme(echarts) {
+  echarts.registerTheme('neo', buildTheme())
 }
+

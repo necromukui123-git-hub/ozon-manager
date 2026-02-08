@@ -16,11 +16,10 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { registerClaudeTheme } from '@/utils/echarts-theme'
+import { registerNeoTheme, rebuildNeoTheme } from '@/utils/echarts-theme'
 import BentoCard from './BentoCard.vue'
 
-// 注册 Claude 主题
-registerClaudeTheme(echarts)
+registerNeoTheme(echarts)
 
 const props = defineProps({
   title: {
@@ -70,16 +69,20 @@ function getDefaultHeight(size) {
   return heights[size] || '140px'
 }
 
+function getLoadingColor() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--primary').trim() || '#1d4ed8'
+}
+
 function initChart() {
   if (!chartRef.value) return
 
-  chartInstance = echarts.init(chartRef.value, 'claude')
+  chartInstance = echarts.init(chartRef.value, 'neo')
   chartInstance.setOption(props.option)
 
   if (props.loading) {
     chartInstance.showLoading({
       text: '',
-      color: '#C4714E',
+      color: getLoadingColor(),
       maskColor: 'rgba(255, 255, 255, 0.8)'
     })
   }
@@ -89,6 +92,19 @@ function resizeChart() {
   if (chartInstance) {
     chartInstance.resize()
   }
+}
+
+function handleThemeChanged() {
+  rebuildNeoTheme(echarts)
+  if (!chartRef.value) return
+
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
+  }
+
+  chartInstance = echarts.init(chartRef.value, 'neo')
+  chartInstance.setOption(props.option, true)
 }
 
 watch(() => props.option, (newOption) => {
@@ -102,7 +118,7 @@ watch(() => props.loading, (loading) => {
     if (loading) {
       chartInstance.showLoading({
         text: '',
-        color: '#C4714E',
+        color: getLoadingColor(),
         maskColor: 'rgba(255, 255, 255, 0.8)'
       })
     } else {
@@ -115,18 +131,19 @@ onMounted(() => {
   nextTick(() => {
     initChart()
     window.addEventListener('resize', resizeChart)
+    window.addEventListener('ozon-theme-change', handleThemeChanged)
   })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', resizeChart)
+  window.removeEventListener('ozon-theme-change', handleThemeChanged)
   if (chartInstance) {
     chartInstance.dispose()
     chartInstance = null
   }
 })
 
-// 暴露方法供父组件调用
 defineExpose({
   resize: resizeChart,
   getInstance: () => chartInstance
@@ -139,3 +156,4 @@ defineExpose({
   padding: 12px;
 }
 </style>
+

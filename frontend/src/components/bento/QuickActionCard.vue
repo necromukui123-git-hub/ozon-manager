@@ -66,16 +66,16 @@ function handleClick(e) {
   gap: 14px;
   padding: 16px 18px;
   background: var(--bg-secondary);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-lg);
+  border: var(--neo-border-width) solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
   cursor: pointer;
   transition: all var(--transition-normal);
 }
 
 .quick-action-card:hover {
-  border-color: var(--surface-border-hover);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  border-color: var(--neo-border-color);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--neo-border-color);
 }
 
 .quick-action-card:hover .quick-action-card__icon {
@@ -87,7 +87,8 @@ function handleClick(e) {
 }
 
 .quick-action-card:active {
-  transform: scale(0.98);
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--neo-border-color);
 }
 
 .quick-action-card--disabled {
@@ -103,49 +104,45 @@ function handleClick(e) {
 .quick-action-card__icon {
   width: 44px;
   height: 44px;
-  border-radius: var(--radius-md);
+  border-radius: var(--neo-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 20px;
   flex-shrink: 0;
   transition: transform var(--transition-normal);
+  border: 2px solid var(--neo-border-color);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
 }
 
 .quick-action-card__icon--primary {
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  background: var(--primary);
   color: white;
-  box-shadow: 0 2px 8px var(--primary-glow);
 }
 
 .quick-action-card__icon--success {
-  background: linear-gradient(135deg, var(--success), #3D8456);
+  background: var(--success);
   color: white;
-  box-shadow: 0 2px 8px var(--success-glow);
 }
 
 .quick-action-card__icon--warning {
-  background: linear-gradient(135deg, var(--warning), #A8702E);
-  color: white;
-  box-shadow: 0 2px 8px var(--warning-glow);
+  background: var(--warning);
+  color: #111;
 }
 
 .quick-action-card__icon--danger {
-  background: linear-gradient(135deg, var(--danger), #A84540);
+  background: var(--danger);
   color: white;
-  box-shadow: 0 2px 8px var(--danger-glow);
 }
 
 .quick-action-card__icon--accent {
-  background: linear-gradient(135deg, var(--accent), #C4604A);
+  background: var(--accent);
   color: white;
-  box-shadow: 0 2px 8px var(--accent-glow);
 }
 
 .quick-action-card__icon--info {
-  background: linear-gradient(135deg, var(--info), #4A6A9F);
+  background: var(--info);
   color: white;
-  box-shadow: 0 2px 8px rgba(90, 123, 175, 0.2);
 }
 
 .quick-action-card__content {
@@ -158,7 +155,7 @@ function handleClick(e) {
 
 .quick-action-card__title {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 700;
   color: var(--text-primary);
 }
 

@@ -89,8 +89,8 @@ function handleClick(e) {
 <style scoped>
 .stat-card {
   background: var(--bg-secondary);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-lg);
+  border: var(--neo-border-width) solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
   padding: 20px;
   display: flex;
   align-items: flex-start;
@@ -106,15 +106,15 @@ function handleClick(e) {
   top: 0;
   left: 0;
   right: 0;
-  height: 3px;
+  height: 4px;
   opacity: 0;
   transition: opacity var(--transition-normal);
 }
 
 .stat-card:hover {
-  border-color: var(--surface-border-hover);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  border-color: var(--neo-border-color);
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 var(--neo-border-color);
 }
 
 .stat-card:hover::before {
@@ -126,12 +126,13 @@ function handleClick(e) {
 }
 
 .stat-card--clickable:active {
-  transform: scale(0.98);
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 var(--neo-border-color);
 }
 
 /* 变体颜色 */
 .stat-card--primary::before {
-  background: linear-gradient(90deg, var(--primary), var(--accent));
+  background: var(--primary);
 }
 
 .stat-card--success::before {
@@ -157,42 +158,44 @@ function handleClick(e) {
 .stat-card__icon {
   width: 48px;
   height: 48px;
-  border-radius: var(--radius-md);
+  border-radius: var(--neo-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
   flex-shrink: 0;
+  border: 2px solid var(--neo-border-color);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
 }
 
 .stat-card__icon--primary {
-  background: rgba(196, 113, 78, 0.12);
-  color: var(--primary);
+  background: var(--primary);
+  color: #fff;
 }
 
 .stat-card__icon--success {
-  background: rgba(74, 150, 104, 0.12);
-  color: var(--success);
+  background: var(--success);
+  color: #fff;
 }
 
 .stat-card__icon--warning {
-  background: rgba(196, 136, 58, 0.12);
-  color: var(--warning);
+  background: var(--warning);
+  color: #111;
 }
 
 .stat-card__icon--danger {
-  background: rgba(196, 84, 78, 0.12);
-  color: var(--danger);
+  background: var(--danger);
+  color: #fff;
 }
 
 .stat-card__icon--accent {
-  background: rgba(215, 119, 87, 0.12);
-  color: var(--accent);
+  background: var(--accent);
+  color: #fff;
 }
 
 .stat-card__icon--info {
-  background: rgba(90, 123, 175, 0.12);
-  color: var(--info);
+  background: var(--info);
+  color: #fff;
 }
 
 .stat-card__content {
@@ -209,10 +212,11 @@ function handleClick(e) {
 
 .stat-card__number {
   font-size: 28px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
   line-height: 1.2;
   letter-spacing: -0.02em;
+  font-family: 'Fira Code', monospace;
 }
 
 .stat-card__unit {
@@ -233,16 +237,17 @@ function handleClick(e) {
   font-size: 12px;
   font-weight: 500;
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: var(--neo-radius);
+  border: 2px solid var(--neo-border-color);
 }
 
 .stat-card__trend--up {
   color: var(--success);
-  background: rgba(74, 150, 104, 0.1);
+  background: #dcfce7;
 }
 
 .stat-card__trend--down {
   color: var(--danger);
-  background: rgba(196, 84, 78, 0.1);
+  background: #fee2e2;
 }
 </style>

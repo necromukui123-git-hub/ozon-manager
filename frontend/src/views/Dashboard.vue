@@ -144,6 +144,8 @@ import { useUserStore } from '@/stores/user'
 import { getProducts } from '@/api/product'
 import { exportPromotable } from '@/api/promotion'
 import { StatCard, ChartCard, BentoCard, QuickActionCard } from '@/components/bento'
+import { getThemeChartTokens } from '@/utils/echarts-theme'
+import { getTheme } from '@/utils/theme'
 import {
   Goods,
   TrendCharts,
@@ -172,6 +174,11 @@ const stats = ref({
 })
 
 const recentLogs = ref([])
+const currentTheme = getTheme()
+const chartToken = computed(() => {
+  currentTheme.value
+  return getThemeChartTokens()
+})
 
 // 饼图配置
 const pieChartOption = computed(() => ({
@@ -197,8 +204,8 @@ const pieChartOption = computed(() => ({
       center: ['35%', '50%'],
       avoidLabelOverlap: false,
       itemStyle: {
-        borderRadius: 6,
-        borderColor: '#fff',
+        borderRadius: 0,
+        borderColor: chartToken.value.border,
         borderWidth: 2
       },
       label: {
@@ -212,9 +219,9 @@ const pieChartOption = computed(() => ({
         }
       },
       data: [
-        { value: stats.value.promotedProducts, name: '已推广', itemStyle: { color: '#D77757' } },
-        { value: stats.value.lossProducts, name: '亏损', itemStyle: { color: '#C4883A' } },
-        { value: stats.value.promotableProducts, name: '可推广', itemStyle: { color: '#4A9668' } }
+        { value: stats.value.promotedProducts, name: '已推广', itemStyle: { color: chartToken.value.color[0] } },
+        { value: stats.value.lossProducts, name: '亏损', itemStyle: { color: chartToken.value.color[1] } },
+        { value: stats.value.promotableProducts, name: '可推广', itemStyle: { color: chartToken.value.color[2] } }
       ]
     }
   ]
@@ -250,11 +257,12 @@ const lineChartOption = computed(() => {
       data: days,
       axisLine: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.08)'
+          color: chartToken.value.border,
+          width: 2
         }
       },
       axisLabel: {
-        color: '#8a8780'
+        color: chartToken.value.muted
       }
     },
     yAxis: {
@@ -264,42 +272,31 @@ const lineChartOption = computed(() => {
       },
       splitLine: {
         lineStyle: {
-          color: 'rgba(0, 0, 0, 0.05)'
+          color: chartToken.value.border,
+          opacity: 0.2
         }
       },
       axisLabel: {
-        color: '#8a8780'
+        color: chartToken.value.muted
       }
     },
     series: [
       {
         name: '操作次数',
         type: 'line',
-        smooth: true,
+        smooth: false,
         symbol: 'circle',
         symbolSize: 8,
         lineStyle: {
           width: 3,
-          color: '#C4714E'
+          color: chartToken.value.color[0]
         },
         itemStyle: {
-          color: '#C4714E',
+          color: chartToken.value.color[0],
           borderWidth: 2,
-          borderColor: '#fff'
+          borderColor: chartToken.value.border
         },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(196, 113, 78, 0.25)' },
-              { offset: 1, color: 'rgba(196, 113, 78, 0.02)' }
-            ]
-          }
-        },
+        areaStyle: undefined,
         data: data
       }
     ]

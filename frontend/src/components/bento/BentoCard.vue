@@ -69,8 +69,8 @@ function handleClick(e) {
 <style scoped>
 .bento-card {
   background: var(--bg-secondary);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-lg);
+  border: var(--neo-border-width) solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
   display: flex;
   flex-direction: column;
   transition: all var(--transition-normal);
@@ -78,8 +78,8 @@ function handleClick(e) {
 }
 
 .bento-card--hoverable:hover {
-  border-color: var(--surface-border-hover);
-  box-shadow: var(--shadow-md);
+  border-color: var(--neo-border-color);
+  box-shadow: 3px 3px 0 var(--neo-border-color);
 }
 
 .bento-card--clickable {
@@ -87,11 +87,11 @@ function handleClick(e) {
 }
 
 .bento-card--clickable:hover {
-  transform: translateY(-2px);
+  transform: translate(-1px, -1px);
 }
 
 .bento-card--clickable:active {
-  transform: scale(0.99);
+  transform: translate(1px, 1px);
 }
 
 /* 尺寸变体 */
@@ -157,7 +157,7 @@ function handleClick(e) {
 
 .bento-card__header {
   padding: 16px 20px;
-  border-bottom: 1px solid var(--surface-border);
+  border-bottom: 2px solid var(--neo-border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -169,7 +169,7 @@ function handleClick(e) {
   align-items: center;
   gap: 8px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
@@ -196,7 +196,7 @@ function handleClick(e) {
 
 .bento-card__footer {
   padding: 12px 20px;
-  border-top: 1px solid var(--surface-border);
+  border-top: 2px solid var(--neo-border-color);
   flex-shrink: 0;
 }
 </style>

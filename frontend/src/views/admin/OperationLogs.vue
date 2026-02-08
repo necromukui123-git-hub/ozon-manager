@@ -355,7 +355,7 @@ function formatTime(time) {
   padding: 16px 20px;
   display: flex;
   justify-content: flex-end;
-  border-top: 1px solid var(--surface-border);
+  border-top: 2px solid var(--neo-border-color);
 }
 
 .code-text {
@@ -386,8 +386,9 @@ function formatTime(time) {
 
 .detail-json {
   background: var(--bg-tertiary);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-md);
+  border: 2px solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
   padding: 16px;
   overflow: auto;
   max-height: 300px;

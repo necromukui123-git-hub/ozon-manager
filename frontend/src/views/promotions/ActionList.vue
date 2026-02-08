@@ -629,8 +629,8 @@ onMounted(() => {
 /* 活动卡片 */
 .action-card {
   background: var(--bg-secondary);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-lg);
+  border: var(--neo-border-width) solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
   padding: 20px;
   position: relative;
   overflow: hidden;
@@ -641,9 +641,9 @@ onMounted(() => {
 }
 
 .action-card:hover {
-  border-color: var(--surface-border-hover);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  border-color: var(--neo-border-color);
+  box-shadow: 3px 3px 0 var(--neo-border-color);
+  transform: translate(-1px, -1px);
 }
 
 .action-card.is-active {
@@ -660,15 +660,15 @@ onMounted(() => {
 }
 
 .status-indicator.status-active {
-  background: linear-gradient(90deg, var(--success), #5DBB7A);
+  background: var(--success);
 }
 
 .status-indicator.status-upcoming {
-  background: linear-gradient(90deg, var(--info), #7A9FD4);
+  background: var(--info);
 }
 
 .status-indicator.status-ended {
-  background: linear-gradient(90deg, var(--text-muted), #A5A29D);
+  background: var(--text-muted);
 }
 
 .status-indicator.status-unknown {
@@ -684,24 +684,25 @@ onMounted(() => {
 
 .type-badge {
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--neo-radius);
+  border: 2px solid var(--neo-border-color);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .type-badge.type-discount {
-  background: rgba(196, 113, 78, 0.1);
-  color: var(--primary);
+  background: #dbeafe;
+  color: #1e3a8a;
 }
 
 .type-badge.type-market {
-  background: rgba(90, 123, 175, 0.1);
-  color: var(--info);
+  background: #e0f2fe;
+  color: #155e75;
 }
 
 .type-badge.type-default {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: #fef3c7;
+  color: #78350f;
 }
 
 .more-btn {
@@ -821,12 +822,14 @@ onMounted(() => {
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: var(--info-bg, rgba(90, 123, 175, 0.1));
-  border: 1px solid var(--info, #5A7BAF);
-  border-radius: var(--radius-md);
+  background: #dbeafe;
+  border: 2px solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
+  box-shadow: 3px 3px 0 var(--neo-border-color);
   margin-bottom: 20px;
-  color: var(--info, #5A7BAF);
+  color: #1e3a8a;
   font-size: 14px;
+  font-weight: 600;
 }
 
 .sort-mode-tip .el-icon {
@@ -850,8 +853,9 @@ onMounted(() => {
   height: 48px;
   padding: 0 16px;
   background: var(--bg-secondary);
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
+  border: 2px solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
   cursor: grab;
   user-select: none;
   transition: all var(--transition-fast);
@@ -860,8 +864,9 @@ onMounted(() => {
 }
 
 .sort-item:hover {
-  border-color: var(--surface-border-hover);
+  border-color: var(--neo-border-color);
   background: var(--bg-tertiary);
+  box-shadow: 3px 3px 0 var(--neo-border-color);
 }
 
 .sort-item:active {
@@ -887,27 +892,28 @@ onMounted(() => {
 /* 类型标签 */
 .sort-type {
   padding: 4px 10px;
-  border-radius: 4px;
+  border-radius: var(--neo-radius);
+  border: 2px solid var(--neo-border-color);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 700;
   flex-shrink: 0;
   min-width: 70px;
   text-align: center;
 }
 
 .sort-type.type-discount {
-  background: rgba(196, 113, 78, 0.1);
-  color: var(--primary);
+  background: #dbeafe;
+  color: #1e3a8a;
 }
 
 .sort-type.type-market {
-  background: rgba(90, 123, 175, 0.1);
-  color: var(--info);
+  background: #e0f2fe;
+  color: #155e75;
 }
 
 .sort-type.type-default {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: #fef3c7;
+  color: #78350f;
 }
 
 /* 活动ID */
@@ -954,14 +960,14 @@ onMounted(() => {
 /* 拖拽时的幽灵项 */
 .ghost-item {
   opacity: 0.5;
-  background: var(--primary-bg, rgba(196, 113, 78, 0.1));
+  background: #dbeafe;
   border: 2px dashed var(--primary);
 }
 
 /* 正在拖拽的项 */
 .dragging-item {
   opacity: 0.95;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 4px 4px 0 var(--neo-border-color);
   background: var(--bg-secondary);
   border-color: var(--primary);
 }

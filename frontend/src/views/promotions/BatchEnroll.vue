@@ -266,7 +266,9 @@ onMounted(() => {
   justify-content: space-between;
   padding: 12px;
   background: var(--bg-tertiary);
-  border-radius: var(--radius-md);
+  border-radius: var(--neo-radius);
+  border: 2px solid var(--neo-border-color);
+  box-shadow: 2px 2px 0 var(--neo-border-color);
 }
 
 .filter-label {
@@ -345,8 +347,9 @@ onMounted(() => {
   justify-content: space-between;
   padding: 16px 20px;
   background: var(--bg-secondary);
-  border: 1px solid var(--surface-border);
-  border-radius: var(--radius-lg);
+  border: var(--neo-border-width) solid var(--neo-border-color);
+  border-radius: var(--neo-radius);
+  box-shadow: var(--neo-shadow-offset) var(--neo-shadow-offset) 0 var(--neo-border-color);
   margin-bottom: 24px;
 }
 
