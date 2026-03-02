@@ -1,0 +1,5 @@
+./automation.go
+./automation_extend.go
+./product.go
+./shop.go
+./user.go

@@ -2,6 +2,8 @@ package service
 
 import (
 	"errors"
+	"strconv"
+	"strings"
 
 	"ozon-manager/internal/dto"
 	"ozon-manager/internal/model"
@@ -14,6 +16,7 @@ var (
 	ErrNoAccessToShop       = errors.New("无权访问该店铺")
 	ErrShopNotBelongToYou   = errors.New("该店铺不属于您")
 	ErrActiveClientIDExists = errors.New("已存在使用该 Client ID 的可用店铺")
+	ErrInvalidClientID      = errors.New("Client ID必须是正整数")
 )
 
 type ShopService struct {
@@ -57,15 +60,20 @@ func (s *ShopService) GetShopByID(shopID uint) (*model.Shop, error) {
 
 // CreateShop 创建店铺
 func (s *ShopService) CreateShop(req *dto.CreateShopRequest) (*dto.ShopInfo, error) {
+	normalizedClientID, err := normalizeShopClientID(req.ClientID)
+	if err != nil {
+		return nil, err
+	}
+
 	// 检查ClientID是否已存在
-	existing, _ := s.shopRepo.FindByClientID(req.ClientID)
+	existing, _ := s.shopRepo.FindByClientID(normalizedClientID)
 	if existing != nil {
 		return nil, ErrClientIDExists
 	}
 
 	shop := &model.Shop{
 		Name:     req.Name,
-		ClientID: req.ClientID,
+		ClientID: normalizedClientID,
 		ApiKey:   req.ApiKey,
 		IsActive: true,
 	}
@@ -91,12 +99,17 @@ func (s *ShopService) UpdateShop(shopID uint, req *dto.UpdateShopRequest) error 
 		shop.Name = req.Name
 	}
 	if req.ClientID != "" {
+		normalizedClientID, normalizeErr := normalizeShopClientID(req.ClientID)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+
 		// 检查新ClientID是否已被其他店铺使用
-		existing, _ := s.shopRepo.FindByClientID(req.ClientID)
+		existing, _ := s.shopRepo.FindByClientID(normalizedClientID)
 		if existing != nil && existing.ID != shopID {
 			return ErrClientIDExists
 		}
-		shop.ClientID = req.ClientID
+		shop.ClientID = normalizedClientID
 	}
 	if req.ApiKey != "" {
 		shop.ApiKey = req.ApiKey
@@ -131,15 +144,20 @@ func (s *ShopService) GetShopCredentials(shopID uint) (clientID, apiKey string, 
 
 // CreateMyShop 店铺管理员创建自己的店铺
 func (s *ShopService) CreateMyShop(req *dto.CreateShopRequest, ownerID uint) (*dto.ShopInfo, error) {
+	normalizedClientID, err := normalizeShopClientID(req.ClientID)
+	if err != nil {
+		return nil, err
+	}
+
 	// 检查是否存在同 ClientID 且为可用的店铺
-	activeShop, _ := s.shopRepo.FindActiveByClientID(req.ClientID)
+	activeShop, _ := s.shopRepo.FindActiveByClientID(normalizedClientID)
 	if activeShop != nil {
 		return nil, ErrActiveClientIDExists
 	}
 
 	shop := &model.Shop{
 		Name:     req.Name,
-		ClientID: req.ClientID,
+		ClientID: normalizedClientID,
 		ApiKey:   req.ApiKey,
 		IsActive: true,
 		OwnerID:  ownerID,
@@ -191,12 +209,17 @@ func (s *ShopService) UpdateMyShop(shopID uint, req *dto.UpdateShopRequest, owne
 		shop.Name = req.Name
 	}
 	if req.ClientID != "" {
+		normalizedClientID, normalizeErr := normalizeShopClientID(req.ClientID)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+
 		// 检查新ClientID是否已被其他店铺使用
-		existing, _ := s.shopRepo.FindByClientID(req.ClientID)
+		existing, _ := s.shopRepo.FindByClientID(normalizedClientID)
 		if existing != nil && existing.ID != shopID {
 			return ErrClientIDExists
 		}
-		shop.ClientID = req.ClientID
+		shop.ClientID = normalizedClientID
 	}
 	if req.ApiKey != "" {
 		shop.ApiKey = req.ApiKey
@@ -301,4 +324,18 @@ func (s *ShopService) GetSystemOverview() (*dto.SystemOverviewResponse, error) {
 		ShopCount:      shopCount,
 		StaffCount:     staffCount,
 	}, nil
+}
+
+func normalizeShopClientID(clientID string) (string, error) {
+	trimmed := strings.TrimSpace(clientID)
+	if trimmed == "" {
+		return "", ErrInvalidClientID
+	}
+
+	parsed, err := strconv.ParseUint(trimmed, 10, 64)
+	if err != nil || parsed == 0 {
+		return "", ErrInvalidClientID
+	}
+
+	return strconv.FormatUint(parsed, 10), nil
 }

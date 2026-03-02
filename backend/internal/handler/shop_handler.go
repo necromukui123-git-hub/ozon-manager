@@ -105,6 +105,8 @@ func (h *ShopHandler) CreateShop(c *gin.Context) {
 		statusCode := http.StatusInternalServerError
 		if err == service.ErrClientIDExists {
 			statusCode = http.StatusConflict
+		} else if err == service.ErrInvalidClientID {
+			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, dto.Response{
 			Code:    statusCode,
@@ -147,6 +149,8 @@ func (h *ShopHandler) UpdateShop(c *gin.Context) {
 			statusCode = http.StatusNotFound
 		} else if err == service.ErrClientIDExists {
 			statusCode = http.StatusConflict
+		} else if err == service.ErrInvalidClientID {
+			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, dto.Response{
 			Code:    statusCode,
@@ -229,8 +233,10 @@ func (h *ShopHandler) CreateMyShop(c *gin.Context) {
 	shop, err := h.shopService.CreateMyShop(&req, ownerID)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		if err == service.ErrClientIDExists {
+		if err == service.ErrClientIDExists || err == service.ErrActiveClientIDExists {
 			statusCode = http.StatusConflict
+		} else if err == service.ErrInvalidClientID {
+			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, dto.Response{
 			Code:    statusCode,
@@ -276,6 +282,8 @@ func (h *ShopHandler) UpdateMyShop(c *gin.Context) {
 			statusCode = http.StatusForbidden
 		} else if err == service.ErrClientIDExists {
 			statusCode = http.StatusConflict
+		} else if err == service.ErrInvalidClientID {
+			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, dto.Response{
 			Code:    statusCode,

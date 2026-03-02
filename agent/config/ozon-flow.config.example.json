@@ -1,0 +1,79 @@
+{
+  "sellerBaseUrl": "https://seller.ozon.ru",
+  "artifactDir": "./artifacts",
+  "searchTimeoutMs": 15000,
+
+  "exitPromotion": {
+    "url": "/app/promotions",
+    "searchInputSelectors": [
+      "input[placeholder*=\"SKU\"]",
+      "input[placeholder*=\"Артикул\"]",
+      "input[type=\"search\"]"
+    ],
+    "searchSubmitSelectors": [
+      "button:has-text(\"Найти\")",
+      "button:has-text(\"Search\")"
+    ],
+    "removeButtonSelectors": [
+      "button:has-text(\"Удалить\")",
+      "button:has-text(\"Исключить\")",
+      "button:has-text(\"Remove\")"
+    ],
+    "confirmButtonSelectors": [
+      "button:has-text(\"Подтвердить\")",
+      "button:has-text(\"Удалить\")",
+      "button:has-text(\"Confirm\")"
+    ]
+  },
+
+  "reprice": {
+    "url": "/app/prices",
+    "searchInputSelectors": [
+      "input[placeholder*=\"SKU\"]",
+      "input[placeholder*=\"Артикул\"]",
+      "input[type=\"search\"]"
+    ],
+    "searchSubmitSelectors": [
+      "button:has-text(\"Найти\")",
+      "button:has-text(\"Search\")"
+    ],
+    "priceInputSelectors": [
+      "input[name*=\"price\"]",
+      "input[placeholder*=\"Цена\"]",
+      "input[type=\"number\"]"
+    ],
+    "saveButtonSelectors": [
+      "button:has-text(\"Сохранить\")",
+      "button:has-text(\"Save\")"
+    ]
+  },
+
+  "readdPromotion": {
+    "url": "/app/promotions",
+    "searchInputSelectors": [
+      "input[placeholder*=\"SKU\"]",
+      "input[placeholder*=\"Артикул\"]",
+      "input[type=\"search\"]"
+    ],
+    "searchSubmitSelectors": [
+      "button:has-text(\"Найти\")",
+      "button:has-text(\"Search\")"
+    ],
+    "addButtonSelectors": [
+      "button:has-text(\"Добавить\")",
+      "button:has-text(\"Участвовать\")",
+      "button:has-text(\"Add\")"
+    ],
+    "promoPriceInputSelectors": [
+      "input[name*=\"price\"]",
+      "input[placeholder*=\"Цена\"]",
+      "input[type=\"number\"]"
+    ],
+    "confirmButtonSelectors": [
+      "button:has-text(\"Подтвердить\")",
+      "button:has-text(\"Сохранить\")",
+      "button:has-text(\"Confirm\")"
+    ]
+  }
+}
+

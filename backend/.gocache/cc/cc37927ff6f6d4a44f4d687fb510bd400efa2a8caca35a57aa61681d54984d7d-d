@@ -1,0 +1,7 @@
+./auth_service.go
+./automation_service.go
+./automation_service_append.go
+./product_service.go
+./promotion_service.go
+./shop_service.go
+./user_service.go

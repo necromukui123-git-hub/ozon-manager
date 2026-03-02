@@ -68,13 +68,13 @@
           <el-checkbox-group v-model="selectedActionIds">
             <el-checkbox
               v-for="action in actions"
-              :key="action.action_id"
-              :value="action.action_id"
+              :key="action.id"
+              :value="action.id"
               class="action-checkbox"
             >
               <div class="action-item">
                 <span class="action-title">{{ action.display_name || action.title || `活动 #${action.action_id}` }}</span>
-                <span class="action-id">ID: {{ action.action_id }}</span>
+                <span class="action-id">ID: {{ action.source === 'shop' ? action.source_action_id : action.action_id }}</span>
               </div>
             </el-checkbox>
           </el-checkbox-group>
@@ -201,7 +201,8 @@ import {
   Promotion, Goods, Ticket
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { getActions, removeRepricePromoteV2 } from '@/api/promotion'
+import { getActions, unifiedRepricePromote } from '@/api/promotion'
+import { getJobDetail } from '@/api/automation'
 import { StatCard, BentoCard } from '@/components/bento'
 import * as XLSX from 'xlsx'
 
@@ -214,6 +215,7 @@ const result = ref(null)
 const actionsLoading = ref(false)
 const actions = ref([])
 const selectedActionIds = ref([])
+const pollTimer = ref(null)
 
 const manualForm = reactive({
   source_sku: '',
@@ -338,17 +340,21 @@ async function handleProcess() {
   result.value = null
 
   try {
-    const res = await removeRepricePromoteV2({
+    const res = await unifiedRepricePromote({
       shop_id: shopId,
       products: products.value,
       reenroll_action_ids: selectedActionIds.value
     })
-    result.value = res.data
-    if (res.data.success) {
-      ElMessage.success('处理完成')
-      products.value = []
+    if (res.data?.mode === 'async') {
+      await startPolling(res.data.job_id, shopId)
     } else {
-      ElMessage.warning('部分商品处理失败，请查看详情')
+      result.value = res.data?.result || res.data
+      if (result.value.success) {
+        ElMessage.success('处理完成')
+        products.value = []
+      } else {
+        ElMessage.warning('部分商品处理失败，请查看详情')
+      }
     }
   } catch (error) {
     console.error(error)
@@ -356,6 +362,55 @@ async function handleProcess() {
   } finally {
     processing.value = false
   }
+}
+
+async function startPolling(jobId, shopId) {
+  ElMessage.info('已提交后台异步处理，正在获取执行结果...')
+  if (pollTimer.value) clearInterval(pollTimer.value)
+
+  pollTimer.value = setInterval(async () => {
+    try {
+      const res = await getJobDetail(jobId, shopId)
+      const job = res.data
+      if (!job) return
+
+      if (['success', 'partial_success', 'failed', 'canceled'].includes(job.status)) {
+        clearInterval(pollTimer.value)
+        pollTimer.value = null
+
+        const successItems = job.success_items || 0
+        const failedItems = job.failed_items || 0
+        result.value = {
+          success: ['success', 'partial_success'].includes(job.status),
+          remove_count: successItems,
+          price_update_count: successItems,
+          promote_count: successItems,
+          failed_count: failedItems,
+          failed_items: (job.items || [])
+            .filter(i => i.overall_status === 'failed')
+            .map(i => ({
+              sku: i.source_sku,
+              step: i.step_exit_status === 'failed'
+                ? '退出促销'
+                : (i.step_reprice_status === 'failed' ? '更新价格' : '重新推广'),
+              error: i.step_exit_error || i.step_reprice_error || i.step_readd_error || '处理失败'
+            }))
+        }
+
+        if (job.status === 'success') {
+          ElMessage.success('异步处理完成')
+          products.value = []
+        } else {
+          ElMessage.warning('异步处理完成，存在失败项')
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      clearInterval(pollTimer.value)
+      pollTimer.value = null
+      ElMessage.error('轮询异步任务失败')
+    }
+  }, 3000)
 }
 
 watch(() => userStore.currentShopId, () => {

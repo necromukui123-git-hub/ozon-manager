@@ -56,17 +56,20 @@
         </div>
 
         <el-select
-          v-model="rejoinActionId"
+          v-model="rejoinActionIds"
           placeholder="选择重新报名的活动（可选）"
+          multiple
+          collapse-tags
+          collapse-tags-tooltip
           clearable
           style="width: 100%"
           :loading="actionsLoading"
         >
           <el-option
             v-for="action in actions"
-            :key="action.action_id"
-            :label="`${action.display_name || action.title || '活动 #' + action.action_id}`"
-            :value="action.action_id"
+            :key="action.id"
+            :label="`${action.display_name || action.title || '活动 #' + action.action_id} (${action.source === 'shop' ? '店铺' : '官方'})`"
+            :value="action.id"
           />
         </el-select>
         <div class="rejoin-hint">留空则不重新报名，仅执行退出促销和改价</div>
@@ -172,7 +175,8 @@ import {
   Refresh, InfoFilled, Document
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
-import { importLoss, processLossV2, getActions } from '@/api/promotion'
+import { importLoss, unifiedProcessLoss, getActions } from '@/api/promotion'
+import { getJobDetail } from '@/api/automation'
 import { BentoCard } from '@/components/bento'
 import * as XLSX from 'xlsx'
 
@@ -185,7 +189,8 @@ const previewData = ref([])
 const result = ref(null)
 const actionsLoading = ref(false)
 const actions = ref([])
-const rejoinActionId = ref(null)
+const rejoinActionIds = ref([])
+const pollTimer = ref(null)
 
 async function fetchActions() {
   const shopId = userStore.currentShopId
@@ -262,20 +267,64 @@ async function handleImport() {
       return
     }
 
-    const processRes = await processLossV2({
+    const processRes = await unifiedProcessLoss({
       shop_id: shopId,
       loss_product_ids: lossProductIds,
-      rejoin_action_id: rejoinActionId.value
+      rejoin_action_ids: rejoinActionIds.value
     })
-
-    result.value = processRes.data
-    ElMessage.success('处理完成')
+    if (processRes.data?.mode === 'async') {
+      await startPolling(processRes.data.job_id, shopId)
+    } else {
+      result.value = processRes.data?.result || processRes.data
+      ElMessage.success('处理完成')
+    }
   } catch (error) {
     console.error(error)
     ElMessage.error('处理失败')
   } finally {
     importing.value = false
   }
+}
+
+async function startPolling(jobId, shopId) {
+  ElMessage.info('已提交后台异步处理，正在获取执行结果...')
+  if (pollTimer.value) clearInterval(pollTimer.value)
+
+  pollTimer.value = setInterval(async () => {
+    try {
+      const res = await getJobDetail(jobId, shopId)
+      const job = res.data
+      if (!job) return
+
+      if (['success', 'partial_success', 'failed', 'canceled'].includes(job.status)) {
+        clearInterval(pollTimer.value)
+        pollTimer.value = null
+
+        const successItems = job.success_items || 0
+        const failedItems = job.failed_items || 0
+        result.value = {
+          success: ['success', 'partial_success'].includes(job.status),
+          processed_count: job.total_items || successItems + failedItems,
+          steps: {
+            exit_promotion: { success: successItems, failed: failedItems },
+            price_update: { success: successItems, failed: failedItems },
+            rejoin_promotions: { success: successItems, failed: failedItems }
+          }
+        }
+
+        if (job.status === 'success') {
+          ElMessage.success('异步处理完成')
+        } else {
+          ElMessage.warning('异步处理完成，存在失败项')
+        }
+      }
+    } catch (err) {
+      console.error(err)
+      clearInterval(pollTimer.value)
+      pollTimer.value = null
+      ElMessage.error('轮询异步任务失败')
+    }
+  }, 3000)
 }
 
 function downloadTemplate() {
@@ -290,7 +339,7 @@ function downloadTemplate() {
 }
 
 watch(() => userStore.currentShopId, () => {
-  rejoinActionId.value = null
+  rejoinActionIds.value = []
   fetchActions()
 })
 

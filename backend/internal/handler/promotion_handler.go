@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"ozon-manager/internal/middleware"
 	"ozon-manager/internal/service"
 	"ozon-manager/pkg/excel"
+	"ozon-manager/pkg/ozon"
 )
 
 type PromotionHandler struct {
@@ -343,8 +345,15 @@ func (h *PromotionHandler) SyncActions(c *gin.Context) {
 		return
 	}
 
-	actions, err := h.promotionService.SyncPromotionActions(req.ShopID)
+	actions, err := h.promotionService.SyncPromotionActionsV2(req.ShopID, claims.UserID)
 	if err != nil {
+		if errors.Is(err, ozon.ErrInvalidClientID) {
+			c.JSON(http.StatusBadRequest, dto.Response{
+				Code:    400,
+				Message: "店铺Client ID配置无效，请在“我的店铺”中填写Ozon控制台提供的纯数字Client ID",
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, dto.Response{
 			Code:    500,
 			Message: "同步促销活动失败: " + err.Error(),
@@ -357,6 +366,42 @@ func (h *PromotionHandler) SyncActions(c *gin.Context) {
 		Message: "同步成功",
 		Data:    actions,
 	})
+}
+
+// GetActionProducts 获取活动内商品
+// GET /api/v1/promotions/actions/:id/products
+func (h *PromotionHandler) GetActionProducts(c *gin.Context) {
+	actionID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{Code: 400, Message: "无效的活动ID"})
+		return
+	}
+
+	var req dto.ActionProductsRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{Code: 400, Message: "请求参数错误"})
+		return
+	}
+	if req.Page <= 0 {
+		req.Page = 1
+	}
+	if req.PageSize <= 0 {
+		req.PageSize = 20
+	}
+
+	claims := middleware.GetCurrentUser(c)
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, req.ShopID, claims.Role); err != nil {
+		c.JSON(http.StatusForbidden, dto.Response{Code: 403, Message: "无权访问该店铺"})
+		return
+	}
+
+	resp, err := h.promotionService.GetActionProducts(uint(actionID), &req, claims.UserID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.Response{Code: 500, Message: "获取活动商品失败: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Response{Code: 200, Message: "success", Data: resp})
 }
 
 // GetActions 获取促销活动列表

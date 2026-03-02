@@ -1,0 +1,8 @@
+./automation_repo.go
+./db.go
+./operation_log_repo.go
+./product_repo.go
+./promotion_repo.go
+./promotion_repo_extend.go
+./shop_repo.go
+./user_repo.go

@@ -34,16 +34,16 @@ func (Product) TableName() string {
 
 // LossProduct 亏损商品表
 type LossProduct struct {
-	ID               uint       `gorm:"primaryKey" json:"id"`
-	ProductID        uint       `gorm:"not null;uniqueIndex:idx_product_loss_date" json:"product_id"`
-	LossDate         time.Time  `gorm:"type:date;not null;uniqueIndex:idx_product_loss_date" json:"loss_date"`
-	OriginalPrice    float64    `gorm:"type:decimal(12,2)" json:"original_price"`
-	NewPrice         float64    `gorm:"type:decimal(12,2);not null" json:"new_price"`
-	PriceUpdated     bool       `gorm:"default:false" json:"price_updated"`
-	PromotionExited  bool       `gorm:"default:false" json:"promotion_exited"`
-	PromotionRejoined bool      `gorm:"default:false" json:"promotion_rejoined"`
-	ProcessedAt      *time.Time `json:"processed_at"`
-	CreatedAt        time.Time  `gorm:"autoCreateTime" json:"created_at"`
+	ID                uint       `gorm:"primaryKey" json:"id"`
+	ProductID         uint       `gorm:"not null;uniqueIndex:idx_product_loss_date" json:"product_id"`
+	LossDate          time.Time  `gorm:"type:date;not null;uniqueIndex:idx_product_loss_date" json:"loss_date"`
+	OriginalPrice     float64    `gorm:"type:decimal(12,2)" json:"original_price"`
+	NewPrice          float64    `gorm:"type:decimal(12,2);not null" json:"new_price"`
+	PriceUpdated      bool       `gorm:"default:false" json:"price_updated"`
+	PromotionExited   bool       `gorm:"default:false" json:"promotion_exited"`
+	PromotionRejoined bool       `gorm:"default:false" json:"promotion_rejoined"`
+	ProcessedAt       *time.Time `json:"processed_at"`
+	CreatedAt         time.Time  `gorm:"autoCreateTime" json:"created_at"`
 
 	// 关联
 	Product Product `gorm:"foreignKey:ProductID" json:"product,omitempty"`
@@ -76,22 +76,26 @@ func (PromotedProduct) TableName() string {
 
 // PromotionAction 促销活动缓存表
 type PromotionAction struct {
-	ID                 uint       `gorm:"primaryKey" json:"id"`
-	ShopID             uint       `gorm:"not null;uniqueIndex:idx_shop_action" json:"shop_id"`
-	ActionID           int64      `gorm:"not null;uniqueIndex:idx_shop_action" json:"action_id"`
-	Title              string     `gorm:"size:200" json:"title"`
-	DisplayName        string     `gorm:"size:200" json:"display_name"` // 自定义中文显示名称
-	ActionType         string     `gorm:"size:50" json:"action_type"`
-	DateStart          *time.Time `json:"date_start"`
-	DateEnd            *time.Time `json:"date_end"`
-	ParticipatingCount int        `gorm:"default:0" json:"participating_products_count"`
-	PotentialCount     int        `gorm:"default:0" json:"potential_products_count"`
-	IsManual           bool       `gorm:"default:false" json:"is_manual"`
-	Status             string     `gorm:"size:20;default:active" json:"status"` // active / expired / disabled
-	SortOrder          int        `gorm:"default:0" json:"sort_order"`          // 排序顺序
-	LastSyncedAt       *time.Time `json:"last_synced_at"`
-	CreatedAt          time.Time  `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt          time.Time  `gorm:"autoUpdateTime" json:"updated_at"`
+	ID                   uint           `gorm:"primaryKey" json:"id"`
+	ShopID               uint           `gorm:"not null;uniqueIndex:idx_shop_action" json:"shop_id"`
+	ActionID             int64          `gorm:"not null;uniqueIndex:idx_shop_action" json:"action_id"`
+	Source               string         `gorm:"size:20;not null;default:official;index" json:"source"`
+	SourceActionID       string         `gorm:"size:120;not null;default:'';uniqueIndex:idx_shop_source_action" json:"source_action_id"`
+	Title                string         `gorm:"size:200" json:"title"`
+	DisplayName          string         `gorm:"size:200" json:"display_name"` // 自定义中文显示名称
+	ActionType           string         `gorm:"size:50" json:"action_type"`
+	DateStart            *time.Time     `json:"date_start"`
+	DateEnd              *time.Time     `json:"date_end"`
+	ParticipatingCount   int            `gorm:"default:0" json:"participating_products_count"`
+	PotentialCount       int            `gorm:"default:0" json:"potential_products_count"`
+	IsManual             bool           `gorm:"default:false" json:"is_manual"`
+	Status               string         `gorm:"size:20;default:active" json:"status"` // active / expired / disabled
+	SortOrder            int            `gorm:"default:0" json:"sort_order"`          // 排序顺序
+	SourcePayload        datatypes.JSON `gorm:"type:jsonb" json:"source_payload"`
+	LastSyncedAt         *time.Time     `json:"last_synced_at"`
+	LastProductsSyncedAt *time.Time     `json:"last_products_synced_at"`
+	CreatedAt            time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt            time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 
 	// 关联
 	Shop Shop `gorm:"foreignKey:ShopID" json:"shop,omitempty"`
@@ -99,6 +103,30 @@ type PromotionAction struct {
 
 func (PromotionAction) TableName() string {
 	return "promotion_actions"
+}
+
+// PromotionActionProduct 活动商品缓存表
+type PromotionActionProduct struct {
+	ID                uint           `gorm:"primaryKey" json:"id"`
+	PromotionActionID uint           `gorm:"not null;index;uniqueIndex:idx_action_product_sku" json:"promotion_action_id"`
+	ShopID            uint           `gorm:"not null;index" json:"shop_id"`
+	OzonProductID     int64          `gorm:"index" json:"ozon_product_id"`
+	SourceSKU         string         `gorm:"size:120;not null;uniqueIndex:idx_action_product_sku" json:"source_sku"`
+	Name              string         `gorm:"size:500" json:"name"`
+	Price             float64        `gorm:"type:decimal(12,2)" json:"price"`
+	ActionPrice       float64        `gorm:"type:decimal(12,2)" json:"action_price"`
+	Stock             int            `json:"stock"`
+	Status            string         `gorm:"size:30;default:active" json:"status"`
+	Payload           datatypes.JSON `gorm:"type:jsonb" json:"payload"`
+	LastSyncedAt      *time.Time     `json:"last_synced_at"`
+	CreatedAt         time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt         time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+
+	PromotionAction PromotionAction `gorm:"foreignKey:PromotionActionID" json:"promotion_action,omitempty"`
+}
+
+func (PromotionActionProduct) TableName() string {
+	return "promotion_action_products"
 }
 
 // OperationLog 操作日志表

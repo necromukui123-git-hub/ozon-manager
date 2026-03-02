@@ -53,13 +53,13 @@
           <el-checkbox-group v-model="form.action_ids">
             <el-checkbox
               v-for="action in actions"
-              :key="action.action_id"
-              :value="action.action_id"
+              :key="action.id"
+              :value="action.id"
               class="action-checkbox"
             >
               <div class="action-item">
                 <span class="action-title">{{ action.display_name || action.title || `活动 #${action.action_id}` }}</span>
-                <span class="action-id">ID: {{ action.action_id }}</span>
+                <span class="action-id">ID: {{ action.source === 'shop' ? action.source_action_id : action.action_id }}</span>
               </div>
             </el-checkbox>
           </el-checkbox-group>
@@ -138,7 +138,8 @@
 import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
-import { batchEnrollV2, getActions } from '@/api/promotion'
+import { unifiedEnroll, getActions } from '@/api/promotion'
+import { getJobDetail } from '@/api/automation'
 import { StatCard, BentoCard } from '@/components/bento'
 import {
   Upload, WarningFilled, Refresh, Filter, Ticket, Box, Checked,
@@ -151,6 +152,7 @@ const loading = ref(false)
 const actionsLoading = ref(false)
 const result = ref(null)
 const actions = ref([])
+const pollTimer = ref(null)
 
 const form = reactive({
   exclude_loss: true,
@@ -167,13 +169,58 @@ async function fetchActions() {
     const res = await getActions(shopId)
     actions.value = res.data || []
     if (form.action_ids.length === 0 && actions.value.length > 0) {
-      form.action_ids = actions.value.map(a => a.action_id)
+      form.action_ids = actions.value.map(a => a.id)
     }
   } catch (error) {
     console.error(error)
   } finally {
     actionsLoading.value = false
   }
+}
+
+async function startPolling(jobId, shopId) {
+  loading.value = true
+  
+  if (pollTimer.value) clearInterval(pollTimer.value)
+  ElMessage.info('已提交后台异步处理，正在获取执行结果...')
+
+  pollTimer.value = setInterval(async () => {
+    try {
+      const res = await getJobDetail(jobId, shopId)
+      const job = res.data
+
+      if (['success', 'partial_success', 'failed', 'canceled'].includes(job.status)) {
+        clearInterval(pollTimer.value)
+        pollTimer.value = null
+        loading.value = false
+
+        // 组装统一 result 对象给界面渲染
+        const isSuccess = job.status === 'success' || job.status === 'partial_success'
+        result.value = {
+          success: isSuccess,
+          enrolled_count: job.success_items || 0,
+          failed_count: job.failed_items || 0,
+          details: (job.items || []).filter(i => i.overall_status === 'failed').map(i => ({
+            source_sku: i.source_sku,
+            status: 'failed',
+            error: i.step_exit_error || i.step_reprice_error || i.step_readd_error || '店铺任务执行失败'
+          }))
+        }
+
+        if (job.status === 'success') {
+          ElMessage.success(`异步执行完成，成功 ${job.success_items} 个商品`)
+        } else {
+          ElMessage.warning(`异步执行完成，部分商品失败。成功 ${job.success_items} 个`)
+        }
+      }
+    } catch (e) {
+      console.error('Job polling failed', e)
+      clearInterval(pollTimer.value)
+      pollTimer.value = null
+      loading.value = false
+      ElMessage.error('无法轮询任务状态，请重试')
+    }
+  }, 3000)
 }
 
 async function handleSubmit() {
@@ -190,7 +237,7 @@ async function handleSubmit() {
 
   try {
     await ElMessageBox.confirm(
-      `确定要批量报名 ${form.action_ids.length} 个促销活动吗？此操作可能需要一些时间。`,
+      `确定要对所选活动执行自动改价并报名吗？\n包含官方活动时将同步处理，包含店铺活动时将异步处理。`,
       '确认操作',
       {
         confirmButtonText: '确定',
@@ -206,22 +253,31 @@ async function handleSubmit() {
   result.value = null
 
   try {
-    const res = await batchEnrollV2({
+    const res = await unifiedEnroll({
       shop_id: shopId,
       action_ids: form.action_ids,
       exclude_loss: form.exclude_loss,
       exclude_promoted: form.exclude_promoted
     })
-    result.value = res.data
-    if (res.data.success) {
-      ElMessage.success(`批量报名完成，成功 ${res.data.enrolled_count} 个商品`)
+
+    if (res.data && res.data.mode === 'sync') {
+      result.value = res.data.results
+      if (result.value.success) {
+        ElMessage.success(`同步处理完成，成功 ${result.value.enrolled_count} 个商品`)
+      } else {
+        ElMessage.warning('同步处理发生部分失败，请查看明细')
+      }
+      loading.value = false
+    } else if (res.data && res.data.mode === 'async') {
+      // 进入轮询
+      startPolling(res.data.job_id, shopId)
     } else {
-      ElMessage.warning('部分商品报名失败，请查看详情')
+      loading.value = false
+      ElMessage.error('未知响应模式')
     }
   } catch (error) {
     console.error(error)
-    ElMessage.error('操作失败')
-  } finally {
+    ElMessage.error('操作提交失败')
     loading.value = false
   }
 }

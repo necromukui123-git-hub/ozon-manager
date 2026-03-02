@@ -121,6 +121,7 @@
           :key="action.id"
           class="action-card"
           :class="{ 'is-active': isActionActive(action) }"
+          @click="openActionProducts(action)"
         >
           <!-- 状态指示条 -->
           <div class="status-indicator" :class="getStatusClass(action)"></div>
@@ -130,7 +131,7 @@
             <div class="type-badge" :class="getTypeClass(action.action_type)">
               {{ formatActionType(action.action_type) }}
             </div>
-            <el-dropdown trigger="click" @command="(cmd) => handleCommand(cmd, action)">
+            <el-dropdown trigger="click" @command="(cmd) => handleCommand(cmd, action)" @click.stop>
               <el-button text circle size="small" class="more-btn">
                 <el-icon><MoreFilled /></el-icon>
               </el-button>
@@ -259,6 +260,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import { getActions, syncActions, createManualAction, deleteAction, updateActionDisplayName, updateActionsSortOrder } from '@/api/promotion'
@@ -267,6 +269,7 @@ import draggable from 'vuedraggable'
 import { Refresh, Plus, Edit, MoreFilled, Delete, Calendar, Goods, Box, Ticket, Clock, Rank, Check, InfoFilled } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
+const router = useRouter()
 
 const loading = ref(false)
 const syncing = ref(false)
@@ -358,8 +361,23 @@ async function handleSync() {
   syncing.value = true
   try {
     const res = await syncActions(shopId)
-    actions.value = res.data || []
-    ElMessage.success('同步成功')
+    const payload = res.data || {}
+    actions.value = payload.actions || []
+
+    const officialCount = payload.sync_summary?.official_count ?? 0
+    const shopCount = payload.sync_summary?.shop_count ?? 0
+    const pending = Boolean(payload.shop_sync_pending)
+    const shopError = payload.partial_errors?.shop || ''
+
+    if (shopError) {
+      ElMessage.warning(`店铺活动同步提示：${shopError}`)
+    }
+
+    if (pending) {
+      ElMessage.success(`同步已启动：官方 ${officialCount}，店铺后台同步中`) 
+    } else {
+      ElMessage.success(`同步完成：官方 ${officialCount}，店铺 ${shopCount}`)
+    }
   } catch (error) {
     console.error(error)
     ElMessage.error('同步失败')
@@ -424,6 +442,21 @@ function handleCommand(command, action) {
   } else if (command === 'delete') {
     handleDelete(action)
   }
+}
+
+function openActionProducts(action) {
+  const shopId = userStore.currentShopId
+  if (!shopId || !action?.id) return
+  router.push({
+    name: 'ActionProducts',
+    params: { id: action.id },
+    query: {
+      shop_id: String(shopId),
+      title: action.display_name || action.title || '',
+      source: action.source || 'official',
+      source_action_id: action.source_action_id || action.action_id || ''
+    }
+  })
 }
 
 function isActionActive(action) {

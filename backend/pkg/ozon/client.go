@@ -3,15 +3,20 @@ package ozon
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
 const (
 	BaseURL = "https://api-seller.ozon.ru"
 )
+
+var ErrInvalidClientID = errors.New("client_id must be a positive integer")
 
 // Client Ozon API客户端
 type Client struct {
@@ -47,8 +52,13 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
+	normalizedClientID, err := normalizeClientID(c.clientID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid client_id: %w", err)
+	}
+
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Client-Id", c.clientID)
+	req.Header.Set("Client-Id", normalizedClientID)
 	req.Header.Set("Api-Key", c.apiKey)
 
 	resp, err := c.httpClient.Do(req)
@@ -69,24 +79,38 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	return respBody, nil
 }
 
+func normalizeClientID(clientID string) (string, error) {
+	trimmed := strings.TrimSpace(clientID)
+	if trimmed == "" {
+		return "", ErrInvalidClientID
+	}
+
+	parsed, err := strconv.ParseUint(trimmed, 10, 64)
+	if err != nil || parsed == 0 {
+		return "", ErrInvalidClientID
+	}
+
+	return strconv.FormatUint(parsed, 10), nil
+}
+
 // Product 商品信息
 type Product struct {
-	ProductID      int64   `json:"product_id"`
-	OfferID        string  `json:"offer_id"` // 这就是source_sku
-	Name           string  `json:"name"`
-	SKU            int64   `json:"sku"`
-	Price          string  `json:"price"`
-	OldPrice       string  `json:"old_price"`
-	MarketingPrice string  `json:"marketing_price"`
-	MinPrice       string  `json:"min_price"`
-	Visible        bool    `json:"visible"`
+	ProductID      int64  `json:"product_id"`
+	OfferID        string `json:"offer_id"` // 这就是source_sku
+	Name           string `json:"name"`
+	SKU            int64  `json:"sku"`
+	Price          string `json:"price"`
+	OldPrice       string `json:"old_price"`
+	MarketingPrice string `json:"marketing_price"`
+	MinPrice       string `json:"min_price"`
+	Visible        bool   `json:"visible"`
 }
 
 // ProductListRequest 商品列表请求
 type ProductListRequest struct {
-	Filter     ProductFilter `json:"filter,omitempty"`
-	LastID     string        `json:"last_id,omitempty"`
-	Limit      int           `json:"limit"`
+	Filter ProductFilter `json:"filter,omitempty"`
+	LastID string        `json:"last_id,omitempty"`
+	Limit  int           `json:"limit"`
 }
 
 type ProductFilter struct {

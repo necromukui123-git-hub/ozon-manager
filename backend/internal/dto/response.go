@@ -2,9 +2,9 @@ package dto
 
 // 促销管理相关请求
 type BatchEnrollRequest struct {
-	ShopID             uint `json:"shop_id" binding:"required"`
-	ExcludeLoss        bool `json:"exclude_loss"`
-	ExcludePromoted    bool `json:"exclude_promoted"`
+	ShopID          uint `json:"shop_id" binding:"required"`
+	ExcludeLoss     bool `json:"exclude_loss"`
+	ExcludePromoted bool `json:"exclude_promoted"`
 }
 
 type BatchEnrollResponse struct {
@@ -27,9 +27,9 @@ type ProcessLossRequest struct {
 }
 
 type ProcessLossResponse struct {
-	Success        bool          `json:"success"`
-	ProcessedCount int           `json:"processed_count"`
-	Steps          ProcessSteps  `json:"steps"`
+	Success        bool         `json:"success"`
+	ProcessedCount int          `json:"processed_count"`
+	Steps          ProcessSteps `json:"steps"`
 }
 
 type ProcessSteps struct {
@@ -44,8 +44,8 @@ type StepResult struct {
 }
 
 type RemoveRepricePromoteRequest struct {
-	ShopID   uint            `json:"shop_id" binding:"required"`
-	Products []RepriceItem   `json:"products" binding:"required,dive"`
+	ShopID   uint          `json:"shop_id" binding:"required"`
+	Products []RepriceItem `json:"products" binding:"required,dive"`
 }
 
 type RepriceItem struct {
@@ -112,4 +112,16 @@ type StatsOverview struct {
 	LossProducts       int64 `json:"loss_products"`
 	PromotedProducts   int64 `json:"promoted_products"`
 	PromotableProducts int64 `json:"promotable_products"`
+}
+
+type SyncActionsSummary struct {
+	OfficialCount int `json:"official_count"`
+	ShopCount     int `json:"shop_count"`
+}
+
+type SyncActionsResult struct {
+	Actions         interface{}        `json:"actions"`
+	SyncSummary     SyncActionsSummary `json:"sync_summary"`
+	ShopSyncPending bool               `json:"shop_sync_pending"`
+	PartialErrors   map[string]string  `json:"partial_errors"`
 }

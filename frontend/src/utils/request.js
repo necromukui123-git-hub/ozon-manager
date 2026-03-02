@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
+import { createSystemLog } from '@/api/log'
 
 const request = axios.create({
   baseURL: '/api/v1',
@@ -27,8 +28,6 @@ request.interceptors.response.use(
     return response.data
   },
   error => {
-    const { response } = error
-
     if (response) {
       switch (response.status) {
         case 401:
@@ -44,13 +43,34 @@ request.interceptors.response.use(
           ElMessage.error('资源不存在')
           break
         case 500:
+        case 502:
+        case 503:
+        case 504:
           ElMessage.error(response.data?.message || '服务器错误')
+          // 记录服务器 5xx 错误
+          if (!config.silent) {
+            createSystemLog({
+              level: 'error',
+              message: `API Server Error [${response.status}]: ${response.data?.message || response.statusText}`,
+              url: config.url,
+              stack: JSON.stringify(config.data || config.params)
+            })
+          }
           break
         default:
           ElMessage.error(response.data?.message || '请求失败')
       }
     } else {
       ElMessage.error('网络连接失败')
+      // 记录完全断网或无响应的错误
+      if (!config.silent) {
+        createSystemLog({
+          level: 'error',
+          message: `Network Error or Timeout: ${error.message}`,
+          url: config.url,
+          stack: error.stack || ''
+        })
+      }
     }
 
     return Promise.reject(error)

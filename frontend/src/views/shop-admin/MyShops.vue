@@ -128,9 +128,22 @@ const form = reactive({
   client_id: '',
   api_key: ''
 })
+
+const validateClientID = (_, value, callback) => {
+  if (!value || !String(value).trim()) {
+    callback(new Error('请输入Client ID'))
+    return
+  }
+  if (!/^[1-9]\d*$/.test(String(value).trim())) {
+    callback(new Error('Client ID必须是正整数'))
+    return
+  }
+  callback()
+}
+
 const rules = {
   name: [{ required: true, message: '请输入店铺名称', trigger: 'blur' }],
-  client_id: [{ required: true, message: '请输入Client ID', trigger: 'blur' }],
+  client_id: [{ validator: validateClientID, trigger: 'blur' }],
   api_key: [{ required: true, message: '请输入API Key', trigger: 'blur' }]
 }
 
@@ -176,11 +189,15 @@ async function handleSubmit() {
 
     saving.value = true
     try {
+      const payload = {
+        ...form,
+        client_id: String(form.client_id).trim()
+      }
       if (isEdit.value) {
-        await updateMyShop(editingId.value, form)
+        await updateMyShop(editingId.value, payload)
         ElMessage.success('更新成功')
       } else {
-        await createMyShop(form)
+        await createMyShop(payload)
         ElMessage.success('创建成功')
       }
       dialogVisible.value = false

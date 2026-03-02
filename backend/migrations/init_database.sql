@@ -112,6 +112,8 @@ CREATE TABLE IF NOT EXISTS promotion_actions (
     id                  SERIAL PRIMARY KEY,
     shop_id             INTEGER NOT NULL REFERENCES shops(id),
     action_id           BIGINT NOT NULL,
+    source              VARCHAR(20) NOT NULL DEFAULT 'official',
+    source_action_id    VARCHAR(120) NOT NULL,
     title               VARCHAR(200),
     display_name        VARCHAR(200),  -- 自定义中文显示名称
     action_type         VARCHAR(50),
@@ -122,14 +124,37 @@ CREATE TABLE IF NOT EXISTS promotion_actions (
     is_manual           BOOLEAN DEFAULT false,
     status              VARCHAR(20) DEFAULT 'active',  -- active / expired / disabled
     sort_order          INTEGER DEFAULT 0,  -- 排序顺序
+    source_payload      JSONB,
     last_synced_at      TIMESTAMP,
+    last_products_synced_at TIMESTAMP,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(shop_id, action_id)
+    UNIQUE(shop_id, source, source_action_id)
 );
 
 -- ============================================================
--- 8. 操作日志表
+-- 8. 活动商品缓存表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS promotion_action_products (
+    id                  SERIAL PRIMARY KEY,
+    promotion_action_id INTEGER NOT NULL REFERENCES promotion_actions(id) ON DELETE CASCADE,
+    shop_id             INTEGER NOT NULL REFERENCES shops(id),
+    ozon_product_id     BIGINT,
+    source_sku          VARCHAR(120) NOT NULL,
+    name                VARCHAR(500),
+    price               DECIMAL(12, 2),
+    action_price        DECIMAL(12, 2),
+    stock               INTEGER DEFAULT 0,
+    status              VARCHAR(30) DEFAULT 'active',
+    payload             JSONB,
+    last_synced_at      TIMESTAMP,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(promotion_action_id, source_sku)
+);
+
+-- ============================================================
+-- 9. 操作日志表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS operation_logs (
     id                  SERIAL PRIMARY KEY,
@@ -147,6 +172,93 @@ CREATE TABLE IF NOT EXISTS operation_logs (
 );
 
 -- ============================================================
+-- 10. 自动化任务主表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automation_jobs (
+    id                      SERIAL PRIMARY KEY,
+    shop_id                 INTEGER NOT NULL REFERENCES shops(id),
+    created_by              INTEGER NOT NULL REFERENCES users(id),
+    assigned_agent_id       INTEGER,
+    job_type                VARCHAR(50) NOT NULL,
+    status                  VARCHAR(30) NOT NULL DEFAULT 'pending',
+    dry_run                 BOOLEAN DEFAULT false,
+    requires_confirmation   BOOLEAN DEFAULT false,
+    rate_limit              INTEGER DEFAULT 30,
+    total_items             INTEGER DEFAULT 0,
+    success_items           INTEGER DEFAULT 0,
+    failed_items            INTEGER DEFAULT 0,
+    error_message           TEXT,
+    started_at              TIMESTAMP,
+    completed_at            TIMESTAMP,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 11. 自动化任务明细表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automation_job_items (
+    id                      SERIAL PRIMARY KEY,
+    job_id                  INTEGER NOT NULL REFERENCES automation_jobs(id) ON DELETE CASCADE,
+    product_id              INTEGER REFERENCES products(id),
+    source_sku              VARCHAR(100) NOT NULL,
+    target_price            DECIMAL(12, 2) NOT NULL,
+    overall_status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+    step_exit_status        VARCHAR(20) NOT NULL DEFAULT 'pending',
+    step_reprice_status     VARCHAR(20) NOT NULL DEFAULT 'pending',
+    step_readd_status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+    step_exit_error         TEXT,
+    step_reprice_error      TEXT,
+    step_readd_error        TEXT,
+    retry_count             INTEGER DEFAULT 0,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(job_id, source_sku)
+);
+
+-- ============================================================
+-- 12. 自动化Agent表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automation_agents (
+    id                      SERIAL PRIMARY KEY,
+    agent_key               VARCHAR(100) NOT NULL UNIQUE,
+    name                    VARCHAR(100) NOT NULL,
+    hostname                VARCHAR(200),
+    status                  VARCHAR(20) NOT NULL DEFAULT 'offline',
+    capabilities            JSONB,
+    last_heartbeat_at       TIMESTAMP,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 13. 自动化任务事件表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automation_job_events (
+    id                      SERIAL PRIMARY KEY,
+    job_id                  INTEGER NOT NULL REFERENCES automation_jobs(id) ON DELETE CASCADE,
+    event_type              VARCHAR(50) NOT NULL,
+    message                 TEXT,
+    payload                 JSONB,
+    created_by              INTEGER REFERENCES users(id),
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 14. 自动化产物索引表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS automation_artifacts (
+    id                      SERIAL PRIMARY KEY,
+    job_id                  INTEGER NOT NULL REFERENCES automation_jobs(id) ON DELETE CASCADE,
+    job_item_id             INTEGER REFERENCES automation_job_items(id) ON DELETE SET NULL,
+    artifact_type           VARCHAR(50) NOT NULL,
+    storage_path            VARCHAR(500) NOT NULL,
+    checksum                VARCHAR(128),
+    meta                    JSONB,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
 -- 索引
 -- ============================================================
 CREATE INDEX IF NOT EXISTS idx_products_shop_id ON products(shop_id);
@@ -161,7 +273,22 @@ CREATE INDEX IF NOT EXISTS idx_promoted_products_status ON promoted_products(sta
 CREATE INDEX IF NOT EXISTS idx_operation_logs_user_id ON operation_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_operation_logs_created_at ON operation_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_promotion_actions_shop_id ON promotion_actions(shop_id);
+CREATE INDEX IF NOT EXISTS idx_promotion_actions_source ON promotion_actions(source);
+CREATE INDEX IF NOT EXISTS idx_promotion_actions_source_action_id ON promotion_actions(source_action_id);
 CREATE INDEX IF NOT EXISTS idx_promotion_actions_sort_order ON promotion_actions(shop_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_promotion_action_products_action_id ON promotion_action_products(promotion_action_id);
+CREATE INDEX IF NOT EXISTS idx_promotion_action_products_shop_id ON promotion_action_products(shop_id);
+CREATE INDEX IF NOT EXISTS idx_promotion_action_products_ozon_product_id ON promotion_action_products(ozon_product_id);
+CREATE INDEX IF NOT EXISTS idx_automation_jobs_shop_id ON automation_jobs(shop_id);
+CREATE INDEX IF NOT EXISTS idx_automation_jobs_status ON automation_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_automation_jobs_created_by ON automation_jobs(created_by);
+CREATE INDEX IF NOT EXISTS idx_automation_jobs_assigned_agent_id ON automation_jobs(assigned_agent_id);
+CREATE INDEX IF NOT EXISTS idx_automation_job_items_job_id ON automation_job_items(job_id);
+CREATE INDEX IF NOT EXISTS idx_automation_job_items_product_id ON automation_job_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_automation_job_items_overall_status ON automation_job_items(overall_status);
+CREATE INDEX IF NOT EXISTS idx_automation_agents_status ON automation_agents(status);
+CREATE INDEX IF NOT EXISTS idx_automation_job_events_job_id ON automation_job_events(job_id);
+CREATE INDEX IF NOT EXISTS idx_automation_artifacts_job_id ON automation_artifacts(job_id);
 
 -- ============================================================
 -- 初始数据：超级管理员账户

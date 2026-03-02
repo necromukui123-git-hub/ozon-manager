@@ -8,7 +8,9 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.2.0
 	github.com/spf13/viper v1.18.2
 	github.com/xuri/excelize/v2 v2.8.0
+	go.uber.org/zap v1.21.0
 	golang.org/x/crypto v0.23.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gorm.io/datatypes v1.2.7
 	gorm.io/driver/postgres v1.5.4
 	gorm.io/gorm v1.30.0
@@ -57,6 +59,7 @@ require (
 	github.com/ugorji/go/codec v1.2.11 // indirect
 	github.com/xuri/efp v0.0.0-20230802181842-ad255f2331ca // indirect
 	github.com/xuri/nfp v0.0.0-20230819163627-dc951e3ffe1a // indirect
+	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9 // indirect

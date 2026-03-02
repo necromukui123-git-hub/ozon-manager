@@ -186,6 +186,8 @@ type PromotionActionItem struct {
 	ID                 uint    `json:"id"`
 	ShopID             uint    `json:"shop_id"`
 	ActionID           int64   `json:"action_id"`
+	Source             string  `json:"source"`
+	SourceActionID     string  `json:"source_action_id"`
 	Title              string  `json:"title"`
 	ActionType         string  `json:"action_type"`
 	DateStart          *string `json:"date_start"`
@@ -195,6 +197,35 @@ type PromotionActionItem struct {
 	IsManual           bool    `json:"is_manual"`
 	Status             string  `json:"status"`
 	LastSyncedAt       *string `json:"last_synced_at"`
+}
+
+type ActionProductsRequest struct {
+	ShopID       uint `form:"shop_id" binding:"required"`
+	Page         int  `form:"page,default=1"`
+	PageSize     int  `form:"page_size,default=20"`
+	ForceRefresh bool `form:"force_refresh"`
+}
+
+type ActionProductItem struct {
+	ID            uint    `json:"id"`
+	OzonProductID int64   `json:"ozon_product_id"`
+	SourceSKU     string  `json:"source_sku"`
+	Name          string  `json:"name"`
+	Price         float64 `json:"price"`
+	ActionPrice   float64 `json:"action_price"`
+	Stock         int     `json:"stock"`
+	Status        string  `json:"status"`
+	LastSyncedAt  string  `json:"last_synced_at"`
+}
+
+type ActionProductsResponse struct {
+	ActionID       uint                `json:"action_id"`
+	Source         string              `json:"source"`
+	SourceActionID string              `json:"source_action_id"`
+	Total          int64               `json:"total"`
+	Page           int                 `json:"page"`
+	PageSize       int                 `json:"page_size"`
+	Items          []ActionProductItem `json:"items"`
 }
 
 // 批量报名V2请求（支持选择具体活动）
@@ -234,4 +265,69 @@ type UpdateActionsSortOrderRequest struct {
 type SortOrderItem struct {
 	ID        uint `json:"id" binding:"required"`
 	SortOrder int  `json:"sort_order" binding:"min=0"`
+}
+
+// ========== 统一促销操作 ==========
+
+// UnifiedEnrollRequest 统一报名请求（自动判断官方/店铺）
+type UnifiedEnrollRequest struct {
+	ShopID          uint     `json:"shop_id" binding:"required"`
+	ActionIDs       []uint   `json:"action_ids" binding:"required,min=1"` // promotion_actions 表 ID
+	SourceSKUs      []string `json:"source_skus"`                         // 店铺活动用：指定 SKU 列表
+	ExcludeLoss     bool     `json:"exclude_loss"`                        // 官方活动用
+	ExcludePromoted bool     `json:"exclude_promoted"`                    // 官方活动用
+}
+
+// UnifiedRemoveRequest 统一退出请求
+type UnifiedRemoveRequest struct {
+	ShopID     uint     `json:"shop_id" binding:"required"`
+	ActionIDs  []uint   `json:"action_ids" binding:"required,min=1"`
+	SourceSKUs []string `json:"source_skus" binding:"required,min=1"`
+}
+
+// UnifiedOperationResponse 统一操作响应
+type UnifiedOperationResponse struct {
+	Mode    string               `json:"mode"`              // "sync" 或 "async"
+	Results *BatchEnrollResponse `json:"results,omitempty"` // sync 模式下的结果
+	JobID   *uint                `json:"job_id,omitempty"`  // async 模式下的 job ID
+	Message string               `json:"message,omitempty"`
+}
+
+// UnifiedProcessLossRequest 统一亏损处理请求
+type UnifiedProcessLossRequest struct {
+	ShopID          uint   `json:"shop_id" binding:"required"`
+	LossProductIDs  []uint `json:"loss_product_ids" binding:"required,min=1"`
+	RejoinActionIDs []uint `json:"rejoin_action_ids"`
+}
+
+// UnifiedRepricePromoteRequest 统一改价推广请求
+type UnifiedRepricePromoteRequest struct {
+	ShopID            uint          `json:"shop_id" binding:"required"`
+	Products          []RepriceItem `json:"products" binding:"required,min=1,dive"`
+	ReenrollActionIDs []uint        `json:"reenroll_action_ids"`
+}
+
+// UnifiedProcessLossResponse 统一亏损处理响应
+type UnifiedProcessLossResponse struct {
+	Mode    string               `json:"mode"` // "sync" 或 "async"
+	Result  *ProcessLossResponse `json:"result,omitempty"`
+	JobID   *uint                `json:"job_id,omitempty"`
+	Message string               `json:"message,omitempty"`
+}
+
+// UnifiedRepricePromoteResult 统一改价推广结果
+type UnifiedRepricePromoteResult struct {
+	Success          bool `json:"success"`
+	RemoveCount      int  `json:"remove_count"`
+	PriceUpdateCount int  `json:"price_update_count"`
+	PromoteCount     int  `json:"promote_count"`
+	FailedCount      int  `json:"failed_count"`
+}
+
+// UnifiedRepricePromoteResponse 统一改价推广响应
+type UnifiedRepricePromoteResponse struct {
+	Mode    string                       `json:"mode"` // "sync" 或 "async"
+	Result  *UnifiedRepricePromoteResult `json:"result,omitempty"`
+	JobID   *uint                        `json:"job_id,omitempty"`
+	Message string                       `json:"message,omitempty"`
 }

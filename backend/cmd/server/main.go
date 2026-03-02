@@ -11,6 +11,7 @@ import (
 	"ozon-manager/internal/middleware"
 	"ozon-manager/internal/repository"
 	"ozon-manager/internal/service"
+	"ozon-manager/pkg/logger"
 )
 
 func main() {
@@ -20,31 +21,24 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// 初始化日志
+	logger.Init()
+	defer logger.Sync()
+
 	// 初始化数据库
 	db, err := repository.InitDB(&cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to connect database: %v", err)
 	}
 
-	// 自动迁移（表已通过SQL脚本创建，跳过）
-	// if err := repository.AutoMigrate(db); err != nil {
-	// 	log.Fatalf("Failed to migrate database: %v", err)
-	// }
-
-	if err := repository.EnsureOwnerColumns(db); err != nil {
-		log.Fatalf("Failed to ensure owner_id columns: %v", err)
-	}
-
-	// 创建默认管理员
-	if err := repository.CreateSuperAdminUser(db); err != nil {
-		log.Printf("Warning: Failed to create super admin user: %v", err)
-	}
+	// 所有数据库表结构变更应通过 migrations/init_database.sql 或独立 sql 脚本执行
 
 	// 初始化Repository
 	userRepo := repository.NewUserRepository(db)
 	shopRepo := repository.NewShopRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	promotionRepo := repository.NewPromotionRepository(db)
+	automationRepo := repository.NewAutomationRepository(db)
 	operationLogRepo := repository.NewOperationLogRepository(db)
 
 	// 初始化Service
@@ -52,7 +46,8 @@ func main() {
 	userService := service.NewUserService(userRepo, shopRepo)
 	shopService := service.NewShopService(shopRepo, userRepo)
 	productService := service.NewProductService(productRepo, shopRepo, promotionRepo)
-	promotionService := service.NewPromotionService(productRepo, promotionRepo, shopRepo)
+	automationService := service.NewAutomationService(automationRepo, productRepo, shopRepo)
+	promotionService := service.NewPromotionService(productRepo, promotionRepo, shopRepo, automationService)
 
 	// 初始化Handler
 	authHandler := handler.NewAuthHandler(authService)
@@ -60,15 +55,19 @@ func main() {
 	shopHandler := handler.NewShopHandler(shopService)
 	productHandler := handler.NewProductHandler(productService, shopService)
 	promotionHandler := handler.NewPromotionHandler(promotionService, shopService)
+	automationHandler := handler.NewAutomationHandler(automationService, shopService)
 	operationLogHandler := handler.NewOperationLogHandler(operationLogRepo)
+	systemLogHandler := handler.NewSystemLogHandler()
 
 	// 设置Gin模式
 	if cfg.Server.Mode == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// 创建Gin引擎
-	r := gin.Default()
+	// 创建Gin引擎 (使用自定义中间件)
+	r := gin.New()
+	r.Use(gin.Logger()) // 或者自己写一个 Zap 的请求日志中间件，这里保留 Gin 默认
+	r.Use(middleware.ZapRecovery())
 
 	// 配置CORS
 	r.Use(cors.New(cors.Config{
@@ -85,10 +84,19 @@ func main() {
 	// API路由组
 	api := r.Group("/api/v1")
 	{
-		// 公开路由（无需认证）
+		// =========== 公开路由（无需认证）===========
 		auth := api.Group("/auth")
 		{
 			auth.POST("/login", authHandler.Login)
+		}
+
+		// 不需要认证的系统接口
+		sys := api.Group("/system")
+		{
+			sys.POST("/logs", systemLogHandler.ReceiveFrontendLog)
+			sys.GET("/test-panic", func(c *gin.Context) {
+				panic("This is a deliberate panic for testing!")
+			})
 		}
 
 		// 需要认证的路由
@@ -157,6 +165,7 @@ func main() {
 				{
 					// 活动管理
 					promotions.GET("/actions", promotionHandler.GetActions)
+					promotions.GET("/actions/:id/products", promotionHandler.GetActionProducts)
 					promotions.POST("/actions/manual", promotionHandler.CreateManualAction)
 					promotions.DELETE("/actions/:id", promotionHandler.DeleteAction)
 					promotions.PUT("/actions/:id/display-name", promotionHandler.UpdateActionDisplayName)
@@ -172,6 +181,31 @@ func main() {
 					promotions.POST("/batch-enroll-v2", promotionHandler.BatchEnrollV2)
 					promotions.POST("/process-loss-v2", promotionHandler.ProcessLossV2)
 					promotions.POST("/remove-reprice-promote-v2", promotionHandler.RemoveRepricePromoteV2)
+
+					// 统一接口（自动判断官方/店铺路径）
+					promotions.POST("/unified-enroll", promotionHandler.UnifiedEnroll)
+					promotions.POST("/unified-remove", promotionHandler.UnifiedRemove)
+					promotions.POST("/unified-process-loss", promotionHandler.UnifiedProcessLoss)
+					promotions.POST("/unified-reprice-promote", promotionHandler.UnifiedRepricePromote)
+				}
+
+				automation := business.Group("/automation")
+				{
+					automation.POST("/jobs", automationHandler.CreateJob)
+					automation.GET("/jobs", automationHandler.GetJobs)
+					automation.GET("/jobs/:id", automationHandler.GetJobDetail)
+					automation.POST("/jobs/:id/confirm", automationHandler.ConfirmJob)
+					automation.POST("/jobs/:id/cancel", automationHandler.CancelJob)
+					automation.POST("/jobs/:id/retry-failed", automationHandler.RetryFailedItems)
+					automation.GET("/events", automationHandler.GetEvents)
+					automation.GET("/agents", automationHandler.GetAgentStatus)
+				}
+
+				agent := api.Group("/automation/agent")
+				{
+					agent.POST("/heartbeat", automationHandler.AgentHeartbeat)
+					agent.POST("/poll", automationHandler.AgentPoll)
+					agent.POST("/report", automationHandler.AgentReport)
 				}
 
 				// Excel导入导出

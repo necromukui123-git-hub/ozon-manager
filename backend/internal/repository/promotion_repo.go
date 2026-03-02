@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"fmt"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
@@ -17,12 +19,10 @@ func NewPromotionRepository(db *gorm.DB) *PromotionRepository {
 
 // === LossProduct ===
 
-// CreateLossProduct 创建亏损商品记录
 func (r *PromotionRepository) CreateLossProduct(lp *model.LossProduct) error {
 	return r.db.Create(lp).Error
 }
 
-// FindLossProductByID 根据ID查找亏损商品
 func (r *PromotionRepository) FindLossProductByID(id uint) (*model.LossProduct, error) {
 	var lp model.LossProduct
 	err := r.db.Preload("Product").First(&lp, id).Error
@@ -32,14 +32,12 @@ func (r *PromotionRepository) FindLossProductByID(id uint) (*model.LossProduct, 
 	return &lp, nil
 }
 
-// FindLossProductsByIDs 根据ID列表查找亏损商品
 func (r *PromotionRepository) FindLossProductsByIDs(ids []uint) ([]model.LossProduct, error) {
 	var lps []model.LossProduct
 	err := r.db.Preload("Product").Where("id IN ?", ids).Find(&lps).Error
 	return lps, err
 }
 
-// FindUnprocessedLossProducts 查找未处理的亏损商品
 func (r *PromotionRepository) FindUnprocessedLossProducts(shopID uint) ([]model.LossProduct, error) {
 	var lps []model.LossProduct
 	err := r.db.Joins("JOIN products ON products.id = loss_products.product_id").
@@ -49,7 +47,6 @@ func (r *PromotionRepository) FindUnprocessedLossProducts(shopID uint) ([]model.
 	return lps, err
 }
 
-// UpdateLossProductProcessed 标记亏损商品已处理
 func (r *PromotionRepository) UpdateLossProductProcessed(id uint) error {
 	now := time.Now()
 	return r.db.Model(&model.LossProduct{}).Where("id = ?", id).Updates(map[string]interface{}{
@@ -60,26 +57,22 @@ func (r *PromotionRepository) UpdateLossProductProcessed(id uint) error {
 	}).Error
 }
 
-// UpdateLossProductStep 更新亏损商品处理步骤
 func (r *PromotionRepository) UpdateLossProductStep(id uint, field string, value bool) error {
 	return r.db.Model(&model.LossProduct{}).Where("id = ?", id).Update(field, value).Error
 }
 
 // === PromotedProduct ===
 
-// CreatePromotedProduct 创建已推广商品记录
 func (r *PromotionRepository) CreatePromotedProduct(pp *model.PromotedProduct) error {
 	return r.db.Create(pp).Error
 }
 
-// FindPromotedProductsByProductID 根据商品ID查找推广记录
 func (r *PromotionRepository) FindPromotedProductsByProductID(productID uint) ([]model.PromotedProduct, error) {
 	var pps []model.PromotedProduct
 	err := r.db.Where("product_id = ? AND status = ?", productID, "active").Find(&pps).Error
 	return pps, err
 }
 
-// FindActivePromotedProducts 查找店铺所有活跃的推广商品
 func (r *PromotionRepository) FindActivePromotedProducts(shopID uint) ([]model.PromotedProduct, error) {
 	var pps []model.PromotedProduct
 	err := r.db.Joins("JOIN products ON products.id = promoted_products.product_id").
@@ -89,7 +82,6 @@ func (r *PromotionRepository) FindActivePromotedProducts(shopID uint) ([]model.P
 	return pps, err
 }
 
-// ExitPromotion 退出促销活动
 func (r *PromotionRepository) ExitPromotion(productID uint, promotionType string) error {
 	now := time.Now()
 	return r.db.Model(&model.PromotedProduct{}).
@@ -100,7 +92,6 @@ func (r *PromotionRepository) ExitPromotion(productID uint, promotionType string
 		}).Error
 }
 
-// ExitAllPromotions 退出所有促销活动
 func (r *PromotionRepository) ExitAllPromotions(productID uint) error {
 	now := time.Now()
 	return r.db.Model(&model.PromotedProduct{}).
@@ -111,62 +102,72 @@ func (r *PromotionRepository) ExitAllPromotions(productID uint) error {
 		}).Error
 }
 
-// CountByPromotionType 统计某类型促销的商品数量
 func (r *PromotionRepository) CountByPromotionType(shopID uint, promotionType string) (int64, error) {
 	var count int64
 	err := r.db.Model(&model.PromotedProduct{}).
 		Joins("JOIN products ON products.id = promoted_products.product_id").
-		Where("products.shop_id = ? AND promoted_products.promotion_type = ? AND promoted_products.status = ?",
-			shopID, promotionType, "active").
+		Where("products.shop_id = ? AND promoted_products.promotion_type = ? AND promoted_products.status = ?", shopID, promotionType, "active").
 		Count(&count).Error
 	return count, err
 }
 
 // === PromotionAction ===
 
-// CreatePromotionAction 创建促销活动
 func (r *PromotionRepository) CreatePromotionAction(pa *model.PromotionAction) error {
+	if pa.Source == "" {
+		pa.Source = "official"
+	}
+	if pa.SourceActionID == "" {
+		pa.SourceActionID = strconv.FormatInt(pa.ActionID, 10)
+	}
 	return r.db.Create(pa).Error
 }
 
-// FindPromotionActionByActionID 根据ActionID查找促销活动
 func (r *PromotionRepository) FindPromotionActionByActionID(shopID uint, actionID int64) (*model.PromotionAction, error) {
 	var pa model.PromotionAction
-	err := r.db.Where("shop_id = ? AND action_id = ?", shopID, actionID).First(&pa).Error
+	err := r.db.Where("shop_id = ? AND source = ? AND action_id = ?", shopID, "official", actionID).First(&pa).Error
+	if err == gorm.ErrRecordNotFound {
+		err = r.db.Where("shop_id = ? AND action_id = ?", shopID, actionID).First(&pa).Error
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &pa, nil
 }
 
-// FindPromotionActionsByShopID 获取店铺所有促销活动（按排序顺序）
 func (r *PromotionRepository) FindPromotionActionsByShopID(shopID uint) ([]model.PromotionAction, error) {
 	var pas []model.PromotionAction
 	err := r.db.Where("shop_id = ?", shopID).Order("sort_order ASC, id ASC").Find(&pas).Error
 	return pas, err
 }
 
-// UpsertPromotionAction 创建或更新促销活动（保留自定义显示名称和排序）
 func (r *PromotionRepository) UpsertPromotionAction(pa *model.PromotionAction) error {
+	if pa.Source == "" {
+		pa.Source = "official"
+	}
+	if pa.SourceActionID == "" {
+		pa.SourceActionID = strconv.FormatInt(pa.ActionID, 10)
+	}
+
 	var existing model.PromotionAction
-	err := r.db.Where("shop_id = ? AND action_id = ?", pa.ShopID, pa.ActionID).First(&existing).Error
+	err := r.db.Where("shop_id = ? AND source = ? AND source_action_id = ?", pa.ShopID, pa.Source, pa.SourceActionID).First(&existing).Error
+
 	if err == gorm.ErrRecordNotFound {
-		// 新活动，设置 sort_order 为最大值+1
 		var maxSortOrder int
 		r.db.Model(&model.PromotionAction{}).Where("shop_id = ?", pa.ShopID).Select("COALESCE(MAX(sort_order), -1)").Scan(&maxSortOrder)
 		pa.SortOrder = maxSortOrder + 1
 		return r.db.Create(pa).Error
-	} else if err != nil {
+	}
+	if err != nil {
 		return err
 	}
-	// 保留自定义显示名称和排序
+
 	pa.ID = existing.ID
 	pa.DisplayName = existing.DisplayName
 	pa.SortOrder = existing.SortOrder
 	return r.db.Save(pa).Error
 }
 
-// FindPromotionActionByID 根据数据库ID查找促销活动
 func (r *PromotionRepository) FindPromotionActionByID(id uint) (*model.PromotionAction, error) {
 	var pa model.PromotionAction
 	err := r.db.First(&pa, id).Error
@@ -176,36 +177,39 @@ func (r *PromotionRepository) FindPromotionActionByID(id uint) (*model.Promotion
 	return &pa, nil
 }
 
-// DeletePromotionAction 删除促销活动
+func (r *PromotionRepository) FindPromotionActionByIDAndShop(id uint, shopID uint) (*model.PromotionAction, error) {
+	var pa model.PromotionAction
+	err := r.db.Where("id = ? AND shop_id = ?", id, shopID).First(&pa).Error
+	if err != nil {
+		return nil, err
+	}
+	return &pa, nil
+}
+
 func (r *PromotionRepository) DeletePromotionAction(id uint) error {
 	return r.db.Delete(&model.PromotionAction{}, id).Error
 }
 
-// FindPromotionActionsByActionIDs 根据ActionID列表查找促销活动
 func (r *PromotionRepository) FindPromotionActionsByActionIDs(shopID uint, actionIDs []int64) ([]model.PromotionAction, error) {
 	var pas []model.PromotionAction
-	err := r.db.Where("shop_id = ? AND action_id IN ?", shopID, actionIDs).Find(&pas).Error
+	err := r.db.Where("shop_id = ? AND source = ? AND action_id IN ?", shopID, "official", actionIDs).Find(&pas).Error
 	return pas, err
 }
 
-// FindActivePromotionActions 查找活跃的促销活动（按排序顺序）
 func (r *PromotionRepository) FindActivePromotionActions(shopID uint) ([]model.PromotionAction, error) {
 	var pas []model.PromotionAction
 	err := r.db.Where("shop_id = ? AND status = ?", shopID, "active").Order("sort_order ASC, id ASC").Find(&pas).Error
 	return pas, err
 }
 
-// UpdatePromotionActionStatus 更新促销活动状态
 func (r *PromotionRepository) UpdatePromotionActionStatus(id uint, status string) error {
 	return r.db.Model(&model.PromotionAction{}).Where("id = ?", id).Update("status", status).Error
 }
 
-// UpdatePromotionActionDisplayName 更新促销活动显示名称
 func (r *PromotionRepository) UpdatePromotionActionDisplayName(id uint, displayName string) error {
 	return r.db.Model(&model.PromotionAction{}).Where("id = ?", id).Update("display_name", displayName).Error
 }
 
-// UpdatePromotionActionsSortOrder 批量更新促销活动排序
 func (r *PromotionRepository) UpdatePromotionActionsSortOrder(shopID uint, sortOrders map[uint]int) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		for id, sortOrder := range sortOrders {
@@ -217,4 +221,77 @@ func (r *PromotionRepository) UpdatePromotionActionsSortOrder(shopID uint, sortO
 		}
 		return nil
 	})
+}
+
+func (r *PromotionRepository) ReplaceActionProducts(action *model.PromotionAction, products []model.PromotionActionProduct) error {
+	now := time.Now()
+	for index := range products {
+		products[index].PromotionActionID = action.ID
+		products[index].ShopID = action.ShopID
+		products[index].LastSyncedAt = &now
+	}
+
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for index := range products {
+			product := products[index]
+			var existing model.PromotionActionProduct
+			err := tx.Where("promotion_action_id = ? AND source_sku = ?", action.ID, product.SourceSKU).First(&existing).Error
+			if err == gorm.ErrRecordNotFound {
+				if createErr := tx.Create(&product).Error; createErr != nil {
+					return createErr
+				}
+				continue
+			}
+			if err != nil {
+				return err
+			}
+
+			product.ID = existing.ID
+			if saveErr := tx.Save(&product).Error; saveErr != nil {
+				return saveErr
+			}
+		}
+
+		sourceSKUs := make([]string, 0, len(products))
+		for _, product := range products {
+			sourceSKUs = append(sourceSKUs, product.SourceSKU)
+		}
+
+		if len(sourceSKUs) > 0 {
+			if err := tx.Where("promotion_action_id = ? AND source_sku NOT IN ?", action.ID, sourceSKUs).Delete(&model.PromotionActionProduct{}).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := tx.Where("promotion_action_id = ?", action.ID).Delete(&model.PromotionActionProduct{}).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Model(&model.PromotionAction{}).Where("id = ?", action.ID).Updates(map[string]interface{}{
+			"last_products_synced_at": &now,
+			"updated_at":              &now,
+		}).Error; err != nil {
+			return fmt.Errorf("failed to update action sync time: %w", err)
+		}
+
+		return nil
+	})
+}
+
+func (r *PromotionRepository) ListActionProducts(shopID uint, promotionActionID uint, page int, pageSize int) ([]model.PromotionActionProduct, int64, error) {
+	var items []model.PromotionActionProduct
+	var total int64
+
+	query := r.db.Model(&model.PromotionActionProduct{}).Where("shop_id = ? AND promotion_action_id = ?", shopID, promotionActionID)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+	err := query.Order("id ASC").Offset(offset).Limit(pageSize).Find(&items).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return items, total, nil
 }

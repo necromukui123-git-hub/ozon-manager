@@ -49,6 +49,12 @@ const routes = [
         component: () => import('@/views/promotions/ActionList.vue'),
         meta: { requiresBusinessRole: true }
       },
+      {
+        path: 'promotions/actions/:id/products',
+        name: 'ActionProducts',
+        component: () => import('@/views/promotions/ActionProducts.vue'),
+        meta: { requiresBusinessRole: true }
+      },
       // 店铺管理员专用路由
       {
         path: 'my/shops',
