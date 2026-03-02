@@ -1,2 +1,3 @@
-2026/02/10-02:04:43.367 5820 Creating DB E:\developcode\ozon-manager\agent\browser-profile\Default\GCM Store since it was missing.
-2026/02/10-02:04:43.456 5820 Reusing MANIFEST E:\developcode\ozon-manager\agent\browser-profile\Default\GCM Store/MANIFEST-000001
+2026/03/03-00:18:25.478 7160 Reusing MANIFEST E:\developcode\ozon-manager\agent\browser-profile\Default\GCM Store/MANIFEST-000001
+2026/03/03-00:18:25.478 7160 Recovering log #3
+2026/03/03-00:18:25.503 7160 Reusing old log E:\developcode\ozon-manager\agent\browser-profile\Default\GCM Store/000003.log 
