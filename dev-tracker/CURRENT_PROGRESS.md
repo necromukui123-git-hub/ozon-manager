@@ -5,6 +5,16 @@
 
 ## 本轮已完成
 
+### 文档治理
+
+1. 已更新 `AGENTS.md`，新增“开发追踪文档维护规则（强制）”：
+2. 任务目标更新时必须同步 `dev-tracker/OVERALL_TASKS.md`。
+3. 每完成某项执行任务时必须同步 `dev-tracker/CURRENT_PROGRESS.md`。
+4. 已按当前项目实际进度补充 `AGENTS.md`：
+5. 新增插件与追踪目录说明（`browser-extension/ozon-shop-bridge`、`dev-tracker`）。
+6. 新增插件打包/加载命令。
+7. 新增当前执行通道约束与阶段状态摘要。
+
 ### 后端
 
 1. 已完成官方 + 店铺混合促销的统一后端路径改造。
