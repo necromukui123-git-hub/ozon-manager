@@ -56,6 +56,7 @@ func main() {
 	productHandler := handler.NewProductHandler(productService, shopService)
 	promotionHandler := handler.NewPromotionHandler(promotionService, shopService)
 	automationHandler := handler.NewAutomationHandler(automationService, shopService)
+	extensionHandler := handler.NewExtensionHandler(automationService, shopService)
 	operationLogHandler := handler.NewOperationLogHandler(operationLogRepo)
 	systemLogHandler := handler.NewSystemLogHandler()
 
@@ -199,6 +200,14 @@ func main() {
 					automation.POST("/jobs/:id/retry-failed", automationHandler.RetryFailedItems)
 					automation.GET("/events", automationHandler.GetEvents)
 					automation.GET("/agents", automationHandler.GetAgentStatus)
+				}
+
+				extension := business.Group("/extension")
+				{
+					extension.POST("/register", extensionHandler.Register)
+					extension.POST("/poll", extensionHandler.Poll)
+					extension.POST("/report", extensionHandler.Report)
+					extension.POST("/reprice", extensionHandler.Reprice)
 				}
 
 				agent := api.Group("/automation/agent")

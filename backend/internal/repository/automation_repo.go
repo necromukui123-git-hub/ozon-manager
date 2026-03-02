@@ -165,6 +165,41 @@ func (r *AutomationRepository) AcquirePendingJobForAgent(agentID uint) (*model.A
 	return r.FindJobByID(job.ID)
 }
 
+func (r *AutomationRepository) AcquirePendingJobForShop(shopID uint, jobTypes []string) (*model.AutomationJob, error) {
+	var job model.AutomationJob
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		query := tx.Where("shop_id = ? AND status = ? AND dry_run = ?", shopID, model.AutomationJobStatusPending, false)
+		if len(jobTypes) > 0 {
+			query = query.Where("job_type IN ?", jobTypes)
+		}
+
+		findErr := query.Order("created_at ASC").First(&job).Error
+		if findErr != nil {
+			return findErr
+		}
+
+		now := time.Now()
+		updateResult := tx.Model(&model.AutomationJob{}).
+			Where("id = ? AND status = ?", job.ID, model.AutomationJobStatusPending).
+			Updates(map[string]interface{}{
+				"status":     model.AutomationJobStatusRunning,
+				"started_at": &now,
+			})
+		if updateResult.Error != nil {
+			return updateResult.Error
+		}
+		if updateResult.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return r.FindJobByID(job.ID)
+}
+
 func (r *AutomationRepository) FindPendingJobByTypeAndShop(jobType string, shopID uint) (*model.AutomationJob, error) {
 	var job model.AutomationJob
 	err := r.db.Where("job_type = ? AND shop_id = ? AND status IN ?", jobType, shopID, []string{model.AutomationJobStatusPending, model.AutomationJobStatusRunning}).Order("id DESC").First(&job).Error

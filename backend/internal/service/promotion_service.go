@@ -893,6 +893,22 @@ func splitActionsBySource(actions []model.PromotionAction) ([]model.PromotionAct
 	return official, shop
 }
 
+func buildShopActionsMeta(actions []model.PromotionAction) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(actions))
+	for _, action := range actions {
+		title := strings.TrimSpace(action.DisplayName)
+		if title == "" {
+			title = strings.TrimSpace(action.Title)
+		}
+		result = append(result, map[string]interface{}{
+			"action_db_id":     action.ID,
+			"source_action_id": strings.TrimSpace(action.SourceActionID),
+			"title":            title,
+		})
+	}
+	return result
+}
+
 func uniqueSKUs(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))
@@ -1012,18 +1028,7 @@ func (s *PromotionService) CreateUnifiedShopActionsJob(userID, shopID uint, jobT
 		return nil, err
 	}
 
-	actionPayload := make([]map[string]interface{}, 0, len(shopActions))
-	for _, action := range shopActions {
-		title := action.DisplayName
-		if strings.TrimSpace(title) == "" {
-			title = action.Title
-		}
-		actionPayload = append(actionPayload, map[string]interface{}{
-			"action_db_id":     action.ID,
-			"source_action_id": action.SourceActionID,
-			"title":            title,
-		})
-	}
+	actionPayload := buildShopActionsMeta(shopActions)
 	operation := "declare"
 	if jobType == model.AutomationJobTypePromoUnifiedRemove {
 		operation = "remove"
@@ -1096,7 +1101,7 @@ func (s *PromotionService) UnifiedEnroll(userID uint, req *dto.UnifiedEnrollRequ
 		return nil, fmt.Errorf("创建店铺促销申报任务失败: %w", err)
 	}
 
-	msg := fmt.Sprintf("已创建店铺促销申报任务 #%d，等待 Agent 执行", job.ID)
+	msg := fmt.Sprintf("已创建店铺促销申报任务 #%d，等待浏览器插件执行", job.ID)
 	if officialResult != nil {
 		msg = fmt.Sprintf("官方活动已同步完成（%d 成功，%d 失败）；店铺活动任务 #%d 已创建",
 			officialResult.EnrolledCount, officialResult.FailedCount, job.ID)
@@ -1149,7 +1154,7 @@ func (s *PromotionService) UnifiedRemove(userID uint, req *dto.UnifiedRemoveRequ
 		return nil, fmt.Errorf("创建店铺促销退出任务失败: %w", err)
 	}
 
-	msg := fmt.Sprintf("已创建店铺促销退出任务 #%d，等待 Agent 执行", job.ID)
+	msg := fmt.Sprintf("已创建店铺促销退出任务 #%d，等待浏览器插件执行", job.ID)
 	if officialResult != nil {
 		msg = fmt.Sprintf("官方活动已同步完成（%d 成功，%d 失败）；店铺活动任务 #%d 已创建",
 			officialResult.EnrolledCount, officialResult.FailedCount, job.ID)
@@ -1204,6 +1209,7 @@ func (s *PromotionService) UnifiedProcessLoss(userID uint, req *dto.UnifiedProce
 		job, createErr := s.createRemoveRepriceReaddJob(userID, req.ShopID, inputs, map[string]interface{}{
 			"reason":            "unified_process_loss",
 			"rejoin_action_ids": req.RejoinActionIDs,
+			"shop_actions":      buildShopActionsMeta(shopActions),
 		})
 		if createErr != nil {
 			return nil, createErr
@@ -1211,7 +1217,7 @@ func (s *PromotionService) UnifiedProcessLoss(userID uint, req *dto.UnifiedProce
 		return &dto.UnifiedProcessLossResponse{
 			Mode:    "async",
 			JobID:   &job.ID,
-			Message: fmt.Sprintf("已创建统一亏损处理任务 #%d，等待 Agent 执行", job.ID),
+			Message: fmt.Sprintf("已创建统一亏损处理任务 #%d，等待浏览器插件执行", job.ID),
 		}, nil
 	}
 
@@ -1314,6 +1320,7 @@ func (s *PromotionService) UnifiedRepricePromote(userID uint, req *dto.UnifiedRe
 		job, createErr := s.createRemoveRepriceReaddJob(userID, req.ShopID, req.Products, map[string]interface{}{
 			"reason":              "unified_reprice_promote",
 			"reenroll_action_ids": req.ReenrollActionIDs,
+			"shop_actions":        buildShopActionsMeta(shopActions),
 		})
 		if createErr != nil {
 			return nil, createErr
@@ -1321,7 +1328,7 @@ func (s *PromotionService) UnifiedRepricePromote(userID uint, req *dto.UnifiedRe
 		return &dto.UnifiedRepricePromoteResponse{
 			Mode:    "async",
 			JobID:   &job.ID,
-			Message: fmt.Sprintf("已创建统一改价推广任务 #%d，等待 Agent 执行", job.ID),
+			Message: fmt.Sprintf("已创建统一改价推广任务 #%d，等待浏览器插件执行", job.ID),
 		}, nil
 	}
 

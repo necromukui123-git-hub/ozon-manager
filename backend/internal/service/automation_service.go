@@ -10,6 +10,7 @@ import (
 	"ozon-manager/internal/dto"
 	"ozon-manager/internal/model"
 	"ozon-manager/internal/repository"
+	"ozon-manager/pkg/ozon"
 )
 
 type AutomationService struct {
@@ -17,6 +18,8 @@ type AutomationService struct {
 	productRepo    *repository.ProductRepository
 	shopRepo       *repository.ShopRepository
 }
+
+const extensionPollIntervalMS = 5000
 
 func NewAutomationService(
 	automationRepo *repository.AutomationRepository,
@@ -287,17 +290,7 @@ func (s *AutomationService) AgentReport(req *dto.AgentReportRequest) error {
 	}
 
 	if len(req.Meta) > 0 {
-		artifactType := "agent_payload"
-		switch job.JobType {
-		case model.AutomationJobTypeSyncShopActions:
-			artifactType = "shop_actions_snapshot"
-		case model.AutomationJobTypeSyncActionProducts:
-			artifactType = "action_products_snapshot"
-		case model.AutomationJobTypeShopActionDeclare, model.AutomationJobTypeShopActionRemove:
-			artifactType = "shop_action_snapshot"
-		case model.AutomationJobTypePromoUnifiedEnroll, model.AutomationJobTypePromoUnifiedRemove:
-			artifactType = "promo_unified_snapshot"
-		}
+		artifactType := artifactTypeForJob(job.JobType, "agent_payload")
 		_ = s.automationRepo.CreateArtifact(req.JobID, artifactType, req.Meta)
 	}
 
@@ -314,6 +307,164 @@ func (s *AutomationService) AgentReport(req *dto.AgentReportRequest) error {
 		Payload:   payloadBytes,
 	}
 	_ = s.automationRepo.CreateJobEvent(event)
+
+	return nil
+}
+
+func (s *AutomationService) ExtensionRegister(userID uint, req *dto.ExtensionRegisterRequest) (*dto.ExtensionRegisterResponse, error) {
+	agentKey := extensionAgentKey(userID, req.ShopID, req.ExtensionID)
+	agentName := strings.TrimSpace(req.Name)
+	if agentName == "" {
+		agentName = "Chrome Extension"
+	}
+
+	capabilities := map[string]interface{}{
+		"kind":         "chrome_extension",
+		"user_id":      userID,
+		"shop_id":      req.ShopID,
+		"extension_id": req.ExtensionID,
+		"version":      req.Version,
+	}
+	capabilityBytes, _ := json.Marshal(capabilities)
+	hostname := fmt.Sprintf("shop-%d", req.ShopID)
+
+	if _, err := s.automationRepo.UpsertAgentByKey(agentKey, agentName, hostname, capabilityBytes); err != nil {
+		return nil, err
+	}
+
+	return &dto.ExtensionRegisterResponse{
+		AgentKey:       agentKey,
+		PollIntervalMS: extensionPollIntervalMS,
+	}, nil
+}
+
+func (s *AutomationService) ExtensionPoll(userID uint, req *dto.ExtensionPollRequest) (*model.AutomationJob, error) {
+	_, _ = s.ExtensionRegister(userID, &dto.ExtensionRegisterRequest{
+		ShopID:      req.ShopID,
+		ExtensionID: req.ExtensionID,
+		Name:        "Chrome Extension",
+	})
+
+	job, err := s.automationRepo.AcquirePendingJobForShop(req.ShopID, extensionSupportedJobTypes())
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	payload := map[string]interface{}{
+		"user_id":      userID,
+		"shop_id":      req.ShopID,
+		"extension_id": req.ExtensionID,
+		"job_status":   model.AutomationJobStatusRunning,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	event := &model.AutomationJobEvent{
+		JobID:     job.ID,
+		EventType: "job_assigned_extension",
+		Message:   "job assigned to browser extension",
+		Payload:   payloadBytes,
+		CreatedBy: &userID,
+	}
+	_ = s.automationRepo.CreateJobEvent(event)
+
+	return job, nil
+}
+
+func (s *AutomationService) ExtensionReport(userID uint, req *dto.ExtensionReportRequest) error {
+	job, err := s.automationRepo.FindJobByID(req.JobID)
+	if err != nil {
+		return fmt.Errorf("job not found")
+	}
+	if job.ShopID != req.ShopID {
+		return fmt.Errorf("job does not belong to shop")
+	}
+	if job.Status != model.AutomationJobStatusRunning {
+		return fmt.Errorf("job is not running")
+	}
+
+	results := make([]model.AutomationJobItem, 0, len(req.Results))
+	for _, result := range req.Results {
+		results = append(results, model.AutomationJobItem{
+			SourceSKU:         result.SourceSKU,
+			OverallStatus:     normalizeStepStatus(result.OverallStatus),
+			StepExitStatus:    normalizeStepStatus(result.StepExitStatus),
+			StepRepriceStatus: normalizeStepStatus(result.StepRepriceStatus),
+			StepReaddStatus:   normalizeStepStatus(result.StepReaddStatus),
+			StepExitError:     result.StepExitError,
+			StepRepriceError:  result.StepRepriceError,
+			StepReaddError:    result.StepReaddError,
+		})
+	}
+
+	targetStatus := model.AutomationJobStatusSuccess
+	switch req.Status {
+	case model.AutomationJobStatusSuccess:
+		targetStatus = model.AutomationJobStatusSuccess
+	case model.AutomationJobStatusPartialSuccess:
+		targetStatus = model.AutomationJobStatusPartialSuccess
+	case model.AutomationJobStatusFailed:
+		targetStatus = model.AutomationJobStatusFailed
+	default:
+		return fmt.Errorf("invalid report status")
+	}
+
+	if err := s.automationRepo.UpdateJobAndItemsByReport(req.JobID, targetStatus, results); err != nil {
+		return fmt.Errorf("failed to update report: %w", err)
+	}
+
+	if len(req.Meta) > 0 {
+		artifactType := artifactTypeForJob(job.JobType, "extension_payload")
+		_ = s.automationRepo.CreateArtifact(req.JobID, artifactType, req.Meta)
+	}
+
+	payload := map[string]interface{}{
+		"job_id":       req.JobID,
+		"status":       req.Status,
+		"count":        len(req.Results),
+		"extension_id": req.ExtensionID,
+	}
+	payloadBytes, _ := json.Marshal(payload)
+	event := &model.AutomationJobEvent{
+		JobID:     req.JobID,
+		EventType: "job_reported_extension",
+		Message:   "browser extension reported execution result",
+		Payload:   payloadBytes,
+		CreatedBy: &userID,
+	}
+	_ = s.automationRepo.CreateJobEvent(event)
+
+	return nil
+}
+
+func (s *AutomationService) ExtensionRepriceProduct(shopID uint, sourceSKU string, newPrice float64) error {
+	sku := strings.TrimSpace(sourceSKU)
+	if sku == "" {
+		return fmt.Errorf("invalid source sku")
+	}
+	if newPrice <= 0 {
+		return fmt.Errorf("invalid new price")
+	}
+
+	shop, err := s.shopRepo.GetWithCredentials(shopID)
+	if err != nil {
+		return fmt.Errorf("shop not found: %w", err)
+	}
+	product, err := s.productRepo.FindBySourceSKU(shopID, sku)
+	if err != nil {
+		return fmt.Errorf("product not found for source sku: %s", sku)
+	}
+
+	client := ozon.NewClient(shop.ClientID, shop.ApiKey)
+	priceStr := fmt.Sprintf("%.2f", newPrice)
+	if err := client.UpdateSinglePrice(product.OzonProductID, priceStr, "", ""); err != nil {
+		return fmt.Errorf("failed to update ozon price: %w", err)
+	}
+
+	if err := s.productRepo.UpdatePrice(product.ID, newPrice); err != nil {
+		return fmt.Errorf("failed to update local price: %w", err)
+	}
 
 	return nil
 }
@@ -430,6 +581,62 @@ func normalizeStepStatus(value string) string {
 	default:
 		return model.AutomationStepStatusSkipped
 	}
+}
+
+func artifactTypeForJob(jobType string, fallback string) string {
+	switch jobType {
+	case model.AutomationJobTypeSyncShopActions:
+		return "shop_actions_snapshot"
+	case model.AutomationJobTypeSyncActionProducts:
+		return "action_products_snapshot"
+	case model.AutomationJobTypeShopActionDeclare, model.AutomationJobTypeShopActionRemove:
+		return "shop_action_snapshot"
+	case model.AutomationJobTypePromoUnifiedEnroll, model.AutomationJobTypePromoUnifiedRemove:
+		return "promo_unified_snapshot"
+	default:
+		return fallback
+	}
+}
+
+func extensionSupportedJobTypes() []string {
+	return []string{
+		model.AutomationJobTypeSyncShopActions,
+		model.AutomationJobTypeSyncActionProducts,
+		model.AutomationJobTypeShopActionDeclare,
+		model.AutomationJobTypeShopActionRemove,
+		model.AutomationJobTypePromoUnifiedEnroll,
+		model.AutomationJobTypePromoUnifiedRemove,
+		model.AutomationJobTypeRemoveRepriceReadd,
+	}
+}
+
+func extensionAgentKey(userID, shopID uint, extensionID string) string {
+	safe := sanitizeExtensionID(extensionID)
+	if safe == "" {
+		safe = "default"
+	}
+	return fmt.Sprintf("ext:%d:%d:%s", userID, shopID, safe)
+}
+
+func sanitizeExtensionID(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.Grow(len(trimmed))
+	for _, ch := range trimmed {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' {
+			b.WriteRune(ch)
+			continue
+		}
+		b.WriteRune('_')
+	}
+	result := b.String()
+	if len(result) > 60 {
+		return result[:60]
+	}
+	return result
 }
 
 func FormatAutomationTime(value *time.Time) *string {

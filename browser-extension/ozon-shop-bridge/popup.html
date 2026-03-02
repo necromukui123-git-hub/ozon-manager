@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ozon Bridge</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 12px;
+      width: 320px;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      background: #f6f8fb;
+      color: #1f2937;
+    }
+    h1 {
+      margin: 0 0 10px 0;
+      font-size: 16px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+    label {
+      font-size: 12px;
+      color: #4b5563;
+    }
+    input[type="text"], input[type="number"] {
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 12px;
+      background: #fff;
+    }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .hint {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #6b7280;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+    .status {
+      margin-top: 8px;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      padding: 8px;
+      font-size: 11px;
+      color: #374151;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>Ozon 店铺桥接</h1>
+
+  <div class="row">
+    <label for="enabled">启用轮询</label>
+    <input id="enabled" type="checkbox">
+  </div>
+
+  <div class="field">
+    <label for="apiBaseUrl">后端地址</label>
+    <input id="apiBaseUrl" type="text" placeholder="http://127.0.0.1:8080">
+  </div>
+
+  <div class="field">
+    <label for="shopId">店铺 ID</label>
+    <input id="shopId" type="number" min="1" placeholder="例如 1">
+  </div>
+
+  <div class="field">
+    <label for="token">登录 Token（通常自动同步）</label>
+    <input id="token" type="text" placeholder="Bearer token">
+  </div>
+
+  <button id="saveBtn" type="button">保存并立即同步一次</button>
+
+  <div class="hint">默认会尝试从你的管理系统页面自动同步 token 和 shop_id。
+若自动同步失败，可手工填入后保存。</div>
+  <div id="status" class="status">初始化中...</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
