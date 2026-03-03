@@ -5,6 +5,7 @@
 *.ps1
 nul
 err/
+/snipaste
 
 # 临时文本文件
 新建 文本文档.txt

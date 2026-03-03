@@ -278,6 +278,7 @@ type RemoveRepricePromoteV2Request struct {
 
 // 更新促销活动显示名称请求
 type UpdateActionDisplayNameRequest struct {
+	ShopID      uint   `json:"shop_id"`
 	DisplayName string `json:"display_name" binding:"max=200"`
 }
 

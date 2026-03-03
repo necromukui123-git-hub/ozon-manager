@@ -131,8 +131,8 @@
             <div class="type-badge" :class="getTypeClass(action.action_type)">
               {{ formatActionType(action.action_type) }}
             </div>
-            <el-dropdown trigger="click" @command="(cmd) => handleCommand(cmd, action)" @click.stop>
-              <el-button text circle size="small" class="more-btn">
+            <el-dropdown trigger="click" @command="(cmd) => handleCommand(cmd, action)">
+              <el-button text circle size="small" class="more-btn" @click.stop>
                 <el-icon><MoreFilled /></el-icon>
               </el-button>
               <template #dropdown>

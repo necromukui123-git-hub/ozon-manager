@@ -608,6 +608,11 @@ type shopActionProductSnapshotItem struct {
 	Status        string  `json:"status"`
 }
 
+const (
+	shopActionsSyncWaitTimeout    = 45 * time.Second
+	actionProductsSyncWaitTimeout = 45 * time.Second
+)
+
 func (s *PromotionService) SyncPromotionActionsV2(shopID uint, userID uint) (*dto.SyncActionsResult, error) {
 	baseActions, err := s.SyncPromotionActions(shopID)
 	if err != nil {
@@ -635,10 +640,20 @@ func (s *PromotionService) SyncPromotionActionsV2(shopID uint, userID uint) (*dt
 		return result, nil
 	}
 
-	waitedJob, waitErr := s.automationService.WaitForJobCompletion(job.ID, 25*time.Second)
+	waitedJob, waitErr := s.automationService.WaitForJobCompletion(job.ID, shopActionsSyncWaitTimeout)
 	if waitErr != nil {
 		result.ShopSyncPending = true
 		result.PartialErrors["shop"] = "shop actions sync still running in background"
+
+		latestCompletedJob, latestJobErr := s.automationService.FindLatestCompletedSyncShopActionsJob(shopID)
+		if latestJobErr == nil && latestCompletedJob != nil {
+			if importedCount, importErr := s.importShopActionsFromJob(shopID, latestCompletedJob.ID); importErr == nil {
+				result.SyncSummary.ShopCount = importedCount
+				if allActions, listErr := s.promotionRepo.FindPromotionActionsByShopID(shopID); listErr == nil {
+					result.Actions = allActions
+				}
+			}
+		}
 		return result, nil
 	}
 
@@ -647,23 +662,40 @@ func (s *PromotionService) SyncPromotionActionsV2(shopID uint, userID uint) (*dt
 		return result, nil
 	}
 
-	artifact, err := s.automationService.GetLatestArtifact(waitedJob.ID, "shop_actions_snapshot")
+	importedCount, err := s.importShopActionsFromJob(shopID, waitedJob.ID)
 	if err != nil {
 		result.PartialErrors["shop"] = err.Error()
 		return result, nil
+	}
+	result.SyncSummary.ShopCount = importedCount
+
+	allActions, listErr := s.promotionRepo.FindPromotionActionsByShopID(shopID)
+	if listErr == nil {
+		result.Actions = allActions
 	}
 
+	return result, nil
+}
+
+func (s *PromotionService) importShopActionsFromJob(shopID uint, jobID uint) (int, error) {
+	artifact, err := s.automationService.GetLatestArtifact(jobID, "shop_actions_snapshot")
+	if err != nil {
+		return 0, err
+	}
+	return s.importShopActionsFromArtifact(shopID, artifact)
+}
+
+func (s *PromotionService) importShopActionsFromArtifact(shopID uint, artifact *model.AutomationArtifact) (int, error) {
 	shopActions, err := parseShopActionsArtifact(artifact.Meta)
 	if err != nil {
-		result.PartialErrors["shop"] = err.Error()
-		return result, nil
+		return 0, err
 	}
 	if len(shopActions) == 0 {
-		result.PartialErrors["shop"] = "shop actions snapshot is empty"
-		return result, nil
+		return 0, fmt.Errorf("shop actions snapshot is empty")
 	}
 
 	now := time.Now()
+	importedCount := 0
 	for _, action := range shopActions {
 		payloadBytes, _ := json.Marshal(action)
 		pa := &model.PromotionAction{
@@ -682,16 +714,14 @@ func (s *PromotionService) SyncPromotionActionsV2(shopID uint, userID uint) (*dt
 			DateEnd:            action.DateEnd,
 		}
 		if upsertErr := s.promotionRepo.UpsertPromotionAction(pa); upsertErr == nil {
-			result.SyncSummary.ShopCount++
+			importedCount++
 		}
 	}
 
-	allActions, listErr := s.promotionRepo.FindPromotionActionsByShopID(shopID)
-	if listErr == nil {
-		result.Actions = allActions
+	if importedCount == 0 {
+		return 0, fmt.Errorf("shop actions snapshot import failed")
 	}
-
-	return result, nil
+	return importedCount, nil
 }
 
 func (s *PromotionService) GetActionProducts(actionID uint, req *dto.ActionProductsRequest, userID uint) (*dto.ActionProductsResponse, error) {
@@ -811,7 +841,7 @@ func (s *PromotionService) refreshShopActionProducts(action *model.PromotionActi
 	if err != nil {
 		return err
 	}
-	waitedJob, waitErr := s.automationService.WaitForJobCompletion(job.ID, 25*time.Second)
+	waitedJob, waitErr := s.automationService.WaitForJobCompletion(job.ID, actionProductsSyncWaitTimeout)
 	if waitErr != nil {
 		return fmt.Errorf("shop action products sync timeout")
 	}

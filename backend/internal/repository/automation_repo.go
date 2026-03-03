@@ -280,6 +280,23 @@ func (r *AutomationRepository) FindLatestJobByShopAndTypes(shopID uint, jobTypes
 	return &job, nil
 }
 
+func (r *AutomationRepository) FindLatestJobByShopAndTypesAndStatuses(shopID uint, jobTypes []string, statuses []string) (*model.AutomationJob, error) {
+	var job model.AutomationJob
+	query := r.db.Where("shop_id = ?", shopID)
+	if len(jobTypes) > 0 {
+		query = query.Where("job_type IN ?", jobTypes)
+	}
+	if len(statuses) > 0 {
+		query = query.Where("status IN ?", statuses)
+	}
+
+	err := query.Order("id DESC").First(&job).Error
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
 func (r *AutomationRepository) FindLatestFailedItemError(jobID uint) (string, error) {
 	var item model.AutomationJobItem
 	err := r.db.

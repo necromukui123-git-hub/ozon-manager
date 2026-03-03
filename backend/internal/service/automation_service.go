@@ -205,6 +205,21 @@ func (s *AutomationService) GetLatestArtifact(jobID uint, artifactType string) (
 	return s.automationRepo.FindLatestArtifactByJob(jobID, artifactType)
 }
 
+func (s *AutomationService) FindLatestCompletedSyncShopActionsJob(shopID uint) (*model.AutomationJob, error) {
+	job, err := s.automationRepo.FindLatestJobByShopAndTypesAndStatuses(
+		shopID,
+		[]string{model.AutomationJobTypeSyncShopActions},
+		[]string{model.AutomationJobStatusSuccess, model.AutomationJobStatusPartialSuccess},
+	)
+	if err == gorm.ErrRecordNotFound {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return job, nil
+}
+
 func (s *AutomationService) ListJobs(req *dto.AutomationJobListRequest) ([]model.AutomationJob, int64, error) {
 	return s.automationRepo.FindWithFilters(req.ShopID, req.Status, req.Page, req.PageSize)
 }

@@ -853,6 +853,21 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function toPriceNumber(value, fallback = 0) {
+  if (value === null || value === undefined || value === '') return fallback
+  if (typeof value === 'number' || typeof value === 'string') {
+    return toNumber(value, fallback)
+  }
+  if (typeof value === 'object') {
+    const units = toNumber(value.units ?? value.unit ?? 0, 0)
+    const nanos = toNumber(value.nanos ?? 0, 0)
+    if (Number.isFinite(units) && Number.isFinite(nanos)) {
+      return units + nanos / 1e9
+    }
+  }
+  return fallback
+}
+
 function toNullableDate(value) {
   if (!value) return null
   const date = new Date(value)
@@ -891,6 +906,10 @@ function walkPayload(node, path = '$', maxDepth = 7, currentDepth = 0, collector
 
 function normalizeShopAction(raw, pathHint = '') {
   if (!raw || typeof raw !== 'object') return null
+
+  const actionParameters = raw.actionParameters && typeof raw.actionParameters === 'object'
+    ? raw.actionParameters
+    : {}
 
   const sourceActionID = String(getFirstDefined(raw, [
     'source_action_id',
@@ -942,6 +961,7 @@ function normalizeShopAction(raw, pathHint = '') {
     participating_products_count: toNumber(getFirstDefined(raw, [
       'participating_products_count',
       'participatingCount',
+      'skuCount',
       'products_count',
       'product_count',
       'items_count',
@@ -957,19 +977,35 @@ function normalizeShopAction(raw, pathHint = '') {
     ]), 0),
     date_start: toNullableDate(getFirstDefined(raw, [
       'date_start',
+      'dateStart',
       'start_at',
       'startAt',
       'starts_at',
       'startsAt',
       'from',
+      actionParameters.date_start,
+      actionParameters.dateStart,
+      actionParameters.start_at,
+      actionParameters.startAt,
+      actionParameters.starts_at,
+      actionParameters.startsAt,
+      actionParameters.from,
     ])),
     date_end: toNullableDate(getFirstDefined(raw, [
       'date_end',
+      'dateEnd',
       'end_at',
       'endAt',
       'ends_at',
       'endsAt',
       'to',
+      actionParameters.date_end,
+      actionParameters.dateEnd,
+      actionParameters.end_at,
+      actionParameters.endAt,
+      actionParameters.ends_at,
+      actionParameters.endsAt,
+      actionParameters.to,
     ])),
   }
 }
@@ -980,8 +1016,10 @@ function normalizeActionProduct(raw, pathHint = '') {
   const sourceSKU = String(getFirstDefined(raw, [
     'source_sku',
     'sourceSku',
+    'offerID',
     'offer_id',
     'offerId',
+    'ozonSku',
     'vendor_code',
     'vendorCode',
     'sku',
@@ -1015,8 +1053,9 @@ function normalizeActionProduct(raw, pathHint = '') {
       'offerName',
       'source_sku',
       'sourceSku',
+      'offerID',
     ]) || sourceSKU),
-    price: toNumber(getFirstDefined(raw, [
+    price: toPriceNumber(getFirstDefined(raw, [
       'price',
       'base_price',
       'basePrice',
@@ -1025,7 +1064,7 @@ function normalizeActionProduct(raw, pathHint = '') {
       'original_price',
       'originalPrice',
     ]), 0),
-    action_price: toNumber(getFirstDefined(raw, [
+    action_price: toPriceNumber(getFirstDefined(raw, [
       'action_price',
       'actionPrice',
       'promo_price',
@@ -1091,6 +1130,57 @@ function createExtensionID() {
 // ===== Functions executed inside seller tab =====
 
 async function scriptFetchShopActionsPayloads() {
+  const readCookie = (name) => {
+    const value = `; ${document.cookie}`
+    const parts = value.split(`; ${name}=`)
+    if (parts.length === 2) {
+      return parts.pop().split(';').shift() || ''
+    }
+    return ''
+  }
+  const companyId = readCookie('sc_company_id')
+  const language = readCookie('x-o3-language') || 'zh-Hans'
+  const requestHeaders = { accept: 'application/json' }
+  if (companyId) requestHeaders['x-o3-company-id'] = companyId
+  if (language) requestHeaders['x-o3-language'] = language
+
+  const packets = []
+
+  // New endpoint used by current Seller activity list page.
+  try {
+    const limit = 50
+    let offset = 0
+    for (let page = 0; page < 20; page += 1) {
+      const endpoint = `/api/site/marketplace-seller-actions/v2/action/list?offset=${offset}&limit=${limit}&skipVouchersCount=true`
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        credentials: 'include',
+        headers: requestHeaders,
+      })
+      if (!response.ok) break
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+      if (!contentType.includes('json')) break
+
+      const data = await response.json()
+      packets.push({ endpoint, data })
+
+      const actions = Array.isArray(data?.actions) ? data.actions : []
+      const total = toNumber(data?.total, 0)
+      if (actions.length === 0) break
+
+      offset += actions.length
+      if ((total > 0 && offset >= total) || actions.length < limit) {
+        break
+      }
+    }
+  } catch {
+    // fall through to legacy endpoints
+  }
+
+  if (packets.length > 0) {
+    return packets
+  }
+
   const endpoints = [
     '/api/seller-actions/list',
     '/api/promotions/actions/list',
@@ -1099,12 +1189,12 @@ async function scriptFetchShopActionsPayloads() {
     '/api/v2/promotions/list',
     '/api/campaigns/list',
   ]
-  const packets = []
   for (const endpoint of endpoints) {
     try {
       const response = await fetch(endpoint, {
         method: 'GET',
         credentials: 'include',
+        headers: requestHeaders,
       })
       if (!response.ok) continue
       const contentType = String(response.headers.get('content-type') || '').toLowerCase()
@@ -1119,7 +1209,60 @@ async function scriptFetchShopActionsPayloads() {
 }
 
 async function scriptFetchActionProductsPayloads(sourceActionID) {
+  const readCookie = (name) => {
+    const value = `; ${document.cookie}`
+    const parts = value.split(`; ${name}=`)
+    if (parts.length === 2) {
+      return parts.pop().split(';').shift() || ''
+    }
+    return ''
+  }
+  const companyId = readCookie('sc_company_id')
+  const language = readCookie('x-o3-language') || 'zh-Hans'
+  const requestHeaders = { accept: 'application/json', 'Content-Type': 'application/json' }
+  if (companyId) requestHeaders['x-o3-company-id'] = companyId
+  if (language) requestHeaders['x-o3-language'] = language
+
   const actionID = String(sourceActionID || '').trim()
+  const packets = []
+
+  // Current endpoint used by campaign implementations (cursor pagination).
+  try {
+    let cursor = ''
+    for (let page = 0; page < 100; page += 1) {
+      const body = { limit: 100 }
+      if (cursor) {
+        body.cursor = cursor
+      }
+      const endpoint = `/api/site/own-seller-products/v1/action/${actionID}/candidate`
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: requestHeaders,
+        body: JSON.stringify(body),
+      })
+      if (!response.ok) break
+
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+      if (!contentType.includes('json')) break
+
+      const data = await response.json()
+      packets.push({ endpoint, data })
+
+      const hasNext = Boolean(data?.has_next)
+      cursor = String(data?.cursor || '')
+      if (!hasNext) {
+        break
+      }
+    }
+  } catch {
+    // fall through to legacy endpoints
+  }
+
+  if (packets.length > 0) {
+    return packets
+  }
+
   const endpoints = [
     { url: '/api/seller-actions/products', body: { action_id: actionID, limit: 500, offset: 0 } },
     { url: '/api/promotions/actions/products', body: { action_id: actionID, limit: 500, offset: 0 } },
@@ -1127,15 +1270,12 @@ async function scriptFetchActionProductsPayloads(sourceActionID) {
     { url: '/api/v1/promotions/products', body: { action_id: actionID, limit: 500, offset: 0 } },
     { url: '/api/v2/promotions/products', body: { action_id: actionID, limit: 500, offset: 0 } },
   ]
-  const packets = []
   for (const endpoint of endpoints) {
     try {
       const response = await fetch(endpoint.url, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: requestHeaders,
         body: JSON.stringify(endpoint.body),
       })
       if (!response.ok) continue
@@ -1151,6 +1291,20 @@ async function scriptFetchActionProductsPayloads(sourceActionID) {
 }
 
 async function scriptFetchCandidates(actionID) {
+  const readCookie = (name) => {
+    const value = `; ${document.cookie}`
+    const parts = value.split(`; ${name}=`)
+    if (parts.length === 2) {
+      return parts.pop().split(';').shift() || ''
+    }
+    return ''
+  }
+  const companyId = readCookie('sc_company_id')
+  const language = readCookie('x-o3-language') || 'zh-Hans'
+  const requestHeaders = { accept: 'application/json', 'content-type': 'application/json' }
+  if (companyId) requestHeaders['x-o3-company-id'] = companyId
+  if (language) requestHeaders['x-o3-language'] = language
+
   const allProducts = []
   let hasNext = true
   let cursor = ''
@@ -1164,10 +1318,7 @@ async function scriptFetchCandidates(actionID) {
       `/api/site/own-seller-products/v1/action/${actionID}/candidate`,
       {
         method: 'POST',
-        headers: {
-          accept: 'application/json',
-          'content-type': 'application/json',
-        },
+        headers: requestHeaders,
         body: JSON.stringify(body),
         credentials: 'include',
       },
@@ -1194,6 +1345,20 @@ async function scriptFetchCandidates(actionID) {
 }
 
 async function scriptActivateProducts(actionID, products) {
+  const readCookie = (name) => {
+    const value = `; ${document.cookie}`
+    const parts = value.split(`; ${name}=`)
+    if (parts.length === 2) {
+      return parts.pop().split(';').shift() || ''
+    }
+    return ''
+  }
+  const companyId = readCookie('sc_company_id')
+  const language = readCookie('x-o3-language') || 'zh-Hans'
+  const requestHeaders = { accept: 'application/json', 'content-type': 'application/json' }
+  if (companyId) requestHeaders['x-o3-company-id'] = companyId
+  if (language) requestHeaders['x-o3-language'] = language
+
   const payload = (products || []).map((item) => ({
     product_id: Number(item?.product_id || item?.id),
     skus: Array.isArray(item?.skus) ? item.skus.map((sku) => Number(sku)) : [],
@@ -1206,10 +1371,7 @@ async function scriptActivateProducts(actionID, products) {
     `/api/site/own-seller-products/v1/action/${actionID}/activate`,
     {
       method: 'POST',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-      },
+      headers: requestHeaders,
       body: JSON.stringify({ products: payload }),
       credentials: 'include',
     },
@@ -1223,14 +1385,25 @@ async function scriptActivateProducts(actionID, products) {
 }
 
 async function scriptDeactivateProducts(actionID, skus) {
+  const readCookie = (name) => {
+    const value = `; ${document.cookie}`
+    const parts = value.split(`; ${name}=`)
+    if (parts.length === 2) {
+      return parts.pop().split(';').shift() || ''
+    }
+    return ''
+  }
+  const companyId = readCookie('sc_company_id')
+  const language = readCookie('x-o3-language') || 'zh-Hans'
+  const requestHeaders = { accept: 'application/json', 'content-type': 'application/json' }
+  if (companyId) requestHeaders['x-o3-company-id'] = companyId
+  if (language) requestHeaders['x-o3-language'] = language
+
   const response = await fetch(
     `/api/site/own-seller-products/v1/action/${actionID}/deactivate`,
     {
       method: 'POST',
-      headers: {
-        accept: 'application/json',
-        'content-type': 'application/json',
-      },
+      headers: requestHeaders,
       body: JSON.stringify({ skus: skus || [] }),
       credentials: 'include',
     },

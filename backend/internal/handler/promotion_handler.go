@@ -678,7 +678,20 @@ func (h *PromotionHandler) UpdateActionDisplayName(c *gin.Context) {
 		return
 	}
 
-	shopID, _ := strconv.ParseUint(c.Query("shop_id"), 10, 32)
+	var req dto.UpdateActionDisplayNameRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "请求参数错误",
+		})
+		return
+	}
+
+	shopID := req.ShopID
+	if shopID == 0 {
+		shopIDFromQuery, _ := strconv.ParseUint(c.Query("shop_id"), 10, 32)
+		shopID = uint(shopIDFromQuery)
+	}
 	if shopID == 0 {
 		c.JSON(http.StatusBadRequest, dto.Response{
 			Code:    400,
@@ -689,7 +702,7 @@ func (h *PromotionHandler) UpdateActionDisplayName(c *gin.Context) {
 
 	// 检查权限
 	claims := middleware.GetCurrentUser(c)
-	if err := h.shopService.CheckUserAccessByRole(claims.UserID, uint(shopID), claims.Role); err != nil {
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, shopID, claims.Role); err != nil {
 		c.JSON(http.StatusForbidden, dto.Response{
 			Code:    403,
 			Message: "无权访问该店铺",
@@ -697,16 +710,7 @@ func (h *PromotionHandler) UpdateActionDisplayName(c *gin.Context) {
 		return
 	}
 
-	var req dto.UpdateActionDisplayNameRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.Response{
-			Code:    400,
-			Message: "请求参数错误",
-		})
-		return
-	}
-
-	if err := h.promotionService.UpdateActionDisplayName(uint(shopID), uint(id), req.DisplayName); err != nil {
+	if err := h.promotionService.UpdateActionDisplayName(shopID, uint(id), req.DisplayName); err != nil {
 		c.JSON(http.StatusInternalServerError, dto.Response{
 			Code:    500,
 			Message: "更新失败: " + err.Error(),
