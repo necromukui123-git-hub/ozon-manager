@@ -224,12 +224,36 @@ func (s *AutomationService) AgentPoll(req *dto.AgentPollRequest) (*model.Automat
 		return nil, fmt.Errorf("agent not found: %w", err)
 	}
 
-	job, err := s.automationRepo.AcquirePendingJobForAgent(agent.ID)
+	candidates, err := s.automationRepo.ListPendingJobsByTypes(agentSupportedJobTypes(), 100)
 	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, nil
-		}
 		return nil, err
+	}
+
+	var job *model.AutomationJob
+	for _, candidate := range candidates {
+		allow, allowErr := s.canAgentAcquireJob(candidate.ShopID)
+		if allowErr != nil {
+			if allowErr == gorm.ErrRecordNotFound {
+				continue
+			}
+			return nil, allowErr
+		}
+		if !allow {
+			continue
+		}
+
+		claimedJob, claimErr := s.automationRepo.AcquirePendingJobByIDForAgent(candidate.ID, agent.ID)
+		if claimErr != nil {
+			if claimErr == gorm.ErrRecordNotFound {
+				continue
+			}
+			return nil, claimErr
+		}
+		job = claimedJob
+		break
+	}
+	if job == nil {
+		return nil, nil
 	}
 
 	payload := map[string]interface{}{
@@ -339,13 +363,29 @@ func (s *AutomationService) ExtensionRegister(userID uint, req *dto.ExtensionReg
 }
 
 func (s *AutomationService) ExtensionPoll(userID uint, req *dto.ExtensionPollRequest) (*model.AutomationJob, error) {
-	_, _ = s.ExtensionRegister(userID, &dto.ExtensionRegisterRequest{
+	if _, err := s.ExtensionRegister(userID, &dto.ExtensionRegisterRequest{
 		ShopID:      req.ShopID,
 		ExtensionID: req.ExtensionID,
 		Name:        "Chrome Extension",
-	})
+	}); err != nil {
+		return nil, err
+	}
 
-	job, err := s.automationRepo.AcquirePendingJobForShop(req.ShopID, extensionSupportedJobTypes())
+	mode, err := s.resolveShopExecutionEngineMode(req.ShopID)
+	if err != nil {
+		return nil, err
+	}
+	if !shouldExtensionAcquire(mode) {
+		return nil, nil
+	}
+
+	agentKey := extensionAgentKey(userID, req.ShopID, req.ExtensionID)
+	agent, err := s.automationRepo.FindAgentByKey(agentKey)
+	if err != nil {
+		return nil, fmt.Errorf("extension not registered: %w", err)
+	}
+
+	job, err := s.automationRepo.AcquirePendingJobForShop(req.ShopID, extensionSupportedJobTypes(), &agent.ID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, nil
@@ -382,6 +422,14 @@ func (s *AutomationService) ExtensionReport(userID uint, req *dto.ExtensionRepor
 	}
 	if job.Status != model.AutomationJobStatusRunning {
 		return fmt.Errorf("job is not running")
+	}
+	agentKey := extensionAgentKey(userID, req.ShopID, req.ExtensionID)
+	agent, err := s.automationRepo.FindAgentByKey(agentKey)
+	if err != nil {
+		return fmt.Errorf("extension not registered")
+	}
+	if err := validateJobAssignedAgent(job, agent.ID); err != nil {
+		return err
 	}
 
 	results := make([]model.AutomationJobItem, 0, len(req.Results))
@@ -559,6 +607,57 @@ func (s *AutomationService) ListAgents() ([]model.AutomationAgent, error) {
 	return agents, nil
 }
 
+func (s *AutomationService) GetExtensionStatus() ([]dto.ExtensionStatusItem, error) {
+	shops, err := s.shopRepo.FindAll()
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now()
+	items := make([]dto.ExtensionStatusItem, 0, len(shops))
+	for _, shop := range shops {
+		mode := normalizeShopEngineMode(shop.ExecutionEngineMode)
+		item := dto.ExtensionStatusItem{
+			ShopID:        shop.ID,
+			ShopName:      shop.Name,
+			ExecutionMode: mode,
+			AgentStatus:   model.AutomationAgentStatusOffline,
+		}
+
+		if agent, agentErr := s.automationRepo.FindLatestExtensionAgentByShop(shop.ID); agentErr == nil {
+			item.ExtensionAgentID = &agent.ID
+			item.AgentKey = agent.AgentKey
+			item.LastHeartbeatAt = FormatAutomationTime(agent.LastHeartbeatAt)
+
+			isOnline := agent.LastHeartbeatAt != nil && now.Sub(*agent.LastHeartbeatAt) <= 90*time.Second
+			if isOnline {
+				item.AgentStatus = model.AutomationAgentStatusOnline
+			}
+		}
+
+		if latestJob, jobErr := s.automationRepo.FindLatestJobByShopAndTypes(shop.ID, extensionSupportedJobTypes()); jobErr == nil {
+			item.LatestJobID = &latestJob.ID
+			item.LatestJobType = latestJob.JobType
+			item.LatestJobStatus = latestJob.Status
+			item.LastRunAt = FormatAutomationTime(latestJob.CompletedAt)
+			if item.LastRunAt == nil {
+				item.LastRunAt = FormatAutomationTime(&latestJob.UpdatedAt)
+			}
+			if latestJob.Status == model.AutomationJobStatusFailed || latestJob.Status == model.AutomationJobStatusPartialSuccess {
+				if latestJob.ErrorMessage != "" {
+					item.LastError = latestJob.ErrorMessage
+				} else if failedErr, failedItemErr := s.automationRepo.FindLatestFailedItemError(latestJob.ID); failedItemErr == nil {
+					item.LastError = failedErr
+				}
+			}
+		}
+
+		items = append(items, item)
+	}
+
+	return items, nil
+}
+
 func (s *AutomationService) createSimpleEvent(jobID uint, eventType, message string, createdBy *uint) error {
 	payloadBytes, _ := json.Marshal(map[string]interface{}{})
 	event := &model.AutomationJobEvent{
@@ -608,6 +707,73 @@ func extensionSupportedJobTypes() []string {
 		model.AutomationJobTypePromoUnifiedRemove,
 		model.AutomationJobTypeRemoveRepriceReadd,
 	}
+}
+
+func agentSupportedJobTypes() []string {
+	return extensionSupportedJobTypes()
+}
+
+func (s *AutomationService) canAgentAcquireJob(shopID uint) (bool, error) {
+	mode, err := s.resolveShopExecutionEngineMode(shopID)
+	if err != nil {
+		return false, err
+	}
+
+	if mode != model.ShopExecutionEngineAuto {
+		return shouldAgentAcquire(mode, false), nil
+	}
+
+	staleAfter := time.Now().Add(-90 * time.Second)
+	hasOnlineExtension, checkErr := s.automationRepo.HasOnlineExtensionForShop(shopID, staleAfter)
+	if checkErr != nil {
+		return false, checkErr
+	}
+	return shouldAgentAcquire(mode, hasOnlineExtension), nil
+}
+
+func (s *AutomationService) resolveShopExecutionEngineMode(shopID uint) (string, error) {
+	mode, err := s.shopRepo.GetExecutionEngineMode(shopID)
+	if err != nil {
+		return "", err
+	}
+	return normalizeShopEngineMode(mode), nil
+}
+
+func normalizeShopEngineMode(mode string) string {
+	normalized := strings.TrimSpace(strings.ToLower(mode))
+	switch normalized {
+	case model.ShopExecutionEngineExtension:
+		return model.ShopExecutionEngineExtension
+	case model.ShopExecutionEngineAgent:
+		return model.ShopExecutionEngineAgent
+	default:
+		return model.ShopExecutionEngineAuto
+	}
+}
+
+func shouldExtensionAcquire(mode string) bool {
+	return mode == model.ShopExecutionEngineAuto || mode == model.ShopExecutionEngineExtension
+}
+
+func shouldAgentAcquire(mode string, hasOnlineExtension bool) bool {
+	switch mode {
+	case model.ShopExecutionEngineAgent:
+		return true
+	case model.ShopExecutionEngineExtension:
+		return false
+	default:
+		return !hasOnlineExtension
+	}
+}
+
+func validateJobAssignedAgent(job *model.AutomationJob, agentID uint) error {
+	if job == nil {
+		return fmt.Errorf("job not found")
+	}
+	if job.AssignedAgentID == nil || *job.AssignedAgentID != agentID {
+		return fmt.Errorf("job is not assigned to this extension")
+	}
+	return nil
 }
 
 func extensionAgentKey(userID, shopID uint, extensionID string) string {

@@ -9,6 +9,7 @@ CREATE INDEX IF NOT EXISTS idx_users_owner_id ON users(owner_id);
 
 -- 2. 添加店铺 owner_id 列
 ALTER TABLE shops ADD COLUMN IF NOT EXISTS owner_id INTEGER;
+ALTER TABLE shops ADD COLUMN IF NOT EXISTS execution_engine_mode VARCHAR(20) NOT NULL DEFAULT 'auto';
 CREATE INDEX IF NOT EXISTS idx_shops_owner_id ON shops(owner_id);
 
 -- 3. 增强 promotion_actions 表（支持官方和店铺促销）

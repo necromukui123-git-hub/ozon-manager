@@ -128,6 +128,7 @@ func main() {
 
 				// 系统概览
 				superAdmin.GET("/overview", shopHandler.GetSystemOverview)
+				superAdmin.GET("/extension-status", automationHandler.GetExtensionStatus)
 			}
 
 			// ========== 店铺管理员专用路由 ==========
@@ -138,6 +139,8 @@ func main() {
 				shopAdmin.POST("/shops", shopHandler.CreateMyShop)
 				shopAdmin.GET("/shops", shopHandler.GetMyShops)
 				shopAdmin.PUT("/shops/:id", shopHandler.UpdateMyShop)
+				shopAdmin.GET("/shops/:id/execution-engine", shopHandler.GetMyShopExecutionEngine)
+				shopAdmin.PUT("/shops/:id/execution-engine", shopHandler.UpdateMyShopExecutionEngine)
 				shopAdmin.DELETE("/shops/:id", shopHandler.DeleteMyShop)
 
 				// 员工管理

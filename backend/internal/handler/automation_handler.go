@@ -390,6 +390,15 @@ func (h *AutomationHandler) GetAgentStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.Response{Code: 200, Message: "success", Data: items})
 }
 
+func (h *AutomationHandler) GetExtensionStatus(c *gin.Context) {
+	items, err := h.automationService.GetExtensionStatus()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.Response{Code: 500, Message: "failed to list extension status"})
+		return
+	}
+	c.JSON(http.StatusOK, dto.Response{Code: 200, Message: "success", Data: items})
+}
+
 func buildAutomationJobDetail(job *model.AutomationJob) dto.AutomationJobDetailResponse {
 	startedAt := service.FormatAutomationTime(job.StartedAt)
 	completedAt := service.FormatAutomationTime(job.CompletedAt)

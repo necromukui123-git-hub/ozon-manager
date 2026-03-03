@@ -9,6 +9,7 @@ function getFormData() {
   return {
     enabled: $('enabled').checked,
     apiBaseUrl: $('apiBaseUrl').value.trim(),
+    adminOrigin: $('adminOrigin').value.trim(),
     authToken: $('token').value.trim(),
     shopId: Number.isFinite(shopID) && shopID > 0 ? shopID : null,
   }
@@ -17,12 +18,14 @@ function getFormData() {
 function applyState(state) {
   $('enabled').checked = Boolean(state.enabled)
   $('apiBaseUrl').value = state.apiBaseUrl || ''
+  $('adminOrigin').value = state.adminOrigin || ''
   $('token').value = state.authToken || ''
   $('shopId').value = state.shopId || ''
 
   const lines = [
     `enabled: ${state.enabled ? 'yes' : 'no'}`,
     `shop_id: ${state.shopId || '-'}`,
+    `admin_origin: ${state.adminOrigin || '-'}`,
     `last_run: ${state.lastRunAt || '-'}`,
     `last_error: ${state.lastError || '-'}`,
   ]

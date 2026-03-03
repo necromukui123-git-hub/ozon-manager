@@ -57,6 +57,13 @@
               </el-tag>
             </template>
           </el-table-column>
+          <el-table-column label="执行引擎" width="130" align="center">
+            <template #default="{ row }">
+              <el-tag :type="getEngineTagType(row.execution_engine_mode)" effect="plain" size="small">
+                {{ getEngineLabel(row.execution_engine_mode) }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column prop="created_at" label="创建时间" width="180">
             <template #default="{ row }">
               <span class="time-text">{{ formatTime(row.created_at) }}</span>
@@ -93,6 +100,13 @@
             placeholder="请输入Ozon API Key"
           />
         </el-form-item>
+        <el-form-item label="执行引擎" prop="execution_engine_mode">
+          <el-select v-model="form.execution_engine_mode" placeholder="请选择执行引擎">
+            <el-option label="自动（优先插件）" value="auto" />
+            <el-option label="仅浏览器插件" value="extension" />
+            <el-option label="仅旧 Agent" value="agent" />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -126,7 +140,8 @@ const formRef = ref(null)
 const form = reactive({
   name: '',
   client_id: '',
-  api_key: ''
+  api_key: '',
+  execution_engine_mode: 'auto'
 })
 
 const validateClientID = (_, value, callback) => {
@@ -144,7 +159,8 @@ const validateClientID = (_, value, callback) => {
 const rules = {
   name: [{ required: true, message: '请输入店铺名称', trigger: 'blur' }],
   client_id: [{ validator: validateClientID, trigger: 'blur' }],
-  api_key: [{ required: true, message: '请输入API Key', trigger: 'blur' }]
+  api_key: [{ required: true, message: '请输入API Key', trigger: 'blur' }],
+  execution_engine_mode: [{ required: true, message: '请选择执行引擎', trigger: 'change' }]
 }
 
 onMounted(async () => {
@@ -169,6 +185,7 @@ function showDialog() {
   form.name = ''
   form.client_id = ''
   form.api_key = ''
+  form.execution_engine_mode = 'auto'
   dialogVisible.value = true
 }
 
@@ -178,6 +195,7 @@ function showEditDialog(shop) {
   form.name = shop.name
   form.client_id = shop.client_id
   form.api_key = shop.api_key
+  form.execution_engine_mode = shop.execution_engine_mode || 'auto'
   dialogVisible.value = true
 }
 
@@ -237,6 +255,18 @@ async function handleDelete(shop) {
 function maskApiKey(key) {
   if (!key || key.length < 10) return key
   return key.substring(0, 6) + '****' + key.substring(key.length - 4)
+}
+
+function getEngineLabel(mode) {
+  if (mode === 'extension') return '仅插件'
+  if (mode === 'agent') return '仅Agent'
+  return '自动'
+}
+
+function getEngineTagType(mode) {
+  if (mode === 'extension') return 'success'
+  if (mode === 'agent') return 'warning'
+  return 'info'
 }
 
 function copyApiKey(key) {

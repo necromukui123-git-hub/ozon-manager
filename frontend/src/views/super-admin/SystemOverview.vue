@@ -89,6 +89,45 @@
         </div>
       </BentoCard>
 
+      <BentoCard title="插件执行状态" :icon="DataAnalysis" size="4x1" no-padding>
+        <div class="extension-status-wrapper">
+          <el-table :data="extensionStatus" size="small" v-loading="loading" max-height="220">
+            <el-table-column prop="shop_name" label="店铺" min-width="120" />
+            <el-table-column prop="execution_engine_mode" label="引擎模式" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag size="small" effect="plain">{{ engineModeLabel(row.execution_engine_mode) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="agent_status" label="插件状态" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.agent_status === 'online' ? 'success' : 'info'" size="small">
+                  {{ row.agent_status === 'online' ? '在线' : '离线' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="latest_job_type" label="最近任务" min-width="140">
+              <template #default="{ row }">
+                <span class="mono">{{ row.latest_job_type || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="latest_job_status" label="任务状态" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.latest_job_status" size="small" :type="jobStatusType(row.latest_job_status)">
+                  {{ row.latest_job_status }}
+                </el-tag>
+                <span v-else>-</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="last_heartbeat_at" label="最后心跳" width="170" />
+            <el-table-column prop="last_error" label="错误信息" min-width="200">
+              <template #default="{ row }">
+                <span class="error-text" :title="row.last_error || ''">{{ row.last_error || '-' }}</span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </BentoCard>
+
       <!-- 资源统计柱状图 -->
       <ChartCard
         title="资源统计"
@@ -105,7 +144,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { User, UserFilled, Shop, Goods, Refresh, PieChart, DataAnalysis } from '@element-plus/icons-vue'
-import { getSystemOverview } from '@/api/admin'
+import { getSystemOverview, getExtensionStatus } from '@/api/admin'
 import { StatCard, ChartCard, BentoCard } from '@/components/bento'
 import { getThemeChartTokens } from '@/utils/echarts-theme'
 import { getTheme } from '@/utils/theme'
@@ -118,6 +157,7 @@ const overview = reactive({
   product_count: 0,
   shop_admins: []
 })
+const extensionStatus = ref([])
 const currentTheme = getTheme()
 const chartToken = computed(() => {
   currentTheme.value
@@ -241,13 +281,31 @@ onMounted(async () => {
 async function fetchOverview() {
   loading.value = true
   try {
-    const res = await getSystemOverview()
-    Object.assign(overview, res.data)
+    const [overviewRes, extensionRes] = await Promise.all([
+      getSystemOverview(),
+      getExtensionStatus(),
+    ])
+    Object.assign(overview, overviewRes.data)
+    extensionStatus.value = extensionRes.data || []
   } catch (error) {
     console.error(error)
   } finally {
     loading.value = false
   }
+}
+
+function engineModeLabel(mode) {
+  if (mode === 'extension') return '仅插件'
+  if (mode === 'agent') return '仅Agent'
+  return '自动'
+}
+
+function jobStatusType(status) {
+  if (status === 'success') return 'success'
+  if (status === 'partial_success') return 'warning'
+  if (status === 'failed') return 'danger'
+  if (status === 'running') return 'primary'
+  return 'info'
 }
 </script>
 
@@ -299,6 +357,24 @@ async function fetchOverview() {
   gap: 2px;
   font-size: 11px;
   color: var(--text-muted);
+}
+
+.extension-status-wrapper {
+  padding: 8px;
+}
+
+.mono {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+}
+
+.error-text {
+  color: var(--danger);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 响应式调整 */

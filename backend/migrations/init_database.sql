@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS shops (
     client_id       VARCHAR(50) NOT NULL,
     api_key         VARCHAR(200) NOT NULL,
     is_active       BOOLEAN DEFAULT true,
+    execution_engine_mode VARCHAR(20) NOT NULL DEFAULT 'auto',
     owner_id        INTEGER REFERENCES users(id),
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP

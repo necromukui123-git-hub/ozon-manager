@@ -1,10 +1,12 @@
 const SELLER_BASE_URL = 'https://seller.ozon.ru'
 const POLL_ALARM = 'ozon_manager_extension_poll'
+const AUTH_SYNC_SCRIPT_ID = 'ozon_manager_auth_sync_dynamic'
 const DEFAULT_POLL_INTERVAL_MS = 5000
 
 const DEFAULT_STATE = {
   enabled: true,
   apiBaseUrl: 'http://127.0.0.1:8080',
+  adminOrigin: '',
   authToken: '',
   shopId: null,
   extensionId: '',
@@ -17,12 +19,14 @@ const DEFAULT_STATE = {
 let pollInFlight = false
 
 chrome.runtime.onInstalled.addListener(async () => {
-  await initializeState()
+  const state = await initializeState()
+  await ensureAuthSyncContentScript(state, false)
   await ensurePollingAlarm()
 })
 
 chrome.runtime.onStartup.addListener(async () => {
-  await initializeState()
+  const state = await initializeState()
+  await ensureAuthSyncContentScript(state, false)
   await ensurePollingAlarm()
 })
 
@@ -50,9 +54,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (type === 'OZON_MANAGER_SET_CONFIG') {
     saveStatePatch(message?.payload || {})
       .then(async () => {
+        const state = await readState()
+        await ensureAuthSyncContentScript(state, true)
         await ensurePollingAlarm()
         await pollOnce()
-        const state = await readState()
         sendResponse({ ok: true, state })
       })
       .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }))
@@ -74,6 +79,7 @@ async function initializeState() {
   if (Object.keys(patch).length > 0) {
     await chrome.storage.local.set(patch)
   }
+  return readState()
 }
 
 async function readState() {
@@ -85,6 +91,7 @@ async function saveStatePatch(patch) {
   const next = {}
   if (typeof patch.enabled === 'boolean') next.enabled = patch.enabled
   if (typeof patch.apiBaseUrl === 'string') next.apiBaseUrl = patch.apiBaseUrl.trim()
+  if (typeof patch.adminOrigin === 'string') next.adminOrigin = normalizeHTTPOrigin(patch.adminOrigin)
   if (typeof patch.authToken === 'string') next.authToken = patch.authToken.trim()
   if (patch.shopId !== undefined) {
     const shopID = Number(patch.shopId || 0)
@@ -115,9 +122,6 @@ async function handleAuthSync(payload) {
   const shopID = Number(payload.shop_id || 0)
   if (Number.isFinite(shopID) && shopID > 0) {
     patch.shopId = shopID
-  }
-  if (typeof payload.origin === 'string' && /^https?:\/\//i.test(payload.origin)) {
-    patch.apiBaseUrl = payload.origin.trim()
   }
 
   if (Object.keys(patch).length > 0) {
@@ -239,6 +243,90 @@ function joinURL(base, path) {
   const left = String(base || '').replace(/\/+$/, '')
   const right = String(path || '').replace(/^\/+/, '')
   return `${left}/${right}`
+}
+
+function normalizeHTTPOrigin(raw) {
+  const input = String(raw || '').trim()
+  if (!input) return ''
+  try {
+    const url = new URL(input)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return ''
+    return url.origin
+  } catch {
+    return ''
+  }
+}
+
+function isLocalOrigin(origin) {
+  if (!origin) return false
+  try {
+    const url = new URL(origin)
+    return url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+  } catch {
+    return false
+  }
+}
+
+function buildAuthSyncOrigins(state) {
+  const origins = new Set([
+    'http://localhost',
+    'https://localhost',
+    'http://127.0.0.1',
+  ])
+
+  const backendOrigin = normalizeHTTPOrigin(state?.apiBaseUrl || '')
+  if (backendOrigin) {
+    origins.add(backendOrigin)
+  }
+
+  const adminOrigin = normalizeHTTPOrigin(state?.adminOrigin || '')
+  if (adminOrigin) {
+    origins.add(adminOrigin)
+  }
+
+  return Array.from(origins)
+}
+
+async function ensureAuthSyncContentScript(state, requestPermission) {
+  const allOrigins = buildAuthSyncOrigins(state)
+  const dynamicOrigins = allOrigins.filter((origin) => !isLocalOrigin(origin))
+  const dynamicMatches = dynamicOrigins.map((origin) => `${origin}/*`)
+
+  if (dynamicMatches.length === 0) {
+    try {
+      await chrome.scripting.unregisterContentScripts({ ids: [AUTH_SYNC_SCRIPT_ID] })
+    } catch {
+      // ignore if not registered
+    }
+    return
+  }
+
+  const hasPermission = await chrome.permissions.contains({ origins: dynamicMatches })
+  if (!hasPermission) {
+    if (!requestPermission) {
+      return
+    }
+    const granted = await chrome.permissions.request({ origins: dynamicMatches })
+    if (!granted) {
+      throw new Error('未授予管理端域名权限，无法自动同步 token/shop_id')
+    }
+  }
+
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: [AUTH_SYNC_SCRIPT_ID] })
+  } catch {
+    // ignore if not registered
+  }
+
+  await chrome.scripting.registerContentScripts([
+    {
+      id: AUTH_SYNC_SCRIPT_ID,
+      matches: dynamicMatches,
+      js: ['content-auth-sync.js'],
+      runAt: 'document_idle',
+      persistAcrossSessions: true,
+    },
+  ])
 }
 
 async function executeJob(job, state) {

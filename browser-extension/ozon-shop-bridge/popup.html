@@ -84,6 +84,11 @@
   </div>
 
   <div class="field">
+    <label for="adminOrigin">管理端 Origin（可选）</label>
+    <input id="adminOrigin" type="text" placeholder="https://admin.example.com">
+  </div>
+
+  <div class="field">
     <label for="shopId">店铺 ID</label>
     <input id="shopId" type="number" min="1" placeholder="例如 1">
   </div>
@@ -95,8 +100,8 @@
 
   <button id="saveBtn" type="button">保存并立即同步一次</button>
 
-  <div class="hint">默认会尝试从你的管理系统页面自动同步 token 和 shop_id。
-若自动同步失败，可手工填入后保存。</div>
+  <div class="hint">默认会从后端地址推导同源页面进行 token/shop_id 自动同步。
+如管理端与后端不同源，可填写“管理端 Origin”并保存。</div>
   <div id="status" class="status">初始化中...</div>
 
   <script src="popup.js"></script>

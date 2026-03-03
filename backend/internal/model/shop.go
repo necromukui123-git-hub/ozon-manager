@@ -4,16 +4,23 @@ import (
 	"time"
 )
 
+const (
+	ShopExecutionEngineAuto      = "auto"
+	ShopExecutionEngineExtension = "extension"
+	ShopExecutionEngineAgent     = "agent"
+)
+
 // Shop 店铺表
 type Shop struct {
-	ID        uint      `gorm:"primaryKey" json:"id"`
-	Name      string    `gorm:"size:100;not null" json:"name"`
-	ClientID  string    `gorm:"size:50;uniqueIndex;not null" json:"client_id"`
-	ApiKey    string    `gorm:"size:200;not null" json:"-"` // 不返回给前端
-	IsActive  bool      `gorm:"default:true" json:"is_active"`
-	OwnerID   uint      `gorm:"not null;index" json:"owner_id"` // 店铺所属的店铺管理员ID
-	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+	ID                  uint      `gorm:"primaryKey" json:"id"`
+	Name                string    `gorm:"size:100;not null" json:"name"`
+	ClientID            string    `gorm:"size:50;uniqueIndex;not null" json:"client_id"`
+	ApiKey              string    `gorm:"size:200;not null" json:"-"` // 不返回给前端
+	IsActive            bool      `gorm:"default:true" json:"is_active"`
+	ExecutionEngineMode string    `gorm:"size:20;not null;default:auto" json:"execution_engine_mode"`
+	OwnerID             uint      `gorm:"not null;index" json:"owner_id"` // 店铺所属的店铺管理员ID
+	CreatedAt           time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt           time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 
 	// 关联
 	Owner *User  `gorm:"foreignKey:OwnerID" json:"owner,omitempty"` // 所属管理员

@@ -17,6 +17,7 @@ var (
 	ErrShopNotBelongToYou   = errors.New("该店铺不属于您")
 	ErrActiveClientIDExists = errors.New("已存在使用该 Client ID 的可用店铺")
 	ErrInvalidClientID      = errors.New("Client ID必须是正整数")
+	ErrInvalidEngineMode    = errors.New("执行引擎模式无效")
 )
 
 type ShopService struct {
@@ -41,8 +42,9 @@ func (s *ShopService) GetAllShops() ([]dto.ShopInfo, error) {
 	result := make([]dto.ShopInfo, 0, len(shops))
 	for _, shop := range shops {
 		result = append(result, dto.ShopInfo{
-			ID:   shop.ID,
-			Name: shop.Name,
+			ID:                  shop.ID,
+			Name:                shop.Name,
+			ExecutionEngineMode: normalizeExecutionEngineModeOrDefault(shop.ExecutionEngineMode),
 		})
 	}
 
@@ -72,10 +74,11 @@ func (s *ShopService) CreateShop(req *dto.CreateShopRequest) (*dto.ShopInfo, err
 	}
 
 	shop := &model.Shop{
-		Name:     req.Name,
-		ClientID: normalizedClientID,
-		ApiKey:   req.ApiKey,
-		IsActive: true,
+		Name:                req.Name,
+		ClientID:            normalizedClientID,
+		ApiKey:              req.ApiKey,
+		IsActive:            true,
+		ExecutionEngineMode: model.ShopExecutionEngineAuto,
 	}
 
 	if err := s.shopRepo.Create(shop); err != nil {
@@ -83,8 +86,9 @@ func (s *ShopService) CreateShop(req *dto.CreateShopRequest) (*dto.ShopInfo, err
 	}
 
 	return &dto.ShopInfo{
-		ID:   shop.ID,
-		Name: shop.Name,
+		ID:                  shop.ID,
+		Name:                shop.Name,
+		ExecutionEngineMode: normalizeExecutionEngineModeOrDefault(shop.ExecutionEngineMode),
 	}, nil
 }
 
@@ -116,6 +120,13 @@ func (s *ShopService) UpdateShop(shopID uint, req *dto.UpdateShopRequest) error 
 	}
 	if req.IsActive != nil {
 		shop.IsActive = *req.IsActive
+	}
+	if req.ExecutionEngineMode != "" {
+		engineMode, normalizeErr := normalizeExecutionEngineMode(req.ExecutionEngineMode)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+		shop.ExecutionEngineMode = engineMode
 	}
 
 	return s.shopRepo.Update(shop)
@@ -156,11 +167,12 @@ func (s *ShopService) CreateMyShop(req *dto.CreateShopRequest, ownerID uint) (*d
 	}
 
 	shop := &model.Shop{
-		Name:     req.Name,
-		ClientID: normalizedClientID,
-		ApiKey:   req.ApiKey,
-		IsActive: true,
-		OwnerID:  ownerID,
+		Name:                req.Name,
+		ClientID:            normalizedClientID,
+		ApiKey:              req.ApiKey,
+		IsActive:            true,
+		ExecutionEngineMode: model.ShopExecutionEngineAuto,
+		OwnerID:             ownerID,
 	}
 
 	if err := s.shopRepo.Create(shop); err != nil {
@@ -168,9 +180,10 @@ func (s *ShopService) CreateMyShop(req *dto.CreateShopRequest, ownerID uint) (*d
 	}
 
 	return &dto.ShopInfo{
-		ID:       shop.ID,
-		Name:     shop.Name,
-		IsActive: shop.IsActive,
+		ID:                  shop.ID,
+		Name:                shop.Name,
+		IsActive:            shop.IsActive,
+		ExecutionEngineMode: normalizeExecutionEngineModeOrDefault(shop.ExecutionEngineMode),
 	}, nil
 }
 
@@ -184,9 +197,10 @@ func (s *ShopService) GetMyShops(ownerID uint) ([]dto.ShopInfo, error) {
 	result := make([]dto.ShopInfo, 0, len(shops))
 	for _, shop := range shops {
 		result = append(result, dto.ShopInfo{
-			ID:       shop.ID,
-			Name:     shop.Name,
-			IsActive: shop.IsActive,
+			ID:                  shop.ID,
+			Name:                shop.Name,
+			IsActive:            shop.IsActive,
+			ExecutionEngineMode: normalizeExecutionEngineModeOrDefault(shop.ExecutionEngineMode),
 		})
 	}
 
@@ -226,6 +240,13 @@ func (s *ShopService) UpdateMyShop(shopID uint, req *dto.UpdateShopRequest, owne
 	}
 	if req.IsActive != nil {
 		shop.IsActive = *req.IsActive
+	}
+	if req.ExecutionEngineMode != "" {
+		engineMode, normalizeErr := normalizeExecutionEngineMode(req.ExecutionEngineMode)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+		shop.ExecutionEngineMode = engineMode
 	}
 
 	return s.shopRepo.Update(shop)
@@ -304,9 +325,10 @@ func (s *ShopService) GetAccessibleShopsByRole(userID uint, role string) ([]dto.
 	result := make([]dto.ShopInfo, 0, len(shops))
 	for _, shop := range shops {
 		result = append(result, dto.ShopInfo{
-			ID:       shop.ID,
-			Name:     shop.Name,
-			IsActive: shop.IsActive,
+			ID:                  shop.ID,
+			Name:                shop.Name,
+			IsActive:            shop.IsActive,
+			ExecutionEngineMode: normalizeExecutionEngineModeOrDefault(shop.ExecutionEngineMode),
 		})
 	}
 
@@ -326,6 +348,45 @@ func (s *ShopService) GetSystemOverview() (*dto.SystemOverviewResponse, error) {
 	}, nil
 }
 
+func (s *ShopService) GetMyShopExecutionEngine(shopID uint, ownerID uint) (*dto.ShopExecutionEngineResponse, error) {
+	shop, err := s.shopRepo.FindByID(shopID)
+	if err != nil {
+		return nil, ErrShopNotFound
+	}
+	if shop.OwnerID != ownerID {
+		return nil, ErrShopNotBelongToYou
+	}
+
+	return &dto.ShopExecutionEngineResponse{
+		ShopID:              shop.ID,
+		ExecutionEngineMode: normalizeExecutionEngineModeOrDefault(shop.ExecutionEngineMode),
+	}, nil
+}
+
+func (s *ShopService) UpdateMyShopExecutionEngine(shopID uint, ownerID uint, mode string) (*dto.ShopExecutionEngineResponse, error) {
+	shop, err := s.shopRepo.FindByID(shopID)
+	if err != nil {
+		return nil, ErrShopNotFound
+	}
+	if shop.OwnerID != ownerID {
+		return nil, ErrShopNotBelongToYou
+	}
+
+	normalized, err := normalizeExecutionEngineMode(mode)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.shopRepo.UpdateExecutionEngineMode(shopID, normalized); err != nil {
+		return nil, err
+	}
+
+	return &dto.ShopExecutionEngineResponse{
+		ShopID:              shop.ID,
+		ExecutionEngineMode: normalized,
+	}, nil
+}
+
 func normalizeShopClientID(clientID string) (string, error) {
 	trimmed := strings.TrimSpace(clientID)
 	if trimmed == "" {
@@ -338,4 +399,22 @@ func normalizeShopClientID(clientID string) (string, error) {
 	}
 
 	return strconv.FormatUint(parsed, 10), nil
+}
+
+func normalizeExecutionEngineMode(mode string) (string, error) {
+	normalized := normalizeExecutionEngineModeOrDefault(mode)
+	switch normalized {
+	case model.ShopExecutionEngineAuto, model.ShopExecutionEngineExtension, model.ShopExecutionEngineAgent:
+		return normalized, nil
+	default:
+		return "", ErrInvalidEngineMode
+	}
+}
+
+func normalizeExecutionEngineModeOrDefault(mode string) string {
+	normalized := strings.TrimSpace(strings.ToLower(mode))
+	if normalized == "" {
+		return model.ShopExecutionEngineAuto
+	}
+	return normalized
 }

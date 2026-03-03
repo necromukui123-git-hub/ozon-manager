@@ -19,6 +19,18 @@ export function updateMyShop(id, data) {
   return request.put(`/my/shops/${id}`, data)
 }
 
+// 获取店铺执行引擎配置
+export function getMyShopExecutionEngine(id) {
+  return request.get(`/my/shops/${id}/execution-engine`)
+}
+
+// 更新店铺执行引擎配置
+export function updateMyShopExecutionEngine(id, executionEngineMode) {
+  return request.put(`/my/shops/${id}/execution-engine`, {
+    execution_engine_mode: executionEngineMode
+  })
+}
+
 // 删除店铺
 export function deleteMyShop(id) {
   return request.delete(`/my/shops/${id}`)

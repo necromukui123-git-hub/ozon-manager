@@ -36,3 +36,8 @@ export function deleteShopAdmin(id) {
 export function getSystemOverview() {
   return request.get('/admin/overview')
 }
+
+// 获取插件执行状态
+export function getExtensionStatus() {
+  return request.get('/admin/extension-status')
+}

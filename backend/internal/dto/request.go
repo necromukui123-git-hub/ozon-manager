@@ -23,9 +23,10 @@ type UserInfo struct {
 }
 
 type ShopInfo struct {
-	ID       uint   `json:"id"`
-	Name     string `json:"name"`
-	IsActive bool   `json:"is_active,omitempty"`
+	ID                  uint   `json:"id"`
+	Name                string `json:"name"`
+	IsActive            bool   `json:"is_active,omitempty"`
+	ExecutionEngineMode string `json:"execution_engine_mode,omitempty"`
 }
 
 // 用户管理相关请求
@@ -61,10 +62,20 @@ type CreateShopRequest struct {
 }
 
 type UpdateShopRequest struct {
-	Name     string `json:"name" binding:"max=100"`
-	ClientID string `json:"client_id" binding:"max=50"`
-	ApiKey   string `json:"api_key" binding:"max=200"`
-	IsActive *bool  `json:"is_active"`
+	Name                string `json:"name" binding:"max=100"`
+	ClientID            string `json:"client_id" binding:"max=50"`
+	ApiKey              string `json:"api_key" binding:"max=200"`
+	IsActive            *bool  `json:"is_active"`
+	ExecutionEngineMode string `json:"execution_engine_mode" binding:"omitempty,oneof=auto extension agent"`
+}
+
+type UpdateShopExecutionEngineRequest struct {
+	ExecutionEngineMode string `json:"execution_engine_mode" binding:"required,oneof=auto extension agent"`
+}
+
+type ShopExecutionEngineResponse struct {
+	ShopID              uint   `json:"shop_id"`
+	ExecutionEngineMode string `json:"execution_engine_mode"`
 }
 
 // 商品相关
@@ -155,6 +166,21 @@ type SystemOverviewResponse struct {
 	ShopAdminCount int64 `json:"shop_admin_count"`
 	ShopCount      int64 `json:"shop_count"`
 	StaffCount     int64 `json:"staff_count"`
+}
+
+type ExtensionStatusItem struct {
+	ShopID           uint    `json:"shop_id"`
+	ShopName         string  `json:"shop_name"`
+	ExecutionMode    string  `json:"execution_engine_mode"`
+	ExtensionAgentID *uint   `json:"extension_agent_id,omitempty"`
+	AgentKey         string  `json:"agent_key,omitempty"`
+	AgentStatus      string  `json:"agent_status"`
+	LastHeartbeatAt  *string `json:"last_heartbeat_at,omitempty"`
+	LastError        string  `json:"last_error,omitempty"`
+	LastRunAt        *string `json:"last_run_at,omitempty"`
+	LatestJobID      *uint   `json:"latest_job_id,omitempty"`
+	LatestJobType    string  `json:"latest_job_type,omitempty"`
+	LatestJobStatus  string  `json:"latest_job_status,omitempty"`
 }
 
 // ========== 促销活动管理相关 ==========

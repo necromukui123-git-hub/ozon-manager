@@ -2,6 +2,7 @@ package repository
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -150,40 +151,12 @@ func (r *AutomationRepository) AcquirePendingJobForAgent(agentID uint) (*model.A
 		}
 
 		now := time.Now()
-		return tx.Model(&model.AutomationJob{}).
-			Where("id = ?", job.ID).
+		updateResult := tx.Model(&model.AutomationJob{}).
+			Where("id = ? AND status = ? AND dry_run = ?", job.ID, model.AutomationJobStatusPending, false).
 			Updates(map[string]interface{}{
 				"status":            model.AutomationJobStatusRunning,
 				"assigned_agent_id": agentID,
 				"started_at":        &now,
-			}).Error
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return r.FindJobByID(job.ID)
-}
-
-func (r *AutomationRepository) AcquirePendingJobForShop(shopID uint, jobTypes []string) (*model.AutomationJob, error) {
-	var job model.AutomationJob
-	err := r.db.Transaction(func(tx *gorm.DB) error {
-		query := tx.Where("shop_id = ? AND status = ? AND dry_run = ?", shopID, model.AutomationJobStatusPending, false)
-		if len(jobTypes) > 0 {
-			query = query.Where("job_type IN ?", jobTypes)
-		}
-
-		findErr := query.Order("created_at ASC").First(&job).Error
-		if findErr != nil {
-			return findErr
-		}
-
-		now := time.Now()
-		updateResult := tx.Model(&model.AutomationJob{}).
-			Where("id = ? AND status = ?", job.ID, model.AutomationJobStatusPending).
-			Updates(map[string]interface{}{
-				"status":     model.AutomationJobStatusRunning,
-				"started_at": &now,
 			})
 		if updateResult.Error != nil {
 			return updateResult.Error
@@ -198,6 +171,141 @@ func (r *AutomationRepository) AcquirePendingJobForShop(shopID uint, jobTypes []
 	}
 
 	return r.FindJobByID(job.ID)
+}
+
+func (r *AutomationRepository) AcquirePendingJobForShop(shopID uint, jobTypes []string, assignedAgentID *uint) (*model.AutomationJob, error) {
+	var job model.AutomationJob
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		query := tx.Where("shop_id = ? AND status = ? AND dry_run = ?", shopID, model.AutomationJobStatusPending, false)
+		if len(jobTypes) > 0 {
+			query = query.Where("job_type IN ?", jobTypes)
+		}
+
+		findErr := query.Order("created_at ASC").First(&job).Error
+		if findErr != nil {
+			return findErr
+		}
+
+		now := time.Now()
+		updates := map[string]interface{}{
+			"status":     model.AutomationJobStatusRunning,
+			"started_at": &now,
+		}
+		if assignedAgentID != nil {
+			updates["assigned_agent_id"] = *assignedAgentID
+		}
+
+		updateResult := tx.Model(&model.AutomationJob{}).
+			Where("id = ? AND status = ? AND dry_run = ?", job.ID, model.AutomationJobStatusPending, false).
+			Updates(updates)
+		if updateResult.Error != nil {
+			return updateResult.Error
+		}
+		if updateResult.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return r.FindJobByID(job.ID)
+}
+
+func (r *AutomationRepository) ListPendingJobsByTypes(jobTypes []string, limit int) ([]model.AutomationJob, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := r.db.Where("status = ? AND dry_run = ?", model.AutomationJobStatusPending, false)
+	if len(jobTypes) > 0 {
+		query = query.Where("job_type IN ?", jobTypes)
+	}
+
+	var jobs []model.AutomationJob
+	err := query.Order("created_at ASC").Limit(limit).Find(&jobs).Error
+	return jobs, err
+}
+
+func (r *AutomationRepository) AcquirePendingJobByIDForAgent(jobID uint, agentID uint) (*model.AutomationJob, error) {
+	now := time.Now()
+	updateResult := r.db.Model(&model.AutomationJob{}).
+		Where("id = ? AND status = ? AND dry_run = ?", jobID, model.AutomationJobStatusPending, false).
+		Updates(map[string]interface{}{
+			"status":            model.AutomationJobStatusRunning,
+			"assigned_agent_id": agentID,
+			"started_at":        &now,
+		})
+	if updateResult.Error != nil {
+		return nil, updateResult.Error
+	}
+	if updateResult.RowsAffected == 0 {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return r.FindJobByID(jobID)
+}
+
+func (r *AutomationRepository) HasOnlineExtensionForShop(shopID uint, staleAfter time.Time) (bool, error) {
+	var count int64
+	pattern := fmt.Sprintf("ext:%%:%d:%%", shopID)
+	err := r.db.Model(&model.AutomationAgent{}).
+		Where("agent_key LIKE ?", pattern).
+		Where("last_heartbeat_at IS NOT NULL AND last_heartbeat_at >= ?", staleAfter).
+		Count(&count).Error
+	return count > 0, err
+}
+
+func (r *AutomationRepository) FindLatestExtensionAgentByShop(shopID uint) (*model.AutomationAgent, error) {
+	var agent model.AutomationAgent
+	pattern := fmt.Sprintf("ext:%%:%d:%%", shopID)
+	err := r.db.Where("agent_key LIKE ?", pattern).Order("updated_at DESC").First(&agent).Error
+	if err != nil {
+		return nil, err
+	}
+	return &agent, nil
+}
+
+func (r *AutomationRepository) FindLatestJobByShopAndTypes(shopID uint, jobTypes []string) (*model.AutomationJob, error) {
+	var job model.AutomationJob
+	query := r.db.Where("shop_id = ?", shopID)
+	if len(jobTypes) > 0 {
+		query = query.Where("job_type IN ?", jobTypes)
+	}
+
+	err := query.Order("id DESC").First(&job).Error
+	if err != nil {
+		return nil, err
+	}
+	return &job, nil
+}
+
+func (r *AutomationRepository) FindLatestFailedItemError(jobID uint) (string, error) {
+	var item model.AutomationJobItem
+	err := r.db.
+		Where("job_id = ? AND (overall_status = ? OR step_exit_status = ? OR step_reprice_status = ? OR step_readd_status = ?)",
+			jobID,
+			model.AutomationStepStatusFailed,
+			model.AutomationStepStatusFailed,
+			model.AutomationStepStatusFailed,
+			model.AutomationStepStatusFailed,
+		).
+		Order("id DESC").
+		First(&item).Error
+	if err != nil {
+		return "", err
+	}
+
+	if item.StepExitError != "" {
+		return item.StepExitError, nil
+	}
+	if item.StepRepriceError != "" {
+		return item.StepRepriceError, nil
+	}
+	if item.StepReaddError != "" {
+		return item.StepReaddError, nil
+	}
+	return "", nil
 }
 
 func (r *AutomationRepository) FindPendingJobByTypeAndShop(jobType string, shopID uint) (*model.AutomationJob, error) {

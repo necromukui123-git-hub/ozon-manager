@@ -145,3 +145,16 @@ func (r *ShopRepository) FindActiveByClientID(clientID string) (*model.Shop, err
 	}
 	return &shop, nil
 }
+
+func (r *ShopRepository) GetExecutionEngineMode(shopID uint) (string, error) {
+	var shop model.Shop
+	err := r.db.Select("id", "execution_engine_mode").Where("id = ?", shopID).First(&shop).Error
+	if err != nil {
+		return "", err
+	}
+	return shop.ExecutionEngineMode, nil
+}
+
+func (r *ShopRepository) UpdateExecutionEngineMode(shopID uint, mode string) error {
+	return r.db.Model(&model.Shop{}).Where("id = ?", shopID).Update("execution_engine_mode", mode).Error
+}

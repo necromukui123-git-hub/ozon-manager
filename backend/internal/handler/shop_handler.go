@@ -77,13 +77,19 @@ func (h *ShopHandler) GetShop(c *gin.Context) {
 		return
 	}
 
+	engineMode := shop.ExecutionEngineMode
+	if engineMode == "" {
+		engineMode = "auto"
+	}
+
 	c.JSON(http.StatusOK, dto.Response{
 		Code:    200,
 		Message: "success",
 		Data: dto.ShopInfo{
-			ID:       shop.ID,
-			Name:     shop.Name,
-			IsActive: shop.IsActive,
+			ID:                  shop.ID,
+			Name:                shop.Name,
+			IsActive:            shop.IsActive,
+			ExecutionEngineMode: engineMode,
 		},
 	})
 }
@@ -150,6 +156,8 @@ func (h *ShopHandler) UpdateShop(c *gin.Context) {
 		} else if err == service.ErrClientIDExists {
 			statusCode = http.StatusConflict
 		} else if err == service.ErrInvalidClientID {
+			statusCode = http.StatusBadRequest
+		} else if err == service.ErrInvalidEngineMode {
 			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, dto.Response{
@@ -284,6 +292,8 @@ func (h *ShopHandler) UpdateMyShop(c *gin.Context) {
 			statusCode = http.StatusConflict
 		} else if err == service.ErrInvalidClientID {
 			statusCode = http.StatusBadRequest
+		} else if err == service.ErrInvalidEngineMode {
+			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, dto.Response{
 			Code:    statusCode,
@@ -349,5 +359,86 @@ func (h *ShopHandler) GetSystemOverview(c *gin.Context) {
 		Code:    200,
 		Message: "success",
 		Data:    overview,
+	})
+}
+
+// GetMyShopExecutionEngine 获取店铺执行引擎配置
+// GET /api/v1/my/shops/:id/execution-engine
+func (h *ShopHandler) GetMyShopExecutionEngine(c *gin.Context) {
+	shopID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "无效的店铺ID",
+		})
+		return
+	}
+
+	ownerID := middleware.GetCurrentUserID(c)
+	data, err := h.shopService.GetMyShopExecutionEngine(uint(shopID), ownerID)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if err == service.ErrShopNotFound {
+			statusCode = http.StatusNotFound
+		} else if err == service.ErrShopNotBelongToYou {
+			statusCode = http.StatusForbidden
+		}
+		c.JSON(statusCode, dto.Response{
+			Code:    statusCode,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Response{
+		Code:    200,
+		Message: "success",
+		Data:    data,
+	})
+}
+
+// UpdateMyShopExecutionEngine 更新店铺执行引擎配置
+// PUT /api/v1/my/shops/:id/execution-engine
+func (h *ShopHandler) UpdateMyShopExecutionEngine(c *gin.Context) {
+	shopID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "无效的店铺ID",
+		})
+		return
+	}
+
+	var req dto.UpdateShopExecutionEngineRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "请求参数错误",
+		})
+		return
+	}
+
+	ownerID := middleware.GetCurrentUserID(c)
+	data, err := h.shopService.UpdateMyShopExecutionEngine(uint(shopID), ownerID, req.ExecutionEngineMode)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if err == service.ErrShopNotFound {
+			statusCode = http.StatusNotFound
+		} else if err == service.ErrShopNotBelongToYou {
+			statusCode = http.StatusForbidden
+		} else if err == service.ErrInvalidEngineMode {
+			statusCode = http.StatusBadRequest
+		}
+		c.JSON(statusCode, dto.Response{
+			Code:    statusCode,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Response{
+		Code:    200,
+		Message: "更新成功",
+		Data:    data,
 	})
 }
