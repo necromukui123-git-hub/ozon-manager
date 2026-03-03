@@ -226,22 +226,38 @@ type PromotionActionItem struct {
 }
 
 type ActionProductsRequest struct {
-	ShopID       uint `form:"shop_id" binding:"required"`
-	Page         int  `form:"page,default=1"`
-	PageSize     int  `form:"page_size,default=20"`
-	ForceRefresh bool `form:"force_refresh"`
+	ShopID       uint   `form:"shop_id" binding:"required"`
+	Page         int    `form:"page,default=1"`
+	PageSize     int    `form:"page_size,default=20"`
+	Keyword      string `form:"keyword"`
+	Status       string `form:"status"`
+	ForceRefresh bool   `form:"force_refresh"`
 }
 
 type ActionProductItem struct {
-	ID            uint    `json:"id"`
-	OzonProductID int64   `json:"ozon_product_id"`
-	SourceSKU     string  `json:"source_sku"`
-	Name          string  `json:"name"`
-	Price         float64 `json:"price"`
-	ActionPrice   float64 `json:"action_price"`
-	Stock         int     `json:"stock"`
-	Status        string  `json:"status"`
-	LastSyncedAt  string  `json:"last_synced_at"`
+	ID               uint    `json:"id"`
+	OzonProductID    int64   `json:"ozon_product_id"`
+	SourceSKU        string  `json:"source_sku"`
+	OfferID          string  `json:"offer_id"`
+	PlatformSKU      string  `json:"platform_sku"`
+	Name             string  `json:"name"`
+	NameCN           string  `json:"name_cn"`
+	NameOrigin       string  `json:"name_origin"`
+	ThumbnailURL     string  `json:"thumbnail_url"`
+	CategoryName     string  `json:"category_name"`
+	Currency         string  `json:"currency"`
+	BasePrice        float64 `json:"base_price"`
+	Price            float64 `json:"price"`
+	ActionPrice      float64 `json:"action_price"`
+	MarketplacePrice float64 `json:"marketplace_price"`
+	MinSellerPrice   float64 `json:"min_seller_price"`
+	MaxActionPrice   float64 `json:"max_action_price"`
+	DiscountPercent  float64 `json:"discount_percent"`
+	Stock            int     `json:"stock"`
+	SellerStock      int     `json:"seller_stock"`
+	OzonStock        int     `json:"ozon_stock"`
+	Status           string  `json:"status"`
+	LastSyncedAt     string  `json:"last_synced_at"`
 }
 
 type ActionProductsResponse struct {

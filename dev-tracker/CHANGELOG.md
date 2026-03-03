@@ -107,3 +107,72 @@
 
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...` 通过。
+
+## 2026-03-03（补充六）
+### 主题
+修复店铺活动日期显示为空，并补齐活动运营关键字段展示。
+
+### 关键变更
+1. 插件 `normalizeShopAction` 修复 `actionParameters.dateStart/dateEnd` 嵌套字段提取错误，确保活动日期可同步入库。
+2. 插件补充输出店铺活动扩展字段：`minimalActionPercent`、`discountType`、`actionBudgetSpent`、`promotionCompanyStatus`、`isEditable`、`canBeUpdatable`、`isParticipated`、`isTurnOn`、`isRepricerAvailable`、`highlightUrl`、`createdAt`、`status`。
+3. 后端扩展 `shopActionSnapshot` 结构，扩展字段统一落到 `promotion_actions.source_payload`，数据库结构保持不变。
+4. 前端活动列表新增运营标签（最低折扣/预算消耗/可编辑能力），并新增活动详情抽屉展示完整字段。
+
+### 影响范围
+1. 活动列表卡片日期不再显示 `-`（接口返回日期有效时）。
+2. 运营可直接在系统内查看店铺活动关键状态，无需回 Seller 页面二次核对。
+3. 无新增数据库迁移脚本，兼容现有环境与数据。
+
+### 验证
+1. 插件语法检查：`cd browser-extension/ozon-shop-bridge && node --check background.js` 通过。
+2. 后端测试：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...` 通过。
+3. 前端构建：`cd frontend && npm run build` 通过。
+
+## 2026-03-03（补充七）
+### 主题
+重构店铺活动商品详情页信息结构，补齐图片/双语/双SKU/价格库存语义。
+
+### 关键变更
+1. 插件 `normalizeActionProduct` 扩展商品字段提取：
+   - 新增 `offer_id`、`platform_sku`、`thumbnail_url`、`category_name`、`name_cn`、`name_origin`、`currency`。
+   - 新增价格结构：`base_price`、`action_price`、`marketplace_price`、`min_seller_price`、`max_action_price`、`discount_percent`。
+   - 新增库存结构：`seller_stock`、`ozon_stock`，并兼容 `is_active` 到状态映射。
+2. 插件活动商品去重键升级为 `offer_id + ozon_product_id` 优先，降低错去重风险。
+3. 后端扩展 `promotion_action_products` 模型与接口返回字段，支持关键词和状态筛选。
+4. 后端活动商品刷新逻辑新增本地商品中文名补全、币种兜底和折扣推导。
+5. 前端 `ActionProducts` 页面重构为图片列 + 双行名称 + 双SKU + 价格结构 + 库存结构，并新增筛选搜索交互。
+
+### 数据库变更
+1. `backend/migrations/init_database.sql` 已回写活动商品增强字段。
+2. 新增增量脚本：`backend/migrations/upgrade_20260303_action_products_enrichment.sql`。
+
+### 验证
+1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
+2. 前端构建：`cd frontend && npm run build` 通过。
+3. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background.js` 通过。
+
+## 2026-03-03（补充八）
+### 主题
+收敛活动日期与活动商品展示缺口（日期空白、缩略图/库存/item_type 缺失、编号混乱）。
+
+### 关键变更
+1. 插件 `sync_action_products` 抓取端点改为优先：
+   - `/api/site/own-seller-products/v2/action/{actionId}/active`
+   - `/api/site/own-seller-products/v2/action/{actionId}/active-search`
+   - `/api/site/own-seller-products/v1/action/{actionId}/candidate`（最终兜底）
+2. 插件 `normalizeShopAction` 增加 `action_parameters`（snake_case）解析兼容，降低活动日期漏采概率。
+3. 前端 `ActionList` 增加活动日期回退解析（含 `source_payload` 嵌套参数），无日期时统一显示“日期待同步”。
+4. 前端 `ActionProducts` 编号展示改为三行固定标签：
+   - Offer ID
+   - 平台 SKU
+   - Product ID
+5. 前端活动商品中文主标题改为优先显示 `category_name`（来自 `item_type`），并保持原文副标题。
+
+### 影响范围
+1. 活动列表不再出现“日期区域空白但无占位文案”的情况。
+2. 活动商品详情页可稳定显示缩略图/卖家库存/中文类目（源端可用时）。
+3. 商品编号语义清晰，避免 `source_sku/offer_id/product_id` 混排误读。
+
+### 验证
+1. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background.js` 通过。
+2. 前端构建：`cd frontend && npm run build` 通过。

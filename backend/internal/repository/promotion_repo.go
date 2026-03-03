@@ -278,17 +278,26 @@ func (r *PromotionRepository) ReplaceActionProducts(action *model.PromotionActio
 	})
 }
 
-func (r *PromotionRepository) ListActionProducts(shopID uint, promotionActionID uint, page int, pageSize int) ([]model.PromotionActionProduct, int64, error) {
+func (r *PromotionRepository) ListActionProducts(shopID uint, promotionActionID uint, page int, pageSize int, keyword string, status string) ([]model.PromotionActionProduct, int64, error) {
 	var items []model.PromotionActionProduct
 	var total int64
 
 	query := r.db.Model(&model.PromotionActionProduct{}).Where("shop_id = ? AND promotion_action_id = ?", shopID, promotionActionID)
+	if keyword != "" {
+		pattern := "%" + keyword + "%"
+		query = query.Where("source_sku ILIKE ? OR offer_id ILIKE ? OR platform_sku ILIKE ? OR name_cn ILIKE ? OR name_origin ILIKE ? OR name ILIKE ?",
+			pattern, pattern, pattern, pattern, pattern, pattern)
+	}
+	if status != "" && status != "all" {
+		query = query.Where("status = ?", status)
+	}
+
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	offset := (page - 1) * pageSize
-	err := query.Order("id ASC").Offset(offset).Limit(pageSize).Find(&items).Error
+	err := query.Order("discount_percent DESC, id ASC").Offset(offset).Limit(pageSize).Find(&items).Error
 	if err != nil {
 		return nil, 0, err
 	}

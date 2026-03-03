@@ -585,13 +585,26 @@ func (s *PromotionService) UpdateActionsSortOrder(shopID uint, sortOrders []dto.
 }
 
 type shopActionSnapshot struct {
-	SourceActionID     string     `json:"source_action_id"`
-	Title              string     `json:"title"`
-	ActionType         string     `json:"action_type"`
-	ParticipatingCount int        `json:"participating_products_count"`
-	PotentialCount     int        `json:"potential_products_count"`
-	DateStart          *time.Time `json:"date_start"`
-	DateEnd            *time.Time `json:"date_end"`
+	SourceActionID         string     `json:"source_action_id"`
+	Title                  string     `json:"title"`
+	ActionType             string     `json:"action_type"`
+	ParticipatingCount     int        `json:"participating_products_count"`
+	PotentialCount         int        `json:"potential_products_count"`
+	DateStart              *time.Time `json:"date_start"`
+	DateEnd                *time.Time `json:"date_end"`
+	DiscountType           string     `json:"discount_type"`
+	MinimalActionPercent   *float64   `json:"minimal_action_percent"`
+	BudgetSpent            *float64   `json:"budget_spent"`
+	Currency               string     `json:"currency"`
+	PromotionCompanyStatus string     `json:"promotion_company_status"`
+	IsEditable             *bool      `json:"is_editable"`
+	CanBeUpdatable         *bool      `json:"can_be_updatable"`
+	IsParticipated         *bool      `json:"is_participated"`
+	IsTurnOn               *bool      `json:"is_turn_on"`
+	IsRepricerAvailable    *bool      `json:"is_repricer_available"`
+	HighlightURL           string     `json:"highlight_url"`
+	CreatedAt              *time.Time `json:"created_at"`
+	ActionStatus           string     `json:"action_status"`
 }
 
 type shopActionProductsSnapshot struct {
@@ -599,13 +612,27 @@ type shopActionProductsSnapshot struct {
 }
 
 type shopActionProductSnapshotItem struct {
-	SourceSKU     string  `json:"source_sku"`
-	OzonProductID int64   `json:"ozon_product_id"`
-	Name          string  `json:"name"`
-	Price         float64 `json:"price"`
-	ActionPrice   float64 `json:"action_price"`
-	Stock         int     `json:"stock"`
-	Status        string  `json:"status"`
+	SourceSKU        string  `json:"source_sku"`
+	OfferID          string  `json:"offer_id"`
+	PlatformSKU      string  `json:"platform_sku"`
+	OzonProductID    int64   `json:"ozon_product_id"`
+	Name             string  `json:"name"`
+	NameCN           string  `json:"name_cn"`
+	NameOrigin       string  `json:"name_origin"`
+	ThumbnailURL     string  `json:"thumbnail_url"`
+	CategoryName     string  `json:"category_name"`
+	Currency         string  `json:"currency"`
+	BasePrice        float64 `json:"base_price"`
+	Price            float64 `json:"price"`
+	ActionPrice      float64 `json:"action_price"`
+	MarketplacePrice float64 `json:"marketplace_price"`
+	MinSellerPrice   float64 `json:"min_seller_price"`
+	MaxActionPrice   float64 `json:"max_action_price"`
+	DiscountPercent  float64 `json:"discount_percent"`
+	Stock            int     `json:"stock"`
+	SellerStock      int     `json:"seller_stock"`
+	OzonStock        int     `json:"ozon_stock"`
+	Status           string  `json:"status"`
 }
 
 const (
@@ -751,7 +778,7 @@ func (s *PromotionService) GetActionProducts(actionID uint, req *dto.ActionProdu
 		}
 	}
 
-	items, total, err := s.promotionRepo.ListActionProducts(req.ShopID, actionID, req.Page, req.PageSize)
+	items, total, err := s.promotionRepo.ListActionProducts(req.ShopID, actionID, req.Page, req.PageSize, strings.TrimSpace(req.Keyword), strings.TrimSpace(req.Status))
 	if err != nil {
 		return nil, err
 	}
@@ -763,15 +790,29 @@ func (s *PromotionService) GetActionProducts(actionID uint, req *dto.ActionProdu
 			lastSynced = item.LastSyncedAt.Format("2006-01-02 15:04:05")
 		}
 		respItems = append(respItems, dto.ActionProductItem{
-			ID:            item.ID,
-			OzonProductID: item.OzonProductID,
-			SourceSKU:     item.SourceSKU,
-			Name:          item.Name,
-			Price:         item.Price,
-			ActionPrice:   item.ActionPrice,
-			Stock:         item.Stock,
-			Status:        item.Status,
-			LastSyncedAt:  lastSynced,
+			ID:               item.ID,
+			OzonProductID:    item.OzonProductID,
+			SourceSKU:        item.SourceSKU,
+			OfferID:          item.OfferID,
+			PlatformSKU:      item.PlatformSKU,
+			Name:             item.Name,
+			NameCN:           item.NameCN,
+			NameOrigin:       item.NameOrigin,
+			ThumbnailURL:     item.ThumbnailURL,
+			CategoryName:     item.CategoryName,
+			Currency:         normalizeCurrency(item.Currency),
+			BasePrice:        item.BasePrice,
+			Price:            item.Price,
+			ActionPrice:      item.ActionPrice,
+			MarketplacePrice: item.MarketplacePrice,
+			MinSellerPrice:   item.MinSellerPrice,
+			MaxActionPrice:   item.MaxActionPrice,
+			DiscountPercent:  item.DiscountPercent,
+			Stock:            item.Stock,
+			SellerStock:      item.SellerStock,
+			OzonStock:        item.OzonStock,
+			Status:           item.Status,
+			LastSyncedAt:     lastSynced,
 		})
 	}
 
@@ -808,19 +849,41 @@ func (s *PromotionService) refreshOfficialActionProducts(action *model.Promotion
 
 		for _, item := range resp.Result.Products {
 			sourceSKU := strconv.FormatInt(item.ProductID, 10)
+			nameCN := ""
 			if localProduct, findErr := s.productRepo.FindByOzonProductID(action.ShopID, item.ProductID); findErr == nil {
 				sourceSKU = localProduct.SourceSKU
+				nameCN = strings.TrimSpace(localProduct.Name)
 			}
+			if sourceSKU == "" {
+				sourceSKU = strconv.FormatInt(item.ProductID, 10)
+			}
+			if nameCN == "" {
+				nameCN = sourceSKU
+			}
+
+			discountPercent := 0.0
+			if item.Price > 0 && item.ActionPrice > 0 && item.Price >= item.ActionPrice {
+				discountPercent = (item.Price - item.ActionPrice) / item.Price * 100
+			}
+
 			payload, _ := json.Marshal(item)
 			products = append(products, model.PromotionActionProduct{
-				OzonProductID: item.ProductID,
-				SourceSKU:     sourceSKU,
-				Name:          sourceSKU,
-				Price:         item.Price,
-				ActionPrice:   item.ActionPrice,
-				Stock:         item.Stock,
-				Status:        "active",
-				Payload:       payload,
+				OzonProductID:   item.ProductID,
+				SourceSKU:       sourceSKU,
+				OfferID:         sourceSKU,
+				Name:            nameCN,
+				NameCN:          nameCN,
+				NameOrigin:      "",
+				Currency:        "",
+				BasePrice:       item.Price,
+				Price:           item.Price,
+				ActionPrice:     item.ActionPrice,
+				DiscountPercent: discountPercent,
+				Stock:           item.Stock,
+				SellerStock:     item.Stock,
+				OzonStock:       0,
+				Status:          "active",
+				Payload:         payload,
 			})
 		}
 
@@ -861,20 +924,138 @@ func (s *PromotionService) refreshShopActionProducts(action *model.PromotionActi
 
 	products := make([]model.PromotionActionProduct, 0, len(snapshot.Items))
 	for _, item := range snapshot.Items {
+		sourceSKU := strings.TrimSpace(item.SourceSKU)
+		offerID := strings.TrimSpace(item.OfferID)
+		platformSKU := strings.TrimSpace(item.PlatformSKU)
+
+		if sourceSKU == "" {
+			sourceSKU = offerID
+		}
+		if sourceSKU == "" {
+			sourceSKU = platformSKU
+		}
+		if sourceSKU == "" && item.OzonProductID > 0 {
+			sourceSKU = strconv.FormatInt(item.OzonProductID, 10)
+		}
+		if offerID == "" {
+			offerID = sourceSKU
+		}
+		if platformSKU == "" && sourceSKU != offerID {
+			platformSKU = sourceSKU
+		}
+
+		nameOrigin := strings.TrimSpace(item.NameOrigin)
+		if nameOrigin == "" {
+			nameOrigin = strings.TrimSpace(item.Name)
+		}
+
+		nameCN := strings.TrimSpace(item.NameCN)
+		if localProduct, err := s.findLocalProduct(action.ShopID, sourceSKU, item.OzonProductID); err == nil {
+			if nameCN == "" {
+				nameCN = strings.TrimSpace(localProduct.Name)
+			}
+			if sourceSKU == "" {
+				sourceSKU = strings.TrimSpace(localProduct.SourceSKU)
+			}
+		}
+		if nameCN == "" {
+			nameCN = strings.TrimSpace(item.CategoryName)
+		}
+		if nameCN == "" {
+			nameCN = nameOrigin
+		}
+		if nameCN == "" {
+			nameCN = sourceSKU
+		}
+
+		basePrice := item.BasePrice
+		if basePrice <= 0 {
+			basePrice = item.Price
+		}
+		price := item.Price
+		if price <= 0 {
+			price = basePrice
+		}
+		actionPrice := item.ActionPrice
+		if actionPrice <= 0 {
+			actionPrice = price
+		}
+		discountPercent := item.DiscountPercent
+		if discountPercent <= 0 && basePrice > 0 && actionPrice > 0 && basePrice >= actionPrice {
+			discountPercent = (basePrice - actionPrice) / basePrice * 100
+		}
+
+		stock := item.Stock
+		if stock <= 0 && item.SellerStock > 0 {
+			stock = item.SellerStock
+		}
+
+		status := normalizeActionProductStatus(item.Status)
 		payloadBytes, _ := json.Marshal(item)
 		products = append(products, model.PromotionActionProduct{
-			OzonProductID: item.OzonProductID,
-			SourceSKU:     item.SourceSKU,
-			Name:          item.Name,
-			Price:         item.Price,
-			ActionPrice:   item.ActionPrice,
-			Stock:         item.Stock,
-			Status:        item.Status,
-			Payload:       payloadBytes,
+			OzonProductID:    item.OzonProductID,
+			SourceSKU:        sourceSKU,
+			OfferID:          offerID,
+			PlatformSKU:      platformSKU,
+			Name:             nameCN,
+			NameCN:           nameCN,
+			NameOrigin:       nameOrigin,
+			ThumbnailURL:     strings.TrimSpace(item.ThumbnailURL),
+			CategoryName:     strings.TrimSpace(item.CategoryName),
+			Currency:         normalizeCurrency(item.Currency),
+			BasePrice:        basePrice,
+			Price:            price,
+			ActionPrice:      actionPrice,
+			MarketplacePrice: item.MarketplacePrice,
+			MinSellerPrice:   item.MinSellerPrice,
+			MaxActionPrice:   item.MaxActionPrice,
+			DiscountPercent:  discountPercent,
+			Stock:            stock,
+			SellerStock:      item.SellerStock,
+			OzonStock:        item.OzonStock,
+			Status:           status,
+			Payload:          payloadBytes,
 		})
 	}
 
 	return s.promotionRepo.ReplaceActionProducts(action, products)
+}
+
+func (s *PromotionService) findLocalProduct(shopID uint, sourceSKU string, ozonProductID int64) (*model.Product, error) {
+	sku := strings.TrimSpace(sourceSKU)
+	if sku != "" {
+		if product, err := s.productRepo.FindBySourceSKU(shopID, sku); err == nil {
+			return product, nil
+		}
+	}
+	if ozonProductID > 0 {
+		if product, err := s.productRepo.FindByOzonProductID(shopID, ozonProductID); err == nil {
+			return product, nil
+		}
+	}
+	return nil, fmt.Errorf("product not found")
+}
+
+func normalizeCurrency(raw string) string {
+	currency := strings.ToUpper(strings.TrimSpace(raw))
+	if currency != "" {
+		return currency
+	}
+	return "CNY"
+}
+
+func normalizeActionProductStatus(raw string) string {
+	status := strings.TrimSpace(strings.ToLower(raw))
+	switch status {
+	case "active", "inactive", "disabled":
+		return status
+	case "true":
+		return "active"
+	case "false":
+		return "inactive"
+	default:
+		return "active"
+	}
 }
 
 func parseShopActionsArtifact(meta []byte) ([]shopActionSnapshot, error) {

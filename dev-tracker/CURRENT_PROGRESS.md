@@ -4,7 +4,7 @@
 状态：进行中（本迭代已交付，等待下一轮任务）
 
 ## 本次交付单元
-本次目标：完成执行引擎路由防抢、插件状态可视化、非 localhost 自动同步优化、后端关键逻辑测试补齐，并规范数据库迁移脚本职责。
+本次目标：完成执行引擎路由防抢、插件状态可视化、非 localhost 自动同步优化、后端关键逻辑测试补齐，规范数据库迁移脚本职责，并重构店铺活动商品详情页可读性。
 
 ## 已完成（含关键文件）
 1. 店铺执行引擎模式落地：`auto` / `extension` / `agent`。  
@@ -56,6 +56,25 @@
    - 根因：前端通过 JSON body 传 `shop_id`，后端仅从 query 读取，导致返回 `400 缺少shop_id参数`。
    - 处理：`UpdateActionDisplayName` 改为优先读取 body 的 `shop_id`，缺失时回退 query，兼容两种调用方式。
    - 涉及：`backend/internal/dto/request.go`、`backend/internal/handler/promotion_handler.go`。
+16. 店铺活动日期为空与字段缺失补齐：
+   - 根因：插件 `normalizeShopAction` 在提取嵌套 `actionParameters.dateStart/dateEnd` 时传参错误，导致日期未进入快照并最终显示为 `-`。
+   - 处理：修复嵌套日期提取逻辑，补齐并归一化 `minimalActionPercent`、`discountType`、`actionBudgetSpent`、`promotionCompanyStatus`、`isEditable/canBeUpdatable`、`highlightUrl` 等字段。
+   - 处理：后端扩展 `shopActionSnapshot` 并落入 `promotion_actions.source_payload`，保持数据库结构不变。
+   - 处理：前端活动列表新增运营关键标签（最低折扣/预算消耗/可编辑能力）与“活动详情”抽屉，展示完整扩展字段。
+   - 涉及：`browser-extension/ozon-shop-bridge/background.js`、`backend/internal/service/promotion_service.go`、`frontend/src/views/promotions/ActionList.vue`。
+17. 店铺活动商品详情页信息重构（图片 + 双语 + 双SKU + 价格结构）：
+   - 根因：详情页仅展示基础字段，缺少图片、类目、中文语义、折扣/库存结构，不利于运营判断。
+   - 处理：插件 `sync_action_products` 补齐 `offer_id/skus/thumbnail/item_type/base_price/action_price/discount_percent/seller_stock/ozon_stock` 等字段提取，并升级去重键策略。
+   - 处理：后端扩展 `promotion_action_products` 模型与 API DTO，新增关键词和状态筛选，落库扩展字段并统一中文名/币种兜底逻辑。
+   - 处理：前端 `ActionProducts` 页面重构为图片列、双行名称（中文+原文）、双SKU、价格结构、库存结构与筛选搜索。
+   - 涉及：`browser-extension/ozon-shop-bridge/background.js`、`backend/internal/model/product.go`、`backend/internal/service/promotion_service.go`、`backend/internal/repository/promotion_repo.go`、`frontend/src/views/promotions/ActionProducts.vue`、`backend/migrations/init_database.sql`。
+18. 店铺活动日期与活动商品展示缺口收敛修复：
+   - 根因：活动列表部分卡片日期仍空白；商品同步仍优先 `candidate` 导致缩略图/库存/item_type 缺失；编号展示混排导致识别成本高。
+   - 处理：插件 `scriptFetchActionProductsPayloads` 调整为优先抓取 `/v2/action/{id}/active`（并兼容 `active-search`），`candidate` 仅作最终兜底。
+   - 处理：插件 `normalizeShopAction` 增加 `action_parameters`（snake_case）兼容，避免日期字段漏采。
+   - 处理：前端 `ActionList` 增加 `source_payload` 日期回退解析；无日期时显示“日期待同步”，避免空白。
+   - 处理：前端 `ActionProducts` 固定三行编号（Offer ID / 平台SKU / Product ID），并优先显示 `item_type`（`category_name`）作为中文主标题。
+   - 涉及：`browser-extension/ozon-shop-bridge/background.js`、`frontend/src/views/promotions/ActionList.vue`、`frontend/src/views/promotions/ActionProducts.vue`。
 
 ## 验证结果
 1. 后端测试通过：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
@@ -68,12 +87,22 @@
 8. 后端回归测试通过（含本次同步兜底修复）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
 9. 前端构建回归通过（含活动卡片更多操作修复）：`cd frontend && npm run build`。
 10. 后端回归测试通过（含活动别名接口参数兼容修复）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
+11. 插件脚本语法检查通过（含店铺活动字段补齐）：`cd browser-extension/ozon-shop-bridge && node --check background.js`。
+12. 后端回归测试通过（含 shopActionSnapshot 字段扩展）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
+13. 前端构建通过（含活动详情抽屉与运营字段标签）：`cd frontend && npm run build`。
+14. 后端回归测试通过（含活动商品扩展字段与筛选）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
+15. 前端构建通过（含活动商品详情页重构）：`cd frontend && npm run build`。
+16. 插件脚本语法检查通过（含活动商品字段扩展解析）：`node --check browser-extension/ozon-shop-bridge/background.js`。
+17. 前端构建通过（含活动日期回退与三行编号布局）：`cd frontend && npm run build`。
+18. 插件脚本语法检查通过（含 `v2 active` 端点优先与 `action_parameters` 兼容）：`node --check browser-extension/ozon-shop-bridge/background.js`。
 
 ## 数据库执行记录
-1. 本轮新增可执行升级脚本：`backend/migrations/upgrade_legacy_to_current.sql`。
-2. 适用场景：已有历史数据库升级到当前结构。
-3. 执行方式：由维护者复制脚本到 Navicat 或使用 `psql -f` 执行。
-4. 历史策略更新：不再维护 `upgrade_standalone.sql`，仅保留版本化升级脚本作为历史记录。
+1. 本轮新增可执行升级脚本：`backend/migrations/upgrade_legacy_to_current.sql`（历史总升级）。
+2. 本轮新增可执行升级脚本：`backend/migrations/upgrade_20260303_action_products_enrichment.sql`（活动商品详情增强字段）。
+3. 用途：为 `promotion_action_products` 增加图片、双语名称、SKU 扩展、价格结构、折扣与分层库存字段。
+4. 执行条件：目标库已存在 `promotion_action_products` 表且需要升级到“活动商品增强展示”结构；脚本支持幂等重复执行。
+5. 执行结果：开发环境脚本语法检查通过，`init_database.sql` 已同步回写到最新结构。
+6. 本次（展示缺口收敛）无新增迁移脚本：仅调整插件采集端点优先级与前端展示回退逻辑。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。

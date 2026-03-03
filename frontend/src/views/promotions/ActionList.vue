@@ -137,6 +137,10 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item command="detail">
+                    <el-icon><View /></el-icon>
+                    查看详情
+                  </el-dropdown-item>
                   <el-dropdown-item command="edit">
                     <el-icon><Edit /></el-icon>
                     设置中文名称
@@ -177,6 +181,32 @@
                 <span class="product-count">{{ action.participating_products_count || 0 }}</span>
                 <span>件商品参与</span>
               </div>
+            </div>
+            <div class="meta-row meta-tags">
+              <el-tag
+                v-if="formatMinimalActionPercent(action) !== '-'"
+                size="small"
+                type="warning"
+                effect="light"
+              >
+                {{ formatMinimalActionPercent(action) }}
+              </el-tag>
+              <el-tag
+                v-if="formatBudgetSpent(action) !== '-'"
+                size="small"
+                type="danger"
+                effect="light"
+              >
+                {{ formatBudgetSpent(action) }}
+              </el-tag>
+              <el-tag
+                v-if="formatCapabilityTag(action) !== '-'"
+                size="small"
+                type="success"
+                effect="light"
+              >
+                {{ formatCapabilityTag(action) }}
+              </el-tag>
             </div>
           </div>
 
@@ -255,6 +285,78 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <el-drawer
+      v-model="showDetailDrawer"
+      title="活动详情"
+      size="460px"
+    >
+      <el-descriptions v-if="selectedAction" :column="1" border size="small">
+        <el-descriptions-item label="活动名称">
+          {{ selectedAction.display_name || selectedAction.title || '未命名活动' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="活动来源">
+          {{ selectedAction.source === 'shop' ? '店铺促销' : '官方促销' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="活动 ID">
+          {{ selectedAction.action_id || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="来源活动 ID">
+          {{ selectedAction.source_action_id || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="活动类型">
+          {{ formatActionType(selectedAction.action_type) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="活动周期">
+          {{ formatDateRange(selectedAction) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="最低折扣">
+          {{ formatMinimalActionPercent(selectedAction) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="折扣类型">
+          {{ selectedActionExtra.discountType || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="预算消耗">
+          {{ formatBudgetSpent(selectedAction) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="平台状态">
+          {{ selectedActionExtra.promotionCompanyStatus || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="活动状态">
+          {{ formatActionStatus(selectedActionExtra.actionStatus) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="已参与">
+          {{ formatBooleanFlag(selectedActionExtra.isParticipated) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="开关开启">
+          {{ formatBooleanFlag(selectedActionExtra.isTurnOn) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="可编辑">
+          {{ formatBooleanFlag(selectedActionExtra.isEditable) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="可更新">
+          {{ formatBooleanFlag(selectedActionExtra.canBeUpdatable) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="支持改价器">
+          {{ formatBooleanFlag(selectedActionExtra.isRepricerAvailable) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="创建时间">
+          {{ formatTime(selectedActionExtra.createdAt) }}
+        </el-descriptions-item>
+        <el-descriptions-item label="活动链接">
+          <a
+            v-if="selectedActionExtra.highlightUrl"
+            :href="selectedActionExtra.highlightUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="detail-link"
+          >
+            打开 Ozon 活动页面
+          </a>
+          <span v-else>-</span>
+        </el-descriptions-item>
+      </el-descriptions>
+    </el-drawer>
   </div>
 </template>
 
@@ -266,7 +368,7 @@ import { useUserStore } from '@/stores/user'
 import { getActions, syncActions, createManualAction, deleteAction, updateActionDisplayName, updateActionsSortOrder } from '@/api/promotion'
 import { StatCard } from '@/components/bento'
 import draggable from 'vuedraggable'
-import { Refresh, Plus, Edit, MoreFilled, Delete, Calendar, Goods, Box, Ticket, Clock, Rank, Check, InfoFilled } from '@element-plus/icons-vue'
+import { Refresh, Plus, Edit, MoreFilled, Delete, Calendar, Goods, Box, Ticket, Clock, Rank, Check, InfoFilled, View } from '@element-plus/icons-vue'
 
 const userStore = useUserStore()
 const router = useRouter()
@@ -277,8 +379,10 @@ const adding = ref(false)
 const updating = ref(false)
 const showManualDialog = ref(false)
 const showEditDialog = ref(false)
+const showDetailDrawer = ref(false)
 const actions = ref([])
 const manualFormRef = ref(null)
+const selectedAction = ref(null)
 
 // 排序模式相关
 const sortMode = ref(false)
@@ -291,10 +395,10 @@ const activeCount = computed(() => {
 })
 
 const upcomingCount = computed(() => {
+  const now = new Date()
   return actions.value.filter(a => {
-    if (!a.date_start) return false
-    const now = new Date()
-    const start = new Date(a.date_start)
+    const { start } = resolveActionDateRange(a)
+    if (!start) return false
     return now < start
   }).length
 })
@@ -302,6 +406,8 @@ const upcomingCount = computed(() => {
 const totalProducts = computed(() => {
   return actions.value.reduce((sum, a) => sum + (a.participating_products_count || 0), 0)
 })
+
+const selectedActionExtra = computed(() => getActionExtra(selectedAction.value))
 
 const manualForm = reactive({
   action_id: null,
@@ -320,19 +426,155 @@ const manualRules = {
   ]
 }
 
+function toDateOrNull(value) {
+  if (!value) return null
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed
+}
+
+function resolveActionDateRange(action) {
+  const extra = getActionExtra(action)
+  const startRaw = pickFirst(action?.date_start, action?.dateStart, extra.dateStart)
+  const endRaw = pickFirst(action?.date_end, action?.dateEnd, extra.dateEnd)
+  return {
+    start: toDateOrNull(startRaw),
+    end: toDateOrNull(endRaw)
+  }
+}
+
 function formatDateRange(row) {
-  if (!row.date_start && !row.date_end) return '-'
-  const start = row.date_start ? new Date(row.date_start).toLocaleDateString() : ''
-  const end = row.date_end ? new Date(row.date_end).toLocaleDateString() : ''
-  if (start && end) return `${start} ~ ${end}`
-  if (start) return `${start} 起`
-  if (end) return `至 ${end}`
-  return '-'
+  const { start, end } = resolveActionDateRange(row)
+  if (!start && !end) return '日期待同步'
+  const startText = start ? start.toLocaleDateString() : ''
+  const endText = end ? end.toLocaleDateString() : ''
+  if (startText && endText) return `${startText} ~ ${endText}`
+  if (startText) return `${startText} 起`
+  if (endText) return `至 ${endText}`
+  return '日期待同步'
 }
 
 function formatTime(time) {
   if (!time) return '-'
-  return new Date(time).toLocaleString()
+  const parsed = new Date(time)
+  if (Number.isNaN(parsed.getTime())) return '-'
+  return parsed.toLocaleString()
+}
+
+function pickFirst(...values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== '') {
+      return value
+    }
+  }
+  return null
+}
+
+function toFiniteNumber(value) {
+  if (value === undefined || value === null || value === '') return null
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return null
+  return parsed
+}
+
+function toBooleanOrNull(value) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (['true', '1', 'yes', 'y'].includes(normalized)) return true
+    if (['false', '0', 'no', 'n'].includes(normalized)) return false
+  }
+  return null
+}
+
+function parseSourcePayload(payload) {
+  if (!payload) return {}
+  if (typeof payload === 'object') return payload
+  if (typeof payload === 'string') {
+    try {
+      return JSON.parse(payload)
+    } catch {
+      return {}
+    }
+  }
+  return {}
+}
+
+function getActionExtra(action) {
+  const payload = parseSourcePayload(action?.source_payload)
+  const params = parseSourcePayload(payload.actionParameters || payload.action_parameters || {})
+  return {
+    minimalActionPercent: toFiniteNumber(pickFirst(payload.minimal_action_percent, payload.minimalActionPercent)),
+    discountType: String(pickFirst(payload.discount_type, payload.discountType) || ''),
+    budgetSpent: toFiniteNumber(pickFirst(payload.budget_spent, payload.budgetSpent, payload.action_budget_spent, payload.actionBudgetSpent)),
+    currency: String(pickFirst(payload.currency) || ''),
+    promotionCompanyStatus: String(pickFirst(payload.promotion_company_status, payload.promotionCompanyStatus) || ''),
+    isEditable: toBooleanOrNull(pickFirst(payload.is_editable, payload.isEditable)),
+    canBeUpdatable: toBooleanOrNull(pickFirst(payload.can_be_updatable, payload.canBeUpdatable)),
+    isParticipated: toBooleanOrNull(pickFirst(payload.is_participated, payload.isParticipated)),
+    isTurnOn: toBooleanOrNull(pickFirst(payload.is_turn_on, payload.isTurnOn)),
+    isRepricerAvailable: toBooleanOrNull(pickFirst(payload.is_repricer_available, payload.isRepricerAvailable)),
+    highlightUrl: String(pickFirst(payload.highlight_url, payload.highlightUrl) || ''),
+    createdAt: pickFirst(payload.created_at, payload.createdAt),
+    actionStatus: String(pickFirst(payload.action_status, payload.actionStatus) || ''),
+    dateStart: pickFirst(
+      payload.date_start,
+      payload.dateStart,
+      params.date_start,
+      params.dateStart,
+      params.start_at,
+      params.startAt
+    ),
+    dateEnd: pickFirst(
+      payload.date_end,
+      payload.dateEnd,
+      params.date_end,
+      params.dateEnd,
+      params.end_at,
+      params.endAt
+    )
+  }
+}
+
+function formatMinimalActionPercent(action) {
+  const value = getActionExtra(action).minimalActionPercent
+  if (value === null) return '-'
+  const percent = Number.isInteger(value) ? value : value.toFixed(2)
+  return `最低折扣 ${percent}%`
+}
+
+function formatBudgetSpent(action) {
+  const extra = getActionExtra(action)
+  if (extra.budgetSpent === null) return '-'
+  const amount = extra.budgetSpent.toFixed(2)
+  return extra.currency ? `已花费 ${amount} ${extra.currency}` : `已花费 ${amount}`
+}
+
+function formatCapabilityTag(action) {
+  const extra = getActionExtra(action)
+  if (extra.isEditable === null && extra.canBeUpdatable === null) return '-'
+  if (extra.isEditable && extra.canBeUpdatable) return '可编辑/可更新'
+  if (extra.isEditable) return '仅可编辑'
+  if (extra.canBeUpdatable) return '仅可更新'
+  return '操作受限'
+}
+
+function formatBooleanFlag(value) {
+  if (value === null || value === undefined) return '-'
+  return value ? '是' : '否'
+}
+
+function formatActionStatus(value) {
+  if (!value) return '-'
+  const map = {
+    ACTIVE: '进行中',
+    INACTIVE: '未启用',
+    ARCHIVED: '已归档',
+    ENDED: '已结束'
+  }
+  return map[value] || value
 }
 
 async function fetchActions() {
@@ -437,7 +679,10 @@ function openEditDialog(row) {
 }
 
 function handleCommand(command, action) {
-  if (command === 'edit') {
+  if (command === 'detail') {
+    selectedAction.value = action
+    showDetailDrawer.value = true
+  } else if (command === 'edit') {
     openEditDialog(action)
   } else if (command === 'delete') {
     handleDelete(action)
@@ -460,18 +705,16 @@ function openActionProducts(action) {
 }
 
 function isActionActive(action) {
-  if (!action.date_start || !action.date_end) return false
+  const { start, end } = resolveActionDateRange(action)
+  if (!start || !end) return false
   const now = new Date()
-  const start = new Date(action.date_start)
-  const end = new Date(action.date_end)
   return now >= start && now <= end
 }
 
 function getStatusClass(action) {
-  if (!action.date_start || !action.date_end) return 'status-unknown'
+  const { start, end } = resolveActionDateRange(action)
+  if (!start || !end) return 'status-unknown'
   const now = new Date()
-  const start = new Date(action.date_start)
-  const end = new Date(action.date_end)
   if (now < start) return 'status-upcoming'
   if (now > end) return 'status-ended'
   return 'status-active'
@@ -782,6 +1025,11 @@ onMounted(() => {
   align-items: center;
 }
 
+.meta-row.meta-tags {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .meta-item {
   display: flex;
   align-items: center;
@@ -828,6 +1076,16 @@ onMounted(() => {
 .original-name {
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.detail-link {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.detail-link:hover {
+  text-decoration: underline;
 }
 
 /* 响应式 */

@@ -142,10 +142,24 @@ CREATE TABLE IF NOT EXISTS promotion_action_products (
     shop_id             INTEGER NOT NULL REFERENCES shops(id),
     ozon_product_id     BIGINT,
     source_sku          VARCHAR(120) NOT NULL,
+    offer_id            VARCHAR(120),
+    platform_sku        VARCHAR(120),
     name                VARCHAR(500),
+    name_cn             VARCHAR(500),
+    name_origin         VARCHAR(500),
+    thumbnail_url       TEXT,
+    category_name       VARCHAR(200),
+    currency            VARCHAR(10),
+    base_price          DECIMAL(12, 2),
     price               DECIMAL(12, 2),
     action_price        DECIMAL(12, 2),
+    marketplace_price   DECIMAL(12, 2),
+    min_seller_price    DECIMAL(12, 2),
+    max_action_price    DECIMAL(12, 2),
+    discount_percent    DECIMAL(6, 2),
     stock               INTEGER DEFAULT 0,
+    seller_stock        INTEGER DEFAULT 0,
+    ozon_stock          INTEGER DEFAULT 0,
     status              VARCHAR(30) DEFAULT 'active',
     payload             JSONB,
     last_synced_at      TIMESTAMP,
@@ -280,6 +294,8 @@ CREATE INDEX IF NOT EXISTS idx_promotion_actions_sort_order ON promotion_actions
 CREATE INDEX IF NOT EXISTS idx_promotion_action_products_action_id ON promotion_action_products(promotion_action_id);
 CREATE INDEX IF NOT EXISTS idx_promotion_action_products_shop_id ON promotion_action_products(shop_id);
 CREATE INDEX IF NOT EXISTS idx_promotion_action_products_ozon_product_id ON promotion_action_products(ozon_product_id);
+CREATE INDEX IF NOT EXISTS idx_promotion_action_products_offer_id ON promotion_action_products(offer_id);
+CREATE INDEX IF NOT EXISTS idx_promotion_action_products_platform_sku ON promotion_action_products(platform_sku);
 CREATE INDEX IF NOT EXISTS idx_automation_jobs_shop_id ON automation_jobs(shop_id);
 CREATE INDEX IF NOT EXISTS idx_automation_jobs_status ON automation_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_automation_jobs_created_by ON automation_jobs(created_by);

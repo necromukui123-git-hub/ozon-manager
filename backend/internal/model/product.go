@@ -112,10 +112,24 @@ type PromotionActionProduct struct {
 	ShopID            uint           `gorm:"not null;index" json:"shop_id"`
 	OzonProductID     int64          `gorm:"index" json:"ozon_product_id"`
 	SourceSKU         string         `gorm:"size:120;not null;uniqueIndex:idx_action_product_sku" json:"source_sku"`
+	OfferID           string         `gorm:"size:120" json:"offer_id"`
+	PlatformSKU       string         `gorm:"size:120" json:"platform_sku"`
 	Name              string         `gorm:"size:500" json:"name"`
+	NameCN            string         `gorm:"size:500" json:"name_cn"`
+	NameOrigin        string         `gorm:"size:500" json:"name_origin"`
+	ThumbnailURL      string         `gorm:"type:text" json:"thumbnail_url"`
+	CategoryName      string         `gorm:"size:200" json:"category_name"`
+	Currency          string         `gorm:"size:10" json:"currency"`
+	BasePrice         float64        `gorm:"type:decimal(12,2)" json:"base_price"`
 	Price             float64        `gorm:"type:decimal(12,2)" json:"price"`
 	ActionPrice       float64        `gorm:"type:decimal(12,2)" json:"action_price"`
+	MarketplacePrice  float64        `gorm:"type:decimal(12,2)" json:"marketplace_price"`
+	MinSellerPrice    float64        `gorm:"type:decimal(12,2)" json:"min_seller_price"`
+	MaxActionPrice    float64        `gorm:"type:decimal(12,2)" json:"max_action_price"`
+	DiscountPercent   float64        `gorm:"type:decimal(6,2)" json:"discount_percent"`
 	Stock             int            `json:"stock"`
+	SellerStock       int            `json:"seller_stock"`
+	OzonStock         int            `json:"ozon_stock"`
 	Status            string         `gorm:"size:30;default:active" json:"status"`
 	Payload           datatypes.JSON `gorm:"type:jsonb" json:"payload"`
 	LastSyncedAt      *time.Time     `json:"last_synced_at"`

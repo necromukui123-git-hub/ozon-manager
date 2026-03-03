@@ -478,7 +478,7 @@ async function executeSyncActionProducts(tabID, job) {
   for (const packet of payloads || []) {
     items = items.concat(extractActionProductsFromPayload(packet?.data || {}, packet?.endpoint || ''))
   }
-  items = uniqueBy(items, (item) => `${item.source_sku}:${item.ozon_product_id}`)
+  items = uniqueBy(items, (item) => buildActionProductDedupKey(item))
 
   const success = items.length > 0
   const status = success ? 'success' : 'failed'
@@ -884,6 +884,40 @@ function getFirstDefined(item, keys) {
   return undefined
 }
 
+function getFirstPresent(values) {
+  for (const value of values) {
+    if (value !== undefined && value !== null && value !== '') {
+      return value
+    }
+  }
+  return undefined
+}
+
+function pickValue(raw, actionParameters, rawKeys, actionParameterKeys = rawKeys) {
+  const direct = getFirstDefined(raw, rawKeys)
+  if (direct !== undefined) return direct
+  return getFirstDefined(actionParameters, actionParameterKeys)
+}
+
+function toNullableNumber(value) {
+  if (value === undefined || value === null || value === '') return null
+  const parsed = toNumber(value, Number.NaN)
+  if (!Number.isFinite(parsed)) return null
+  return parsed
+}
+
+function toNullableBoolean(value) {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (['true', '1', 'yes', 'y'].includes(normalized)) return true
+    if (['false', '0', 'no', 'n'].includes(normalized)) return false
+  }
+  return null
+}
+
 function walkPayload(node, path = '$', maxDepth = 7, currentDepth = 0, collector = []) {
   if (currentDepth > maxDepth || node === null || node === undefined) {
     return collector
@@ -907,9 +941,55 @@ function walkPayload(node, path = '$', maxDepth = 7, currentDepth = 0, collector
 function normalizeShopAction(raw, pathHint = '') {
   if (!raw || typeof raw !== 'object') return null
 
-  const actionParameters = raw.actionParameters && typeof raw.actionParameters === 'object'
-    ? raw.actionParameters
+  const actionParameters = getFirstPresent([
+    raw.actionParameters,
+    raw.action_parameters,
+  ])
+  const normalizedActionParameters = actionParameters && typeof actionParameters === 'object'
+    ? actionParameters
     : {}
+
+  const dateStartValue = getFirstPresent([
+    pickValue(raw, normalizedActionParameters, [
+      'date_start',
+      'dateStart',
+      'start_at',
+      'startAt',
+      'starts_at',
+      'startsAt',
+      'from',
+    ]),
+    getFirstDefined(normalizedActionParameters, [
+      'date_start',
+      'dateStart',
+      'start_at',
+      'startAt',
+      'starts_at',
+      'startsAt',
+      'from',
+    ]),
+  ])
+
+  const dateEndValue = getFirstPresent([
+    pickValue(raw, normalizedActionParameters, [
+      'date_end',
+      'dateEnd',
+      'end_at',
+      'endAt',
+      'ends_at',
+      'endsAt',
+      'to',
+    ]),
+    getFirstDefined(normalizedActionParameters, [
+      'date_end',
+      'dateEnd',
+      'end_at',
+      'endAt',
+      'ends_at',
+      'endsAt',
+      'to',
+    ]),
+  ])
 
   const sourceActionID = String(getFirstDefined(raw, [
     'source_action_id',
@@ -936,6 +1016,17 @@ function normalizeShopAction(raw, pathHint = '') {
     'campaignName',
     'display_name',
     'displayName',
+    'action_title',
+    'actionTitle',
+    'campaign_title',
+    'campaignTitle',
+  ]) || getFirstDefined(normalizedActionParameters, [
+    'title',
+    'name',
+    'action_name',
+    'actionName',
+    'campaign_name',
+    'campaignName',
   ]) || '').trim()
 
   const keys = Object.keys(raw).map((key) => key.toLowerCase())
@@ -957,8 +1048,24 @@ function normalizeShopAction(raw, pathHint = '') {
       'promotionType',
       'campaign_type',
       'campaignType',
+    ]) || getFirstDefined(normalizedActionParameters, [
+      'action_type',
+      'actionType',
+      'type',
+      'promotion_type',
+      'promotionType',
+      'campaign_type',
+      'campaignType',
     ]) || 'SHOP_PRIVATE_PROMO'),
     participating_products_count: toNumber(getFirstDefined(raw, [
+      'participating_products_count',
+      'participatingCount',
+      'skuCount',
+      'products_count',
+      'product_count',
+      'items_count',
+      'joined_products_count',
+    ]) || getFirstDefined(normalizedActionParameters, [
       'participating_products_count',
       'participatingCount',
       'skuCount',
@@ -974,50 +1081,132 @@ function normalizeShopAction(raw, pathHint = '') {
       'availableCount',
       'total_products_count',
       'all_products_count',
+    ]) || getFirstDefined(normalizedActionParameters, [
+      'potential_products_count',
+      'potentialCount',
+      'available_products_count',
+      'availableCount',
+      'total_products_count',
+      'all_products_count',
     ]), 0),
-    date_start: toNullableDate(getFirstDefined(raw, [
-      'date_start',
-      'dateStart',
-      'start_at',
-      'startAt',
-      'starts_at',
-      'startsAt',
-      'from',
-      actionParameters.date_start,
-      actionParameters.dateStart,
-      actionParameters.start_at,
-      actionParameters.startAt,
-      actionParameters.starts_at,
-      actionParameters.startsAt,
-      actionParameters.from,
+    date_start: toNullableDate(dateStartValue),
+    date_end: toNullableDate(dateEndValue),
+    discount_type: String(pickValue(raw, normalizedActionParameters, [
+      'discount_type',
+      'discountType',
+    ], [
+      'discount_type',
+      'discountType',
+    ]) || ''),
+    minimal_action_percent: toNullableNumber(pickValue(raw, normalizedActionParameters, [
+      'minimal_action_percent',
+      'minimalActionPercent',
+    ], [
+      'minimal_action_percent',
+      'minimalActionPercent',
     ])),
-    date_end: toNullableDate(getFirstDefined(raw, [
-      'date_end',
-      'dateEnd',
-      'end_at',
-      'endAt',
-      'ends_at',
-      'endsAt',
-      'to',
-      actionParameters.date_end,
-      actionParameters.dateEnd,
-      actionParameters.end_at,
-      actionParameters.endAt,
-      actionParameters.ends_at,
-      actionParameters.endsAt,
-      actionParameters.to,
+    budget_spent: toNullableNumber(pickValue(raw, normalizedActionParameters, [
+      'action_budget_spent',
+      'actionBudgetSpent',
+      'budget_spent',
+      'budgetSpent',
+    ], [
+      'action_budget_spent',
+      'actionBudgetSpent',
+      'budget_spent',
+      'budgetSpent',
     ])),
+    currency: String(pickValue(raw, normalizedActionParameters, [
+      'currency',
+    ], [
+      'currency',
+    ]) || ''),
+    promotion_company_status: String(pickValue(raw, normalizedActionParameters, [
+      'promotion_company_status',
+      'promotionCompanyStatus',
+    ], [
+      'promotion_company_status',
+      'promotionCompanyStatus',
+    ]) || ''),
+    is_editable: toNullableBoolean(pickValue(raw, normalizedActionParameters, [
+      'is_editable',
+      'isEditable',
+    ], [
+      'is_editable',
+      'isEditable',
+    ])),
+    can_be_updatable: toNullableBoolean(pickValue(raw, normalizedActionParameters, [
+      'can_be_updatable',
+      'canBeUpdatable',
+    ], [
+      'can_be_updatable',
+      'canBeUpdatable',
+    ])),
+    is_participated: toNullableBoolean(pickValue(raw, normalizedActionParameters, [
+      'is_participated',
+      'isParticipated',
+    ], [
+      'is_participated',
+      'isParticipated',
+    ])),
+    is_turn_on: toNullableBoolean(pickValue(raw, normalizedActionParameters, [
+      'is_turn_on',
+      'isTurnOn',
+    ], [
+      'is_turn_on',
+      'isTurnOn',
+    ])),
+    is_repricer_available: toNullableBoolean(pickValue(raw, normalizedActionParameters, [
+      'is_repricer_available',
+      'isRepricerAvailable',
+    ], [
+      'is_repricer_available',
+      'isRepricerAvailable',
+    ])),
+    highlight_url: String(pickValue(raw, normalizedActionParameters, [
+      'highlight_url',
+      'highlightUrl',
+      'url',
+    ], [
+      'highlight_url',
+      'highlightUrl',
+      'url',
+    ]) || ''),
+    created_at: toNullableDate(pickValue(raw, normalizedActionParameters, [
+      'created_at',
+      'createdAt',
+    ], [
+      'created_at',
+      'createdAt',
+    ])),
+    action_status: String(pickValue(raw, normalizedActionParameters, [
+      'action_status',
+      'actionStatus',
+      'status',
+    ], [
+      'action_status',
+      'actionStatus',
+      'status',
+    ]) || ''),
   }
 }
 
 function normalizeActionProduct(raw, pathHint = '') {
   if (!raw || typeof raw !== 'object') return null
 
+  const offerID = normalizeSKU(getFirstDefined(raw, [
+    'offer_id',
+    'offerID',
+    'offerId',
+  ]))
+  const skus = Array.isArray(raw?.skus) ? raw.skus.map((sku) => normalizeSKU(sku)).filter(Boolean) : []
+  const platformSKU = skus.length > 0 ? skus[0] : ''
+
   const sourceSKU = String(getFirstDefined(raw, [
     'source_sku',
     'sourceSku',
-    'offerID',
     'offer_id',
+    'offerID',
     'offerId',
     'ozonSku',
     'vendor_code',
@@ -1027,7 +1216,7 @@ function normalizeActionProduct(raw, pathHint = '') {
     'skuId',
     'item_code',
     'id',
-  ]) || '').trim()
+  ]) || offerID || platformSKU).trim()
   if (!sourceSKU) return null
 
   const keys = Object.keys(raw).map((key) => key.toLowerCase())
@@ -1035,8 +1224,51 @@ function normalizeActionProduct(raw, pathHint = '') {
   const hasProductHint = joinedHint.includes('product') || joinedHint.includes('offer') || joinedHint.includes('sku') || joinedHint.includes('item')
   if (!hasProductHint) return null
 
+  const priceNode = raw?.price || {}
+  const basePriceNode = raw?.base_price || raw?.basePrice || {}
+  const actionPriceNode = raw?.action_price || raw?.actionPrice || {}
+  const currency = String(
+    getFirstDefined(raw, ['currency']) ||
+    getFirstDefined(priceNode, ['currencyCode', 'currency']) ||
+    getFirstDefined(basePriceNode, ['currencyCode', 'currency']) ||
+    getFirstDefined(actionPriceNode, ['currencyCode', 'currency']) ||
+    '',
+  ).trim()
+
+  const nameOrigin = String(getFirstDefined(raw, [
+    'name',
+    'title',
+    'product_name',
+    'productName',
+    'offer_name',
+    'offerName',
+    'source_sku',
+    'sourceSku',
+    'offerID',
+  ]) || sourceSKU).trim()
+  const categoryName = String(getFirstDefined(raw, [
+    'item_type',
+    'itemType',
+    'category_name',
+    'categoryName',
+  ]) || '').trim()
+
+  const statusText = String(getFirstDefined(raw, [
+    'status',
+    'state',
+    'activity_status',
+    'activityStatus',
+  ]) || '').trim()
+  const isActive = toNullableBoolean(getFirstDefined(raw, ['is_active', 'isActive']))
+  let status = statusText || 'active'
+  if (!statusText && isActive !== null) {
+    status = isActive ? 'active' : 'inactive'
+  }
+
   return {
     source_sku: sourceSKU,
+    offer_id: offerID || sourceSKU,
+    platform_sku: platformSKU,
     ozon_product_id: toNumber(getFirstDefined(raw, [
       'ozon_product_id',
       'ozonProductId',
@@ -1044,17 +1276,31 @@ function normalizeActionProduct(raw, pathHint = '') {
       'productId',
       'id',
     ]), 0),
-    name: String(getFirstDefined(raw, [
-      'name',
-      'title',
-      'product_name',
-      'productName',
-      'offer_name',
-      'offerName',
-      'source_sku',
-      'sourceSku',
-      'offerID',
-    ]) || sourceSKU),
+    name: nameOrigin,
+    name_cn: String(getFirstDefined(raw, [
+      'name_cn',
+      'nameCn',
+    ]) || categoryName || nameOrigin || sourceSKU).trim(),
+    name_origin: nameOrigin,
+    thumbnail_url: String(getFirstDefined(raw, [
+      'thumbnail',
+      'thumb',
+      'image',
+      'image_url',
+      'imageUrl',
+      'picture',
+    ]) || '').trim(),
+    category_name: categoryName,
+    currency,
+    base_price: toPriceNumber(getFirstDefined(raw, [
+      'base_price',
+      'basePrice',
+      'old_price',
+      'oldPrice',
+      'original_price',
+      'originalPrice',
+      'price',
+    ]), 0),
     price: toPriceNumber(getFirstDefined(raw, [
       'price',
       'base_price',
@@ -1073,21 +1319,56 @@ function normalizeActionProduct(raw, pathHint = '') {
       'discountPrice',
       'price',
     ]), 0),
+    marketplace_price: toPriceNumber(getFirstDefined(raw, [
+      'marketplace_seller_price',
+      'marketplaceSellerPrice',
+    ]), 0),
+    min_seller_price: toPriceNumber(getFirstDefined(raw, [
+      'min_seller_price',
+      'minSellerPrice',
+    ]), 0),
+    max_action_price: toPriceNumber(getFirstDefined(raw, [
+      'max_action_price',
+      'maxActionPrice',
+    ]), 0),
+    discount_percent: toNumber(getFirstDefined(raw, [
+      'discount_percent',
+      'discountPercent',
+    ]), 0),
     stock: toNumber(getFirstDefined(raw, [
       'stock',
+      'seller_stock',
+      'sellerStock',
       'fbo_stock',
       'fbs_stock',
       'quantity',
       'qty',
       'available',
     ]), 0),
-    status: String(getFirstDefined(raw, [
-      'status',
-      'state',
-      'activity_status',
-      'activityStatus',
-    ]) || 'active'),
+    seller_stock: toNumber(getFirstDefined(raw, [
+      'seller_stock',
+      'sellerStock',
+      'stock',
+    ]), 0),
+    ozon_stock: toNumber(getFirstDefined(raw, [
+      'ozon_stock',
+      'ozonStock',
+    ]), 0),
+    status,
   }
+}
+
+function buildActionProductDedupKey(item) {
+  const offerID = normalizeSKU(item?.offer_id)
+  const sourceSKU = normalizeSKU(item?.source_sku)
+  const ozonProductID = normalizeSKU(item?.ozon_product_id)
+  if (offerID && ozonProductID) {
+    return `${offerID}:${ozonProductID}`
+  }
+  if (sourceSKU && ozonProductID) {
+    return `${sourceSKU}:${ozonProductID}`
+  }
+  return offerID || sourceSKU || ozonProductID
 }
 
 function extractShopActionsFromPayload(payload, pathHint = '') {
@@ -1113,7 +1394,7 @@ function extractActionProductsFromPayload(payload, pathHint = '') {
       if (normalized) candidates.push(normalized)
     }
   }
-  return uniqueBy(candidates, (item) => `${item.source_sku}:${item.ozon_product_id}`)
+  return uniqueBy(candidates, (item) => buildActionProductDedupKey(item))
 }
 
 function sleep(ms) {
@@ -1226,37 +1507,52 @@ async function scriptFetchActionProductsPayloads(sourceActionID) {
   const actionID = String(sourceActionID || '').trim()
   const packets = []
 
-  // Current endpoint used by campaign implementations (cursor pagination).
-  try {
-    let cursor = ''
-    for (let page = 0; page < 100; page += 1) {
-      const body = { limit: 100 }
-      if (cursor) {
-        body.cursor = cursor
+  // Prefer active products endpoint; fallback to candidate only if active endpoints are unavailable.
+  const cursorEndpoints = [
+    `/api/site/own-seller-products/v2/action/${actionID}/active`,
+    `/api/site/own-seller-products/v2/action/${actionID}/active-search`,
+    `/api/site/own-seller-products/v1/action/${actionID}/candidate`,
+  ]
+
+  for (const endpoint of cursorEndpoints) {
+    let hasSuccessfulResponse = false
+    const endpointPackets = []
+    try {
+      let cursor = ''
+      for (let page = 0; page < 100; page += 1) {
+        const body = { limit: 100 }
+        if (cursor) {
+          body.cursor = cursor
+        }
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          credentials: 'include',
+          headers: requestHeaders,
+          body: JSON.stringify(body),
+        })
+        if (!response.ok) break
+        hasSuccessfulResponse = true
+
+        const contentType = String(response.headers.get('content-type') || '').toLowerCase()
+        if (!contentType.includes('json')) break
+
+        const data = await response.json()
+        endpointPackets.push({ endpoint, data })
+
+        const hasNext = Boolean(data?.has_next)
+        cursor = String(data?.cursor || '')
+        if (!hasNext) {
+          break
+        }
       }
-      const endpoint = `/api/site/own-seller-products/v1/action/${actionID}/candidate`
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        credentials: 'include',
-        headers: requestHeaders,
-        body: JSON.stringify(body),
-      })
-      if (!response.ok) break
-
-      const contentType = String(response.headers.get('content-type') || '').toLowerCase()
-      if (!contentType.includes('json')) break
-
-      const data = await response.json()
-      packets.push({ endpoint, data })
-
-      const hasNext = Boolean(data?.has_next)
-      cursor = String(data?.cursor || '')
-      if (!hasNext) {
-        break
-      }
+    } catch {
+      // try next endpoint
     }
-  } catch {
-    // fall through to legacy endpoints
+
+    if (hasSuccessfulResponse) {
+      packets.push(...endpointPackets)
+      return packets
+    }
   }
 
   if (packets.length > 0) {
