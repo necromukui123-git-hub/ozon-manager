@@ -191,6 +191,16 @@ async function pollOnce() {
     }
 
     const run = await executeJob(job, state)
+    let runError = ''
+    if (run?.status === 'failed') {
+      const failed = Array.isArray(run?.results)
+        ? run.results.filter((item) => String(item?.overall_status || '').toLowerCase() === 'failed')
+        : []
+      const messages = failed
+        .map((item) => String(item?.error_message || '').trim())
+        .filter(Boolean)
+      runError = messages[0] || '任务执行失败'
+    }
     await apiPost(
       state.apiBaseUrl,
       state.authToken,
@@ -213,6 +223,7 @@ async function pollOnce() {
       ok: true,
       hasJob: true,
       status: run.status,
+      error: runError,
     }
   } catch (error) {
     const message = error?.message || String(error)

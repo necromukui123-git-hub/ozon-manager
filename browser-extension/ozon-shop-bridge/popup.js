@@ -53,6 +53,9 @@ function buildSaveSummary(sync) {
     return '保存成功'
   }
   if (sync.ok) {
+    if (sync.hasJob && String(sync.status || '').toLowerCase() === 'failed') {
+      return `保存成功，但立即同步失败：${sync.error || '任务执行失败'}`
+    }
     if (sync.hasJob) return '保存成功，已立即同步一次（有任务）'
     return '保存成功，已立即同步一次（当前无待执行任务）'
   }

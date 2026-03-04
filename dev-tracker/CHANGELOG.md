@@ -200,3 +200,20 @@
 
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...` 通过。
+
+## 2026-03-04（补充）
+### 主题
+修复插件“有任务但执行失败仍显示成功”的提示误判。
+
+### 关键变更
+1. `background.js`：`pollOnce` 在 `hasJob=true` 且执行状态为 `failed` 时，回传 `error` 字段（优先使用失败条目错误信息）。
+2. `popup.js`：`buildSaveSummary` 新增 `sync.status=failed` 分支，首行改为“保存成功，但立即同步失败：<原因>”。
+
+### 影响范围
+1. 点击“保存并立即同步一次”后，插件首行提示与任务真实执行状态一致。
+2. 降低“已执行成功”误判导致的排障时间。
+3. 无后端接口变更、无数据库结构变更。
+
+### 验证
+1. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background.js` 通过。
+2. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/popup.js` 通过。

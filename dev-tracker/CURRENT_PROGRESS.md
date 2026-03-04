@@ -87,6 +87,11 @@
    - 处理：`OZON_MANAGER_SET_CONFIG` 返回本次 `pollOnce` 同步结果（成功/跳过/失败 + 错误原因），并在 popup 首行展示“保存成功 + 同步结果”。
    - 处理：当同步错误包含“认证令牌已过期”时，popup 明确提示“请先在管理端重新登录”。
    - 涉及：`browser-extension/ozon-shop-bridge/background.js`、`browser-extension/ozon-shop-bridge/popup.js`。
+21. 插件“有任务但执行失败仍提示成功”误判修复：
+   - 根因：popup 仅依据 `sync.ok` 和 `hasJob` 显示“已立即同步一次（有任务）”，未识别 `sync.status=failed`。
+   - 处理：`pollOnce` 在 `hasJob=true` 且任务执行失败时回传 `error`（优先提取失败条目错误）。
+   - 处理：popup 新增 `sync.status=failed` 分支，首行改为“保存成功，但立即同步失败：<原因>”。
+   - 涉及：`browser-extension/ozon-shop-bridge/background.js`、`browser-extension/ozon-shop-bridge/popup.js`。
 
 ## 验证结果
 1. 后端测试通过：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
@@ -109,6 +114,7 @@
 18. 插件脚本语法检查通过（含 `v2 active` 端点优先与 `action_parameters` 兼容）：`node --check browser-extension/ozon-shop-bridge/background.js`。
 19. 后端回归测试通过（含官方活动商品 `last_id` 对齐与请求头补齐）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
 20. 插件脚本语法检查通过（含“保存并立即同步一次”反馈修复）：`node --check browser-extension/ozon-shop-bridge/background.js`、`node --check browser-extension/ozon-shop-bridge/popup.js`。
+21. 插件脚本语法检查通过（含 `sync.status=failed` 提示修复）：`node --check browser-extension/ozon-shop-bridge/background.js`、`node --check browser-extension/ozon-shop-bridge/popup.js`。
 
 ## 数据库执行记录
 1. 本轮新增可执行升级脚本：`backend/migrations/upgrade_legacy_to_current.sql`（历史总升级）。
@@ -119,6 +125,7 @@
 6. 本次（展示缺口收敛）无新增迁移脚本：仅调整插件采集端点优先级与前端展示回退逻辑。
 7. 本次（官方活动商品 `last_id` 对齐）无新增迁移脚本：仅调整官方 API 调用参数、请求头与后端解析逻辑。
 8. 本次（插件保存/立即同步反馈修复）无新增迁移脚本：仅调整插件消息返回与 popup 展示文案。
+9. 本次（有任务失败提示修复）无新增迁移脚本：仅调整插件状态回传与 popup 展示分支。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。
