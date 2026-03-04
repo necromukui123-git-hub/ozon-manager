@@ -1,9 +1,0 @@
-./auth_handler.go
-./automation_handler.go
-./operation_log_handler.go
-./product_handler.go
-./promotion_handler.go
-./promotion_handler_extend.go
-./shop_handler.go
-./system_log_handler.go
-./user_handler.go
