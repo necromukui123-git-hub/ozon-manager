@@ -6,6 +6,7 @@
 nul
 err/
 /snipaste
+backend/.gocache/
 
 # 临时文本文件
 新建 文本文档.txt
