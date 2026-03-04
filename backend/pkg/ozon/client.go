@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	BaseURL = "https://api-seller.ozon.ru"
+	BaseURL            = "https://api-seller.ozon.ru"
+	DefaultAPILanguage = "ZH_HANS"
 )
 
 var ErrInvalidClientID = errors.New("client_id must be a positive integer")
@@ -60,6 +61,7 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Client-Id", normalizedClientID)
 	req.Header.Set("Api-Key", c.apiKey)
+	req.Header.Set("Language", DefaultAPILanguage)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

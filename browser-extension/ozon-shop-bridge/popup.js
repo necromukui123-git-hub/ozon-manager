@@ -45,7 +45,26 @@ async function saveState() {
   if (!response?.ok) {
     throw new Error(response?.error || 'save failed')
   }
-  return response.state
+  return response
+}
+
+function buildSaveSummary(sync) {
+  if (!sync || sync.ok === undefined) {
+    return '保存成功'
+  }
+  if (sync.ok) {
+    if (sync.hasJob) return '保存成功，已立即同步一次（有任务）'
+    return '保存成功，已立即同步一次（当前无待执行任务）'
+  }
+  if (sync.skipped) {
+    return `保存成功，未执行立即同步：${sync.error || '条件不满足'}`
+  }
+
+  const message = String(sync.error || '未知错误')
+  if (message.includes('认证令牌已过期')) {
+    return '保存成功，但立即同步失败：认证令牌已过期，请先在管理端重新登录'
+  }
+  return `保存成功，但立即同步失败：${message}`
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -59,9 +78,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 $('saveBtn').addEventListener('click', async () => {
   try {
-    const state = await saveState()
-    applyState(state)
-    setStatus(`保存成功\n${$('status').textContent}`)
+    const response = await saveState()
+    applyState(response.state)
+    const summary = buildSaveSummary(response.sync)
+    setStatus(`${summary}\n${$('status').textContent}`)
   } catch (error) {
     setStatus(`保存失败: ${error?.message || error}`)
   }

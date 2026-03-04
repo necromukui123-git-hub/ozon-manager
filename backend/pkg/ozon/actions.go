@@ -7,18 +7,18 @@ import (
 
 // Action 促销活动
 type Action struct {
-	ID              int64  `json:"id"`
-	Title           string `json:"title"`
-	ActionType      string `json:"action_type"`
-	Description     string `json:"description"`
-	DateStart       string `json:"date_start"`
-	DateEnd         string `json:"date_end"`
-	FreezeDate      string `json:"freeze_date"`
-	PotentialProducts int  `json:"potential_products_count"`
-	ParticipatingProducts int `json:"participating_products_count"`
-	IsParticipating bool   `json:"is_participating"`
-	BannedProducts  int    `json:"banned_products_count"`
-	WithTargeting   bool   `json:"with_targeting"`
+	ID                    int64  `json:"id"`
+	Title                 string `json:"title"`
+	ActionType            string `json:"action_type"`
+	Description           string `json:"description"`
+	DateStart             string `json:"date_start"`
+	DateEnd               string `json:"date_end"`
+	FreezeDate            string `json:"freeze_date"`
+	PotentialProducts     int    `json:"potential_products_count"`
+	ParticipatingProducts int    `json:"participating_products_count"`
+	IsParticipating       bool   `json:"is_participating"`
+	BannedProducts        int    `json:"banned_products_count"`
+	WithTargeting         bool   `json:"with_targeting"`
 }
 
 // ActionsResponse 促销活动列表响应
@@ -43,9 +43,9 @@ func (c *Client) GetActions() (*ActionsResponse, error) {
 
 // ActionCandidatesRequest 可参与促销的商品请求
 type ActionCandidatesRequest struct {
-	ActionID int64  `json:"action_id"`
-	Limit    int    `json:"limit"`
-	Offset   int    `json:"offset"`
+	ActionID int64 `json:"action_id"`
+	Limit    int   `json:"limit"`
+	Offset   int   `json:"offset"`
 }
 
 // ActionCandidatesResponse 可参与促销的商品响应
@@ -57,14 +57,21 @@ type ActionCandidatesResponse struct {
 }
 
 type ActionProduct struct {
-	ID               int64   `json:"id"`
-	ProductID        int64   `json:"product_id"`
-	Price            float64 `json:"price"`
-	ActionPrice      float64 `json:"action_price"`
-	MaxActionPrice   float64 `json:"max_action_price"`
-	AddMode          string  `json:"add_mode"`
-	MinStock         int     `json:"min_stock"`
-	Stock            int     `json:"stock"`
+	ID                        int64   `json:"id"`
+	ProductID                 int64   `json:"product_id"`
+	Price                     float64 `json:"price"`
+	ActionPrice               float64 `json:"action_price"`
+	AlertMaxActionPriceFailed bool    `json:"alert_max_action_price_failed"`
+	AlertMaxActionPrice       float64 `json:"alert_max_action_price"`
+	MaxActionPrice            float64 `json:"max_action_price"`
+	AddMode                   string  `json:"add_mode"`
+	Stock                     int     `json:"stock"`
+	MinStock                  int     `json:"min_stock"`
+	CurrentBoost              float64 `json:"current_boost"`
+	PriceMinElastic           float64 `json:"price_min_elastic"`
+	PriceMaxElastic           float64 `json:"price_max_elastic"`
+	MinBoost                  float64 `json:"min_boost"`
+	MaxBoost                  float64 `json:"max_boost"`
 }
 
 // GetActionCandidates 获取可参与促销的商品
@@ -90,9 +97,9 @@ func (c *Client) GetActionCandidates(actionID int64, limit, offset int) (*Action
 
 // ActionProductsRequest 已参与促销的商品请求
 type ActionProductsRequest struct {
-	ActionID int64 `json:"action_id"`
-	Limit    int   `json:"limit"`
-	Offset   int   `json:"offset"`
+	ActionID int64  `json:"action_id"`
+	Limit    int    `json:"limit"`
+	LastID   string `json:"last_id,omitempty"`
 }
 
 // ActionProductsResponse 已参与促销的商品响应
@@ -100,15 +107,16 @@ type ActionProductsResponse struct {
 	Result struct {
 		Products []ActionProduct `json:"products"`
 		Total    int             `json:"total"`
+		LastID   string          `json:"last_id"`
 	} `json:"result"`
 }
 
 // GetActionProducts 获取已参与促销的商品
-func (c *Client) GetActionProducts(actionID int64, limit, offset int) (*ActionProductsResponse, error) {
+func (c *Client) GetActionProducts(actionID int64, limit int, lastID string) (*ActionProductsResponse, error) {
 	req := ActionProductsRequest{
 		ActionID: actionID,
 		Limit:    limit,
-		Offset:   offset,
+		LastID:   lastID,
 	}
 
 	respBody, err := c.doRequest("POST", "/v1/actions/products", req)
@@ -126,8 +134,8 @@ func (c *Client) GetActionProducts(actionID int64, limit, offset int) (*ActionPr
 
 // ActivateProductsRequest 添加商品到促销活动
 type ActivateProductsRequest struct {
-	ActionID int64                    `json:"action_id"`
-	Products []ActivateProductItem    `json:"products"`
+	ActionID int64                 `json:"action_id"`
+	Products []ActivateProductItem `json:"products"`
 }
 
 type ActivateProductItem struct {

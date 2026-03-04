@@ -57,8 +57,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const state = await readState()
         await ensureAuthSyncContentScript(state, true)
         await ensurePollingAlarm()
-        await pollOnce()
-        sendResponse({ ok: true, state })
+        const sync = await pollOnce()
+        const latestState = await readState()
+        sendResponse({ ok: true, state: latestState, sync })
       })
       .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }))
     return true
@@ -140,12 +141,30 @@ async function ensurePollingAlarm() {
 }
 
 async function pollOnce() {
-  if (pollInFlight) return
+  if (pollInFlight) {
+    return {
+      ok: false,
+      skipped: true,
+      error: '已有同步任务进行中，请稍后重试',
+    }
+  }
   pollInFlight = true
   try {
     const state = await readState()
-    if (!state.enabled) return
-    if (!state.authToken || !state.shopId || !state.apiBaseUrl) return
+    if (!state.enabled) {
+      return {
+        ok: false,
+        skipped: true,
+        error: '轮询已关闭，未执行立即同步',
+      }
+    }
+    if (!state.authToken || !state.shopId || !state.apiBaseUrl) {
+      return {
+        ok: false,
+        skipped: true,
+        error: '配置不完整，请检查 token、shop_id、后端地址',
+      }
+    }
 
     await registerExtension(state)
 
@@ -165,7 +184,10 @@ async function pollOnce() {
         lastRunAt: new Date().toISOString(),
         lastError: '',
       })
-      return
+      return {
+        ok: true,
+        hasJob: false,
+      }
     }
 
     const run = await executeJob(job, state)
@@ -187,11 +209,22 @@ async function pollOnce() {
       lastRunAt: new Date().toISOString(),
       lastError: '',
     })
+    return {
+      ok: true,
+      hasJob: true,
+      status: run.status,
+    }
   } catch (error) {
+    const message = error?.message || String(error)
     await saveStatePatch({
       lastRunAt: new Date().toISOString(),
-      lastError: error?.message || String(error),
+      lastError: message,
     })
+    return {
+      ok: false,
+      skipped: false,
+      error: message,
+    }
   } finally {
     pollInFlight = false
   }

@@ -835,27 +835,35 @@ func (s *PromotionService) refreshOfficialActionProducts(action *model.Promotion
 	client := ozon.NewClient(shop.ClientID, shop.ApiKey)
 
 	const pageSize = 200
-	offset := 0
+	lastID := ""
+	seenLastIDs := make(map[string]struct{})
+	receivedRemoteItems := false
 	products := make([]model.PromotionActionProduct, 0)
 
 	for {
-		resp, getErr := client.GetActionProducts(action.ActionID, pageSize, offset)
+		resp, getErr := client.GetActionProducts(action.ActionID, pageSize, lastID)
 		if getErr != nil {
 			return getErr
 		}
 		if len(resp.Result.Products) == 0 {
 			break
 		}
+		receivedRemoteItems = true
 
 		for _, item := range resp.Result.Products {
-			sourceSKU := strconv.FormatInt(item.ProductID, 10)
+			ozonProductID := resolveOfficialActionProductID(item)
+			if ozonProductID <= 0 {
+				continue
+			}
+
+			sourceSKU := strconv.FormatInt(ozonProductID, 10)
 			nameCN := ""
-			if localProduct, findErr := s.productRepo.FindByOzonProductID(action.ShopID, item.ProductID); findErr == nil {
+			if localProduct, findErr := s.productRepo.FindByOzonProductID(action.ShopID, ozonProductID); findErr == nil {
 				sourceSKU = localProduct.SourceSKU
 				nameCN = strings.TrimSpace(localProduct.Name)
 			}
 			if sourceSKU == "" {
-				sourceSKU = strconv.FormatInt(item.ProductID, 10)
+				sourceSKU = strconv.FormatInt(ozonProductID, 10)
 			}
 			if nameCN == "" {
 				nameCN = sourceSKU
@@ -868,7 +876,7 @@ func (s *PromotionService) refreshOfficialActionProducts(action *model.Promotion
 
 			payload, _ := json.Marshal(item)
 			products = append(products, model.PromotionActionProduct{
-				OzonProductID:   item.ProductID,
+				OzonProductID:   ozonProductID,
 				SourceSKU:       sourceSKU,
 				OfferID:         sourceSKU,
 				Name:            nameCN,
@@ -887,13 +895,30 @@ func (s *PromotionService) refreshOfficialActionProducts(action *model.Promotion
 			})
 		}
 
-		offset += len(resp.Result.Products)
-		if len(resp.Result.Products) < pageSize {
+		nextLastID := strings.TrimSpace(resp.Result.LastID)
+		if nextLastID == "" {
 			break
 		}
+		if _, exists := seenLastIDs[nextLastID]; exists {
+			break
+		}
+		seenLastIDs[nextLastID] = struct{}{}
+		lastID = nextLastID
+	}
+
+	// The API can theoretically return items with malformed IDs; avoid wiping cache in that case.
+	if receivedRemoteItems && len(products) == 0 {
+		return fmt.Errorf("official action products response missing valid product ids")
 	}
 
 	return s.promotionRepo.ReplaceActionProducts(action, products)
+}
+
+func resolveOfficialActionProductID(item ozon.ActionProduct) int64 {
+	if item.ProductID > 0 {
+		return item.ProductID
+	}
+	return item.ID
 }
 
 func (s *PromotionService) refreshShopActionProducts(action *model.PromotionAction, userID uint) error {

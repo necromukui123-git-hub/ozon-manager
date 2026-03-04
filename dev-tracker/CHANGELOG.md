@@ -176,3 +176,27 @@
 ### 验证
 1. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background.js` 通过。
 2. 前端构建：`cd frontend && npm run build` 通过。
+
+## 2026-03-03（补充九）
+### 主题
+修复官方活动商品无法展示（`/v1/actions/products` 分页与请求头对齐）。
+
+### 关键变更
+1. `backend/pkg/ozon/actions.go`：官方活动商品查询从 `offset` 分页切换为 `last_id` 游标分页，请求/响应结构新增 `last_id`。
+2. `backend/pkg/ozon/client.go`：官方 API 请求统一补充 `Language: ZH_HANS` 请求头。
+3. `backend/internal/service/promotion_service.go`：
+   - 官方活动商品刷新逻辑改为 `last_id` 循环拉取；
+   - 增加游标重复保护，避免异常游标导致死循环；
+   - 商品主键兼容 `product_id` 与 `id`，修复新响应结构下 ID 映射失效问题；
+   - 当远端返回商品但均无有效 ID 时返回错误，避免误清空本地缓存。
+4. 新增测试：
+   - `backend/pkg/ozon/actions_test.go` 覆盖请求体去除 `offset`、携带 `last_id` 与 `Language` 请求头；
+   - `backend/internal/service/promotion_service_official_products_test.go` 覆盖 `id/product_id` 兼容选择逻辑。
+
+### 影响范围
+1. 官方活动商品详情页恢复可见（数据链路：官方 API -> 后端缓存表 -> 页面查询）。
+2. 店铺活动商品链路不受影响。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端测试：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...` 通过。

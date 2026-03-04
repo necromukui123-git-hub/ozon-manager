@@ -1,6 +1,6 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-03  
+最后更新时间：2026-03-04  
 状态：进行中（本迭代已交付，等待下一轮任务）
 
 ## 本次交付单元
@@ -75,6 +75,18 @@
    - 处理：前端 `ActionList` 增加 `source_payload` 日期回退解析；无日期时显示“日期待同步”，避免空白。
    - 处理：前端 `ActionProducts` 固定三行编号（Offer ID / 平台SKU / Product ID），并优先显示 `item_type`（`category_name`）作为中文主标题。
    - 涉及：`browser-extension/ozon-shop-bridge/background.js`、`frontend/src/views/promotions/ActionList.vue`、`frontend/src/views/promotions/ActionProducts.vue`。
+19. 官方活动商品查询 `last_id` 游标对齐修复：
+   - 根因：官方 `/v1/actions/products` 自 2025-05-05 起关闭 `offset` 分页，后端仍使用 `offset` 拉取；同时响应商品主键在新结构中可能仅返回 `id`，导致本地 `product_id` 映射失效。
+   - 处理：`ozon` 客户端活动商品请求改为 `last_id`，响应增加 `last_id` 解析，并扩展商品字段兼容结构。
+   - 处理：后端 `refreshOfficialActionProducts` 改为游标循环，增加游标重复保护与 `id/product_id` 兼容解析，避免异常响应误清空缓存。
+   - 处理：官方 API 请求头补充 `Language: ZH_HANS`（与文档/联调截图一致）。
+   - 测试：新增 `backend/pkg/ozon/actions_test.go` 与 `backend/internal/service/promotion_service_official_products_test.go`，覆盖请求体/请求头与 ID 兼容逻辑。
+   - 涉及：`backend/pkg/ozon/actions.go`、`backend/pkg/ozon/client.go`、`backend/internal/service/promotion_service.go`。
+20. 插件“保存并立即同步一次”反馈语义修复（含 token 过期指引）：
+   - 根因：按钮文案包含“立即同步”，但界面首行固定显示“保存成功”，用户难以快速判断同步是否失败。
+   - 处理：`OZON_MANAGER_SET_CONFIG` 返回本次 `pollOnce` 同步结果（成功/跳过/失败 + 错误原因），并在 popup 首行展示“保存成功 + 同步结果”。
+   - 处理：当同步错误包含“认证令牌已过期”时，popup 明确提示“请先在管理端重新登录”。
+   - 涉及：`browser-extension/ozon-shop-bridge/background.js`、`browser-extension/ozon-shop-bridge/popup.js`。
 
 ## 验证结果
 1. 后端测试通过：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
@@ -95,6 +107,8 @@
 16. 插件脚本语法检查通过（含活动商品字段扩展解析）：`node --check browser-extension/ozon-shop-bridge/background.js`。
 17. 前端构建通过（含活动日期回退与三行编号布局）：`cd frontend && npm run build`。
 18. 插件脚本语法检查通过（含 `v2 active` 端点优先与 `action_parameters` 兼容）：`node --check browser-extension/ozon-shop-bridge/background.js`。
+19. 后端回归测试通过（含官方活动商品 `last_id` 对齐与请求头补齐）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
+20. 插件脚本语法检查通过（含“保存并立即同步一次”反馈修复）：`node --check browser-extension/ozon-shop-bridge/background.js`、`node --check browser-extension/ozon-shop-bridge/popup.js`。
 
 ## 数据库执行记录
 1. 本轮新增可执行升级脚本：`backend/migrations/upgrade_legacy_to_current.sql`（历史总升级）。
@@ -103,6 +117,8 @@
 4. 执行条件：目标库已存在 `promotion_action_products` 表且需要升级到“活动商品增强展示”结构；脚本支持幂等重复执行。
 5. 执行结果：开发环境脚本语法检查通过，`init_database.sql` 已同步回写到最新结构。
 6. 本次（展示缺口收敛）无新增迁移脚本：仅调整插件采集端点优先级与前端展示回退逻辑。
+7. 本次（官方活动商品 `last_id` 对齐）无新增迁移脚本：仅调整官方 API 调用参数、请求头与后端解析逻辑。
+8. 本次（插件保存/立即同步反馈修复）无新增迁移脚本：仅调整插件消息返回与 popup 展示文案。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。
