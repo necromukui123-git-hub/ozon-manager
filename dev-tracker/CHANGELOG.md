@@ -53,6 +53,29 @@
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱环境执行）。
 
+## 2026-03-05（补充二）
+### 主题
+修复 `/v3/product/list` 响应结构漂移（保持请求 `filter.visibility`，对齐响应 `items` 新字段）并收敛 Ozon 商品目录可见性推导。
+
+### 关键变更
+1. `backend/pkg/ozon/catalog.go`：
+   - `ProductListV3Item` 新增 `has_fbo_stocks`、`has_fbs_stocks`、`archived`、`is_discounted`、`quants` 字段映射。
+   - 新增 `ProductListV3Quant` 类型，并保留 `visibility` 兼容字段。
+2. `backend/internal/service/ozon_catalog_service.go`：
+   - 目录刷新不再依赖 list 响应 `visibility`。
+   - 可见性改为优先读取 `info.visible`，缺失时回退 `archived`，最终兜底 `ALL`。
+3. 测试补齐：
+   - `backend/pkg/ozon/catalog_test.go` 覆盖新版响应字段解析与旧 `visibility` 兼容。
+   - `backend/internal/service/ozon_catalog_service_test.go` 覆盖可见性推导优先级。
+
+### 影响范围
+1. `GetProductListV3` 可直接解析最新 Seller `/v3/product/list` 响应结构。
+2. Ozon 商品目录缓存可见性在 `visibility` 缺失场景下保持稳定，不再退化为错误状态。
+3. 不涉及数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端测试：`cd backend && go test ./pkg/ozon ./internal/service` 通过。
+
 ## 2026-03-03
 ### 主题
 执行引擎路由、防抢任务、插件状态面板、非 localhost 同步优化、数据库迁移规则规范化。

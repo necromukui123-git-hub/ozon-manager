@@ -116,6 +116,11 @@
    - 处理：文档明确了“先 list 后 info/list”的标准调用流程，以及游标分页与批量拉取建议。
    - 处理：文档标注官方来源链接与兼容性备注（`/v2/product/list` 废弃、`/v3/product/info/list` 正式化）。
    - 涉及：`doc/ozon-seller-product-apis-v3-list-info.md`。
+25. `/v3/product/list` 实测响应字段对齐与目录可见性修复：
+   - 根因：Seller `/v3/product/list` 请求仍接受 `filter.visibility`，但响应 `items` 不再稳定返回 `visibility`，而是返回 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`。
+   - 处理：`backend/pkg/ozon/catalog.go` 扩展 `ProductListV3Item` 字段映射并新增 `ProductListV3Quant`，保留 `visibility` 兼容字段。
+   - 处理：`backend/internal/service/ozon_catalog_service.go` 可见性推导改为优先读取 `info.visible`，缺失时回退 `archived`，最终兜底 `ALL`。
+   - 测试：新增/更新 `backend/pkg/ozon/catalog_test.go`、`backend/internal/service/ozon_catalog_service_test.go`，覆盖新版响应字段与可见性推导优先级。
 
 ## 验证结果
 0. 后端回归测试通过（含本次商品同步修复）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
@@ -146,6 +151,7 @@
 24. 后端回归测试通过（含“同步商品”v3 链路与操作日志错误提取）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
 25. 前端构建通过（含拦截器错误分支与日志上报修复）：`cd frontend && cmd /c npm run build`（非沙箱环境执行，规避 `spawn EPERM`）。
 26. 文档交付核对完成：`doc/ozon-seller-product-apis-v3-list-info.md` 已按工程可用版模板落地，且已与当前仓库 Ozon 客户端调用结构对齐。
+27. 后端定向测试通过（含本次 `/v3/product/list` 字段对齐与可见性推导）：`cd backend && go test ./pkg/ozon ./internal/service`。
 
 ## 数据库执行记录
 0. 本次（商品同步无数据修复）无新增迁移脚本：仅修正 Ozon API 请求/响应解析、同步失败语义与前端错误提示，不涉及数据库结构变更。
@@ -164,6 +170,7 @@
 13. 执行结果：开发环境 SQL 已同步，`init_database.sql` 已回写至最新结构。
 14. 本次（商品同步 404 修复 + 日志可观测性补全）无新增迁移脚本：仅涉及 Seller API 调用链路与日志字段透出，不涉及数据库结构变更。
 15. 本次（接口文档沉淀）无新增迁移脚本：仅新增 `doc/` 说明文档与 `dev-tracker` 追踪记录，不涉及数据库结构变更。
+16. 本次（`/v3/product/list` 响应字段对齐与目录可见性推导修复）无新增迁移脚本：仅涉及 API 响应映射与服务层推导逻辑调整，不涉及数据库结构变更。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。

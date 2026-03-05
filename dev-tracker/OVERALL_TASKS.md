@@ -35,6 +35,7 @@
 | T10 | 新增 Ozon 实时商品列表页面（缓存+后台刷新） | done | 新增 `/products/ozon` 页面，支持可见性/ID/上架日期筛选、日期来源标记、游标翻页与手动刷新；后端新增 `ozon-catalog` 查询与刷新接口 | 依赖 Seller v3 商品列表/详情/库存接口稳定 |
 | T11 | 商品列表“同步商品”404修复与失败日志可观测性补全 | done | 点击“同步商品”可成功拉取 Ozon 商品；系统日志/操作日志可直接查看失败原因 | 依赖 Seller v3 商品接口稳定 |
 | T12 | Ozon 商品接口标准说明文档沉淀（`/v3/product/list` + `/v3/product/info/list`） | done | 在 `doc/` 产出工程可用版接口文档，覆盖鉴权、请求参数、分页、响应结构、错误处理与示例 | 依赖 Ozon 官方文档持续更新，需定期回看 |
+| T13 | `/v3/product/list` 响应字段对齐与目录可见性推导修复 | done | 客户端可解析 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`；目录刷新不再依赖 list 响应 `visibility`，改为优先 `info.visible`，其次 `archived`，最后 `ALL` | 依赖 Seller v3 列表/详情字段稳定 |
 
 ## 近期完成里程碑（已完成）
 1. 按店铺执行引擎模式（`auto`/`extension`/`agent`）已落地。
@@ -53,6 +54,7 @@
 14. 商品同步链路已从 Seller 旧版 `/v2/product/list` 切换到 `/v3/product/list` + `/v3/product/info/list`，并补齐前后端失败日志字段，便于快速定位 404/5xx 根因。
 15. 已新增 `doc/ozon-seller-product-apis-v3-list-info.md`，沉淀 `/v3/product/list` 与 `/v3/product/info/list` 的标准工程说明（含调用流程、示例与排障要点）。
 16. 商品同步链路已补齐 `/v3/product/info/list` 响应兼容（`items/result.items`）与失败语义收敛：批次失败不再假成功，且先落基础数据避免整表为空。
+17. `/v3/product/list` 客户端响应结构已对齐实测字段（含 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`），目录缓存可见性改为“优先 `info.visible`，其次 `archived`，最后 `ALL`”。
 
 ## 阶段完成标准
 1. 官方与店铺促销在统一 UX 下稳定可用。
