@@ -121,6 +121,11 @@
    - 处理：`backend/pkg/ozon/catalog.go` 扩展 `ProductListV3Item` 字段映射并新增 `ProductListV3Quant`，保留 `visibility` 兼容字段。
    - 处理：`backend/internal/service/ozon_catalog_service.go` 可见性推导改为优先读取 `info.visible`，缺失时回退 `archived`，最终兜底 `ALL`。
    - 测试：新增/更新 `backend/pkg/ozon/catalog_test.go`、`backend/internal/service/ozon_catalog_service_test.go`，覆盖新版响应字段与可见性推导优先级。
+26. `.gitignore` 规则收敛（移除过宽忽略 + 去重维护）：
+   - 根因：根目录 `*.ps1` 会误伤仓库内脚本资产（如插件打包脚本），且前后端子目录存在与根目录重复的 IDE/系统/环境变量规则。
+   - 处理：移除根目录 `*.ps1` 全局忽略，保留临时目录与缓存忽略。
+   - 处理：精简 `backend/.gitignore` 与 `frontend/.gitignore`，仅保留子项目特有规则，通用规则统一由根目录维护。
+   - 涉及：`.gitignore`、`backend/.gitignore`、`frontend/.gitignore`。
 
 ## 验证结果
 0. 后端回归测试通过（含本次商品同步修复）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
@@ -152,6 +157,7 @@
 25. 前端构建通过（含拦截器错误分支与日志上报修复）：`cd frontend && cmd /c npm run build`（非沙箱环境执行，规避 `spawn EPERM`）。
 26. 文档交付核对完成：`doc/ozon-seller-product-apis-v3-list-info.md` 已按工程可用版模板落地，且已与当前仓库 Ozon 客户端调用结构对齐。
 27. 后端定向测试通过（含本次 `/v3/product/list` 字段对齐与可见性推导）：`cd backend && go test ./pkg/ozon ./internal/service`。
+28. `.gitignore` 规则验证通过：`package.ps1` 不再被误忽略；`frontend/.env`、`frontend/.idea/*` 仍由根目录规则生效；`backend/tmp/*` 仍由后端子目录规则生效。
 
 ## 数据库执行记录
 0. 本次（商品同步无数据修复）无新增迁移脚本：仅修正 Ozon API 请求/响应解析、同步失败语义与前端错误提示，不涉及数据库结构变更。
@@ -171,6 +177,7 @@
 14. 本次（商品同步 404 修复 + 日志可观测性补全）无新增迁移脚本：仅涉及 Seller API 调用链路与日志字段透出，不涉及数据库结构变更。
 15. 本次（接口文档沉淀）无新增迁移脚本：仅新增 `doc/` 说明文档与 `dev-tracker` 追踪记录，不涉及数据库结构变更。
 16. 本次（`/v3/product/list` 响应字段对齐与目录可见性推导修复）无新增迁移脚本：仅涉及 API 响应映射与服务层推导逻辑调整，不涉及数据库结构变更。
+17. 本次（`.gitignore` 收敛优化）无新增迁移脚本：仅调整版本控制忽略规则，不涉及数据库结构变更。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。

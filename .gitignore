@@ -1,20 +1,8 @@
-# Claude Code 工作目录
-.claude/
-
 # 临时文件和脚本
-*.ps1
 nul
-err/
-snipaste/
 backend/.gocache/
-doc/
-!doc/
-doc/*
-!doc/ozon-seller-product-apis-v3-list-info.md
-
-# 临时文本文件
-新建 文本文档.txt
-tmpclaude-*
+.tmp/
+agent/node_modules/**/*.ps1
 
 # IDE 和编辑器
 .idea/
@@ -37,4 +25,7 @@ Thumbs.db
 .env.*.local
 
 # 敏感文档
-ADMIN_PASSWORD_RESET.md
+doc/
+snipaste/
+err/
+

@@ -15,15 +15,6 @@ config/config.yaml
 /bin/
 /dist/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# 日志文件
-*.log
-
 # 临时文件
 tmp/
 temp/
