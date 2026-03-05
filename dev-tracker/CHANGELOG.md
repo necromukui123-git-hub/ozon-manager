@@ -1,5 +1,49 @@
 # Ozon Manager 变更日志
 
+## 2026-03-05（补充四）
+### 主题
+修复 Ozon 商品目录刷新 `404 page not found`：库存接口从 `/v3/product/info/stocks` 切换到 `/v4/product/info/stocks`。
+
+### 关键变更
+1. `backend/pkg/ozon/catalog.go`：
+   - `GetProductStocks` 主调用路径改为 `/v4/product/info/stocks`。
+   - 新增兼容回退：当 `v4` 返回 404 时自动降级请求 `/v3/product/info/stocks`，兼容历史环境。
+2. `backend/pkg/ozon/catalog_test.go`：
+   - 更新库存接口路径断言为 `v4`。
+   - 新增 `v4 404 -> v3` 回退测试。
+
+### 影响范围
+1. `POST /api/v1/products/ozon-catalog/refresh` 不再因库存端点版本不匹配而报 `404 page not found`。
+2. Ozon 商品目录刷新链路在库存接口版本差异场景下具备更高兼容性。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端定向测试：`cd backend && go test ./pkg/ozon ./internal/service` 通过。
+2. 后端全量测试：`cd backend && go test ./...` 通过。
+
+## 2026-03-05（补充三）
+### 主题
+修复 Ozon 商品目录刷新失败：兼容 `/v3/product/info/list` 返回 `primary_image` 数组形态。
+
+### 关键变更
+1. `backend/pkg/ozon/catalog.go`：
+   - `ProductInfoListItem` 增加 `primary_image` 柔性解析，兼容 `string`、`[]string`、对象结构（如 `{url: ...}`）。
+   - 对无法识别的 `primary_image` 形态降级为空字符串，不再抛出反序列化错误中断整批同步。
+   - 增加 `statuses.status -> status.state` 回填兼容，统一状态读取口径。
+2. `backend/pkg/ozon/catalog_test.go`：
+   - 新增 `primary_image` 数组、字符串、对象、异常形态兼容测试。
+   - 新增 `statuses.status` 回填测试。
+3. `backend/internal/service/ozon_catalog_service_test.go`：
+   - 新增 `mergeCatalogInfo` 主图优先与 `images[0]` 回退测试，确保目录图像字段稳定。
+
+### 影响范围
+1. `POST /api/v1/products/ozon-catalog/refresh` 不再因 `primary_image` 为数组导致刷新任务失败。
+2. `GET /api/v1/products/ozon-catalog` 的 `refresh_status.last_error` 在该场景下不再出现反序列化报错。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端定向测试：`cd backend && go test ./pkg/ozon ./internal/service` 通过。
+
 ## 2026-03-05
 ### 主题
 新增 Ozon 商品核心接口标准说明文档（`/v3/product/list` + `/v3/product/info/list`）。

@@ -3,6 +3,7 @@ package ozon
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // ProductListV3Request v3 商品列表请求
@@ -122,7 +123,7 @@ type ProductInfoListItem struct {
 	Status         struct {
 		State string `json:"state"`
 	} `json:"status"`
-	PrimaryImage string                 `json:"primary_image"`
+	PrimaryImage string                 `json:"-"`
 	Images       []string               `json:"images"`
 	CurrencyCode string                 `json:"currency_code"`
 	CreatedAt    string                 `json:"created_at"`
@@ -138,11 +139,87 @@ func (p *ProductInfoListItem) UnmarshalJSON(data []byte) error {
 	}
 	*p = ProductInfoListItem(v)
 
+	var extra struct {
+		PrimaryImage json.RawMessage `json:"primary_image"`
+		Statuses     struct {
+			Status string `json:"status"`
+		} `json:"statuses"`
+	}
+	if err := json.Unmarshal(data, &extra); err == nil {
+		p.PrimaryImage = parsePrimaryImage(extra.PrimaryImage)
+		if strings.TrimSpace(p.Status.State) == "" {
+			p.Status.State = strings.TrimSpace(extra.Statuses.Status)
+		}
+	}
+
 	raw := map[string]interface{}{}
 	if err := json.Unmarshal(data, &raw); err == nil {
 		p.Raw = raw
 	}
 	return nil
+}
+
+func parsePrimaryImage(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	var image string
+	if err := json.Unmarshal(raw, &image); err == nil {
+		return strings.TrimSpace(image)
+	}
+
+	var images []string
+	if err := json.Unmarshal(raw, &images); err == nil {
+		for _, item := range images {
+			trimmed := strings.TrimSpace(item)
+			if trimmed != "" {
+				return trimmed
+			}
+		}
+		return ""
+	}
+
+	var imageObject map[string]interface{}
+	if err := json.Unmarshal(raw, &imageObject); err == nil {
+		return parsePrimaryImageObject(imageObject)
+	}
+
+	var values []interface{}
+	if err := json.Unmarshal(raw, &values); err == nil {
+		for _, item := range values {
+			if parsed := parsePrimaryImageValue(item); parsed != "" {
+				return parsed
+			}
+		}
+	}
+
+	return ""
+}
+
+func parsePrimaryImageValue(value interface{}) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]interface{}:
+		return parsePrimaryImageObject(typed)
+	default:
+		return ""
+	}
+}
+
+func parsePrimaryImageObject(obj map[string]interface{}) string {
+	keys := []string{"url", "src", "link", "image", "path"}
+	for _, key := range keys {
+		value, exists := obj[key]
+		if !exists {
+			continue
+		}
+		if parsed := parsePrimaryImageValue(value); parsed != "" {
+			return parsed
+		}
+	}
+	return ""
 }
 
 // GetProductInfoList 获取 v3 商品详情
@@ -231,7 +308,12 @@ func (c *Client) GetProductStocks(productIDs []int64, offerIDs []string, limit i
 		Limit:  limit,
 	}
 
-	respBody, err := c.doRequest("POST", "/v3/product/info/stocks", req)
+	// /v3/product/info/stocks has been deprecated by Ozon and replaced by /v4/product/info/stocks.
+	// Try v4 first and keep v3 as compatibility fallback for older environments.
+	respBody, err := c.doRequest("POST", "/v4/product/info/stocks", req)
+	if err != nil && isNotFoundAPIError(err) {
+		respBody, err = c.doRequest("POST", "/v3/product/info/stocks", req)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -242,4 +324,11 @@ func (c *Client) GetProductStocks(productIDs []int64, offerIDs []string, limit i
 	}
 
 	return &resp, nil
+}
+
+func isNotFoundAPIError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "API error (status 404)")
 }

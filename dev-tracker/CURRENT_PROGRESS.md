@@ -126,6 +126,18 @@
    - 处理：移除根目录 `*.ps1` 全局忽略，保留临时目录与缓存忽略。
    - 处理：精简 `backend/.gitignore` 与 `frontend/.gitignore`，仅保留子项目特有规则，通用规则统一由根目录维护。
    - 涉及：`.gitignore`、`backend/.gitignore`、`frontend/.gitignore`。
+27. Ozon 商品目录刷新 `primary_image` 反序列化失败修复（`string` / `array` / `object` 兼容）：
+   - 根因：Seller `/v3/product/info/list` 在部分商品返回 `primary_image: []`（数组），现有 `ProductInfoListItem.PrimaryImage` 固定为 `string`，导致 `json.Unmarshal` 报错并中断整批刷新。
+   - 处理：`backend/pkg/ozon/catalog.go` 为 `primary_image` 增加柔性解析（兼容 string、[]string、对象结构），解析失败时仅该字段置空，不中断整批数据解码。
+   - 处理：补充 `statuses.status -> status.state` 回填兼容，避免状态字段结构变体导致目录状态退化。
+   - 处理：补齐单测覆盖（数组主图、字符串主图、对象主图、异常主图形态、状态回填），并在 `mergeCatalogInfo` 增加“主图优先/图片回退”测试。
+   - 涉及：`backend/pkg/ozon/catalog.go`、`backend/pkg/ozon/catalog_test.go`、`backend/internal/service/ozon_catalog_service_test.go`。
+28. Ozon 商品目录刷新 `404 page not found` 修复（库存端点版本切换）：
+   - 根因：目录刷新库存拉取仍调用已下线的 `/v3/product/info/stocks`，线上返回 `404 page not found` 并中断刷新流程。
+   - 处理：`backend/pkg/ozon/catalog.go` 将库存查询主路径切换为 `/v4/product/info/stocks`。
+   - 处理：新增兼容回退：若 `v4` 返回 404，自动回退请求 `/v3/product/info/stocks`（兼容历史环境）。
+   - 处理：补齐单测：更新库存请求主路径断言为 `v4`，并新增 `v4 -> v3` 回退测试。
+   - 涉及：`backend/pkg/ozon/catalog.go`、`backend/pkg/ozon/catalog_test.go`。
 
 ## 验证结果
 0. 后端回归测试通过（含本次商品同步修复）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
@@ -158,6 +170,10 @@
 26. 文档交付核对完成：`doc/ozon-seller-product-apis-v3-list-info.md` 已按工程可用版模板落地，且已与当前仓库 Ozon 客户端调用结构对齐。
 27. 后端定向测试通过（含本次 `/v3/product/list` 字段对齐与可见性推导）：`cd backend && go test ./pkg/ozon ./internal/service`。
 28. `.gitignore` 规则验证通过：`package.ps1` 不再被误忽略；`frontend/.env`、`frontend/.idea/*` 仍由根目录规则生效；`backend/tmp/*` 仍由后端子目录规则生效。
+29. 后端定向测试通过（含 `primary_image` 数组兼容与状态回填）：`cd backend && go test ./pkg/ozon ./internal/service`。
+30. 后端全量回归测试通过：`cd backend && go test ./...`。
+31. 后端定向测试通过（含库存端点 `v4` 主路径与 `v3` 回退）：`cd backend && go test ./pkg/ozon ./internal/service`。
+32. 后端全量回归测试通过（含库存端点版本修复）：`cd backend && go test ./...`。
 
 ## 数据库执行记录
 0. 本次（商品同步无数据修复）无新增迁移脚本：仅修正 Ozon API 请求/响应解析、同步失败语义与前端错误提示，不涉及数据库结构变更。
@@ -178,6 +194,8 @@
 15. 本次（接口文档沉淀）无新增迁移脚本：仅新增 `doc/` 说明文档与 `dev-tracker` 追踪记录，不涉及数据库结构变更。
 16. 本次（`/v3/product/list` 响应字段对齐与目录可见性推导修复）无新增迁移脚本：仅涉及 API 响应映射与服务层推导逻辑调整，不涉及数据库结构变更。
 17. 本次（`.gitignore` 收敛优化）无新增迁移脚本：仅调整版本控制忽略规则，不涉及数据库结构变更。
+18. 本次（`/v3/product/info/list` `primary_image` 多形态兼容修复）无新增迁移脚本：仅涉及 Ozon 响应解析与单元测试增强，不涉及数据库结构变更。
+19. 本次（`/v3/product/info/stocks` 404 修复）无新增迁移脚本：仅涉及库存接口版本切换与兼容回退逻辑，不涉及数据库结构变更。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。

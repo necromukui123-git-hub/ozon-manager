@@ -191,6 +191,96 @@ func TestGetProductInfoListSupportsResultItemsFallback(t *testing.T) {
 	}
 }
 
+func TestGetProductInfoListSupportsPrimaryImageArrayAndStatusesFallback(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("100", "test-key")
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			resp := `{"items":[{"product_id":3130660758,"offer_id":"2480189540-Xeni","name":"Test Product","primary_image":["https://cdn1.ozone.ru/s3/multimedia-1-6/8407858506.jpg"],"statuses":{"status":"price_sent"}}]}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(resp)),
+			}, nil
+		}),
+	}
+
+	resp, err := client.GetProductInfoList([]int64{3130660758}, nil)
+	if err != nil {
+		t.Fatalf("GetProductInfoList error: %v", err)
+	}
+	items := resp.ItemsList()
+	if len(items) != 1 {
+		t.Fatalf("items len=%d, want 1", len(items))
+	}
+	if items[0].PrimaryImage != "https://cdn1.ozone.ru/s3/multimedia-1-6/8407858506.jpg" {
+		t.Fatalf("primary_image=%q, want expected image URL", items[0].PrimaryImage)
+	}
+	if items[0].Status.State != "price_sent" {
+		t.Fatalf("status.state=%q, want %q", items[0].Status.State, "price_sent")
+	}
+}
+
+func TestGetProductInfoListSupportsPrimaryImageStringAndObject(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("100", "test-key")
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			resp := `{"items":[{"product_id":1,"primary_image":"https://img.example/a.jpg"},{"product_id":2,"primary_image":{"url":"https://img.example/b.jpg"}}]}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(resp)),
+			}, nil
+		}),
+	}
+
+	resp, err := client.GetProductInfoList([]int64{1, 2}, nil)
+	if err != nil {
+		t.Fatalf("GetProductInfoList error: %v", err)
+	}
+	items := resp.ItemsList()
+	if len(items) != 2 {
+		t.Fatalf("items len=%d, want 2", len(items))
+	}
+	if items[0].PrimaryImage != "https://img.example/a.jpg" {
+		t.Fatalf("item0 primary_image=%q, want %q", items[0].PrimaryImage, "https://img.example/a.jpg")
+	}
+	if items[1].PrimaryImage != "https://img.example/b.jpg" {
+		t.Fatalf("item1 primary_image=%q, want %q", items[1].PrimaryImage, "https://img.example/b.jpg")
+	}
+}
+
+func TestGetProductInfoListIgnoresUnsupportedPrimaryImageShape(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("100", "test-key")
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			resp := `{"items":[{"product_id":3,"primary_image":[123,true,{"raw":"x"}]}]}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(resp)),
+			}, nil
+		}),
+	}
+
+	resp, err := client.GetProductInfoList([]int64{3}, nil)
+	if err != nil {
+		t.Fatalf("GetProductInfoList error: %v", err)
+	}
+	items := resp.ItemsList()
+	if len(items) != 1 {
+		t.Fatalf("items len=%d, want 1", len(items))
+	}
+	if items[0].PrimaryImage != "" {
+		t.Fatalf("primary_image=%q, want empty", items[0].PrimaryImage)
+	}
+}
+
 func TestGetProductStocksUsesExpectedPathAndPayload(t *testing.T) {
 	t.Parallel()
 
@@ -200,7 +290,7 @@ func TestGetProductStocksUsesExpectedPathAndPayload(t *testing.T) {
 			if req.Method != http.MethodPost {
 				t.Fatalf("unexpected method: %s", req.Method)
 			}
-			if req.URL.Path != "/v3/product/info/stocks" {
+			if req.URL.Path != "/v4/product/info/stocks" {
 				t.Fatalf("unexpected path: %s", req.URL.Path)
 			}
 
@@ -240,5 +330,44 @@ func TestGetProductStocksUsesExpectedPathAndPayload(t *testing.T) {
 	}
 	if len(resp.Result.Items[0].Stocks) != 2 {
 		t.Fatalf("stocks len=%d, want 2", len(resp.Result.Items[0].Stocks))
+	}
+}
+
+func TestGetProductStocksFallsBackToV3WhenV4NotFound(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("100", "test-key")
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			switch req.URL.Path {
+			case "/v4/product/info/stocks":
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader("404 page not found")),
+				}, nil
+			case "/v3/product/info/stocks":
+				resp := `{"result":{"items":[{"product_id":12345,"offer_id":"A-1","stocks":[{"type":"fbo","present":4,"reserved":1}]}],"last_id":"","total":1}}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body:       io.NopCloser(strings.NewReader(resp)),
+				}, nil
+			default:
+				t.Fatalf("unexpected path: %s", req.URL.Path)
+				return nil, nil
+			}
+		}),
+	}
+
+	resp, err := client.GetProductStocks([]int64{12345}, nil, 200, "")
+	if err != nil {
+		t.Fatalf("GetProductStocks error: %v", err)
+	}
+	if len(resp.Result.Items) != 1 {
+		t.Fatalf("items len=%d, want 1", len(resp.Result.Items))
+	}
+	if len(resp.Result.Items[0].Stocks) != 1 {
+		t.Fatalf("stocks len=%d, want 1", len(resp.Result.Items[0].Stocks))
 	}
 }

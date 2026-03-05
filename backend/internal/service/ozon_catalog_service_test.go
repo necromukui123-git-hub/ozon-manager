@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"ozon-manager/internal/model"
+	"ozon-manager/pkg/ozon"
 )
 
 func TestResolveListingDate(t *testing.T) {
@@ -79,5 +80,35 @@ func TestResolveCatalogVisibilityDefaultsToAll(t *testing.T) {
 	got := resolveCatalogVisibility("", nil, false, false)
 	if got != "ALL" {
 		t.Fatalf("visibility=%q, want %q", got, "ALL")
+	}
+}
+
+func TestMergeCatalogInfoPrefersPrimaryImage(t *testing.T) {
+	t.Parallel()
+
+	target := &model.OzonProductCatalogItem{}
+	info := ozon.ProductInfoListItem{
+		PrimaryImage: "https://img.example/primary.jpg",
+		Images:       []string{"https://img.example/fallback.jpg"},
+	}
+
+	mergeCatalogInfo(target, info)
+	if target.PrimaryImageURL != "https://img.example/primary.jpg" {
+		t.Fatalf("primary_image_url=%q, want %q", target.PrimaryImageURL, "https://img.example/primary.jpg")
+	}
+}
+
+func TestMergeCatalogInfoFallsBackToImagesWhenPrimaryImageIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	target := &model.OzonProductCatalogItem{}
+	info := ozon.ProductInfoListItem{
+		PrimaryImage: "   ",
+		Images:       []string{"  https://img.example/fallback.jpg  "},
+	}
+
+	mergeCatalogInfo(target, info)
+	if target.PrimaryImageURL != "https://img.example/fallback.jpg" {
+		t.Fatalf("primary_image_url=%q, want %q", target.PrimaryImageURL, "https://img.example/fallback.jpg")
 	}
 }
