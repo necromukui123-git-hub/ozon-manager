@@ -37,6 +37,7 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	shopRepo := repository.NewShopRepository(db)
 	productRepo := repository.NewProductRepository(db)
+	ozonCatalogRepo := repository.NewOzonCatalogRepository(db)
 	promotionRepo := repository.NewPromotionRepository(db)
 	automationRepo := repository.NewAutomationRepository(db)
 	operationLogRepo := repository.NewOperationLogRepository(db)
@@ -46,6 +47,7 @@ func main() {
 	userService := service.NewUserService(userRepo, shopRepo)
 	shopService := service.NewShopService(shopRepo, userRepo)
 	productService := service.NewProductService(productRepo, shopRepo, promotionRepo)
+	ozonCatalogService := service.NewOzonCatalogService(ozonCatalogRepo, shopRepo)
 	automationService := service.NewAutomationService(automationRepo, productRepo, shopRepo)
 	promotionService := service.NewPromotionService(productRepo, promotionRepo, shopRepo, automationService)
 
@@ -53,7 +55,7 @@ func main() {
 	authHandler := handler.NewAuthHandler(authService)
 	userHandler := handler.NewUserHandler(userService)
 	shopHandler := handler.NewShopHandler(shopService)
-	productHandler := handler.NewProductHandler(productService, shopService)
+	productHandler := handler.NewProductHandler(productService, shopService, ozonCatalogService)
 	promotionHandler := handler.NewPromotionHandler(promotionService, shopService)
 	automationHandler := handler.NewAutomationHandler(automationService, shopService)
 	extensionHandler := handler.NewExtensionHandler(automationService, shopService)
@@ -172,8 +174,10 @@ func main() {
 				products := business.Group("/products")
 				{
 					products.GET("", productHandler.GetProducts)
-					products.GET("/:id", productHandler.GetProduct)
 					products.POST("/sync", productHandler.SyncProducts)
+					products.GET("/ozon-catalog", productHandler.GetOzonCatalog)
+					products.POST("/ozon-catalog/refresh", productHandler.RefreshOzonCatalog)
+					products.GET("/:id", productHandler.GetProduct)
 				}
 
 				// 促销管理

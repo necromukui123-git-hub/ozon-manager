@@ -28,6 +28,8 @@ request.interceptors.response.use(
     return response.data
   },
   error => {
+    const { response, config = {} } = error
+
     if (response) {
       switch (response.status) {
         case 401:
@@ -38,9 +40,25 @@ request.interceptors.response.use(
           break
         case 403:
           ElMessage.error('权限不足')
+          if (!config.silent) {
+            createSystemLog({
+              level: 'warn',
+              message: `API Forbidden [403]: ${response.data?.message || response.statusText}`,
+              url: config.url,
+              stack: JSON.stringify(config.data || config.params)
+            })
+          }
           break
         case 404:
           ElMessage.error('资源不存在')
+          if (!config.silent) {
+            createSystemLog({
+              level: 'warn',
+              message: `API Not Found [404]: ${response.data?.message || response.statusText}`,
+              url: config.url,
+              stack: JSON.stringify(config.data || config.params)
+            })
+          }
           break
         case 500:
         case 502:
@@ -59,6 +77,14 @@ request.interceptors.response.use(
           break
         default:
           ElMessage.error(response.data?.message || '请求失败')
+          if (!config.silent) {
+            createSystemLog({
+              level: 'warn',
+              message: `API Error [${response.status}]: ${response.data?.message || response.statusText}`,
+              url: config.url,
+              stack: JSON.stringify(config.data || config.params)
+            })
+          }
       }
     } else {
       ElMessage.error('网络连接失败')

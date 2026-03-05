@@ -8,6 +8,9 @@ err/
 snipaste/
 backend/.gocache/
 doc/
+!doc/
+doc/*
+!doc/ozon-seller-product-apis-v3-list-info.md
 
 # 临时文本文件
 新建 文本文档.txt

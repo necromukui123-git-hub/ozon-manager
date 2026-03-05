@@ -12,14 +12,20 @@ import (
 )
 
 type ProductHandler struct {
-	productService *service.ProductService
-	shopService    *service.ShopService
+	productService     *service.ProductService
+	shopService        *service.ShopService
+	ozonCatalogService *service.OzonCatalogService
 }
 
-func NewProductHandler(productService *service.ProductService, shopService *service.ShopService) *ProductHandler {
+func NewProductHandler(
+	productService *service.ProductService,
+	shopService *service.ShopService,
+	ozonCatalogService *service.OzonCatalogService,
+) *ProductHandler {
 	return &ProductHandler{
-		productService: productService,
-		shopService:    shopService,
+		productService:     productService,
+		shopService:        shopService,
+		ozonCatalogService: ozonCatalogService,
 	}
 }
 
@@ -126,6 +132,98 @@ func (h *ProductHandler) SyncProducts(c *gin.Context) {
 		Data: map[string]int{
 			"synced_count": count,
 		},
+	})
+}
+
+// GetOzonCatalog 获取 Ozon 商品目录（缓存 + 刷新状态）
+// GET /api/v1/products/ozon-catalog
+func (h *ProductHandler) GetOzonCatalog(c *gin.Context) {
+	if h.ozonCatalogService == nil {
+		c.JSON(http.StatusServiceUnavailable, dto.Response{
+			Code:    503,
+			Message: "服务未启用",
+		})
+		return
+	}
+
+	var req dto.OzonCatalogListRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "请求参数错误",
+		})
+		return
+	}
+
+	claims := middleware.GetCurrentUser(c)
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, req.ShopID, claims.Role); err != nil {
+		c.JSON(http.StatusForbidden, dto.Response{
+			Code:    403,
+			Message: "无权访问该店铺",
+		})
+		return
+	}
+	c.Set("shop_id", req.ShopID)
+
+	resp, err := h.ozonCatalogService.GetCatalog(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Response{
+		Code:    200,
+		Message: "success",
+		Data:    resp,
+	})
+}
+
+// RefreshOzonCatalog 触发 Ozon 商品目录刷新
+// POST /api/v1/products/ozon-catalog/refresh
+func (h *ProductHandler) RefreshOzonCatalog(c *gin.Context) {
+	if h.ozonCatalogService == nil {
+		c.JSON(http.StatusServiceUnavailable, dto.Response{
+			Code:    503,
+			Message: "服务未启用",
+		})
+		return
+	}
+
+	var req dto.OzonCatalogRefreshRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: "请求参数错误",
+		})
+		return
+	}
+
+	claims := middleware.GetCurrentUser(c)
+	if err := h.shopService.CheckUserAccessByRole(claims.UserID, req.ShopID, claims.Role); err != nil {
+		c.JSON(http.StatusForbidden, dto.Response{
+			Code:    403,
+			Message: "无权访问该店铺",
+		})
+		return
+	}
+	c.Set("shop_id", req.ShopID)
+
+	resp, err := h.ozonCatalogService.TriggerRefresh(&req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.Response{
+			Code:    400,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.Response{
+		Code:    200,
+		Message: "success",
+		Data:    resp,
 	})
 }
 

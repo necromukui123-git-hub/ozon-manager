@@ -3,7 +3,9 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -30,6 +32,11 @@ func OperationLogMiddleware(db *gorm.DB) gin.HandlerFunc {
 
 		// 记录开始时间
 		startTime := time.Now()
+		writer := &bodyLogWriter{
+			ResponseWriter: c.Writer,
+			body:           &bytes.Buffer{},
+		}
+		c.Writer = writer
 
 		// 处理请求
 		c.Next()
@@ -58,7 +65,7 @@ func OperationLogMiddleware(db *gorm.DB) gin.HandlerFunc {
 		var errorMessage string
 		if c.Writer.Status() >= 400 {
 			status = "failed"
-			// 可以从响应中提取错误信息
+			errorMessage = parseErrorMessage(writer.body.Bytes(), c.Writer.Status())
 		}
 
 		// 获取shop_id（如果有）
@@ -91,21 +98,72 @@ func OperationLogMiddleware(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+type bodyLogWriter struct {
+	gin.ResponseWriter
+	body *bytes.Buffer
+}
+
+func (w *bodyLogWriter) Write(data []byte) (int, error) {
+	if len(data) > 0 {
+		_, _ = w.body.Write(data)
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *bodyLogWriter) WriteString(s string) (int, error) {
+	if s != "" {
+		_, _ = w.body.WriteString(s)
+	}
+	return w.ResponseWriter.WriteString(s)
+}
+
+func parseErrorMessage(responseBody []byte, status int) string {
+	trimmed := strings.TrimSpace(string(responseBody))
+	if trimmed == "" {
+		return fmt.Sprintf("HTTP %d", status)
+	}
+
+	payload := map[string]interface{}{}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err == nil {
+		if msg := normalizeErrorField(payload["message"]); msg != "" {
+			return msg
+		}
+		if msg := normalizeErrorField(payload["error"]); msg != "" {
+			return msg
+		}
+	}
+
+	if len(trimmed) > 300 {
+		trimmed = trimmed[:300] + "..."
+	}
+	return fmt.Sprintf("HTTP %d: %s", status, trimmed)
+}
+
+func normalizeErrorField(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v)
+	default:
+		return ""
+	}
+}
+
 // parseOperationType 解析操作类型
 func parseOperationType(path, method string) string {
 	operationMap := map[string]string{
-		"POST /api/v1/promotions/batch-enroll":          "batch_enroll",
-		"POST /api/v1/promotions/process-loss":          "process_loss",
+		"POST /api/v1/promotions/batch-enroll":           "batch_enroll",
+		"POST /api/v1/promotions/process-loss":           "process_loss",
 		"POST /api/v1/promotions/remove-reprice-promote": "remove_reprice_promote",
-		"POST /api/v1/excel/import-loss":                "import_loss",
-		"POST /api/v1/excel/import-reprice":             "import_reprice",
-		"POST /api/v1/products/sync":                    "sync_products",
-		"POST /api/v1/users":                            "create_user",
-		"PUT /api/v1/users/:id/status":                  "update_user_status",
-		"PUT /api/v1/users/:id/shops":                   "update_user_shops",
-		"POST /api/v1/shops":                            "create_shop",
-		"PUT /api/v1/shops/:id":                         "update_shop",
-		"DELETE /api/v1/shops/:id":                      "delete_shop",
+		"POST /api/v1/excel/import-loss":                 "import_loss",
+		"POST /api/v1/excel/import-reprice":              "import_reprice",
+		"POST /api/v1/products/sync":                     "sync_products",
+		"POST /api/v1/products/ozon-catalog/refresh":     "sync_ozon_catalog",
+		"POST /api/v1/users":                             "create_user",
+		"PUT /api/v1/users/:id/status":                   "update_user_status",
+		"PUT /api/v1/users/:id/shops":                    "update_user_shops",
+		"POST /api/v1/shops":                             "create_shop",
+		"PUT /api/v1/shops/:id":                          "update_shop",
+		"DELETE /api/v1/shops/:id":                       "delete_shop",
 	}
 
 	key := method + " " + path

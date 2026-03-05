@@ -143,6 +143,38 @@ func (PromotionActionProduct) TableName() string {
 	return "promotion_action_products"
 }
 
+// OzonProductCatalogItem Ozon 商品目录缓存表（官网商品列表近似视图）
+type OzonProductCatalogItem struct {
+	ID                 uint           `gorm:"primaryKey" json:"id"`
+	ShopID             uint           `gorm:"not null;uniqueIndex:idx_ozon_catalog_shop_product;index:idx_ozon_catalog_shop_date,priority:1;index:idx_ozon_catalog_shop_visibility,priority:1;index:idx_ozon_catalog_shop_offer,priority:1" json:"shop_id"`
+	OzonProductID      int64          `gorm:"not null;uniqueIndex:idx_ozon_catalog_shop_product" json:"ozon_product_id"`
+	OfferID            string         `gorm:"size:120;index:idx_ozon_catalog_shop_offer,priority:2" json:"offer_id"`
+	SKU                int64          `json:"sku"`
+	Name               string         `gorm:"size:500" json:"name"`
+	PrimaryImageURL    string         `gorm:"type:text" json:"primary_image_url"`
+	Price              float64        `gorm:"type:decimal(12,2)" json:"price"`
+	OldPrice           float64        `gorm:"type:decimal(12,2)" json:"old_price"`
+	MinPrice           float64        `gorm:"type:decimal(12,2)" json:"min_price"`
+	MarketingPrice     float64        `gorm:"type:decimal(12,2)" json:"marketing_price"`
+	Currency           string         `gorm:"size:10" json:"currency"`
+	Visibility         string         `gorm:"size:30;index:idx_ozon_catalog_shop_visibility,priority:2" json:"visibility"`
+	Status             string         `gorm:"size:30" json:"status"`
+	StockTotal         int            `json:"stock_total"`
+	StockFBO           int            `json:"stock_fbo"`
+	StockFBS           int            `json:"stock_fbs"`
+	ListingDate        *time.Time     `gorm:"index:idx_ozon_catalog_shop_date,priority:2" json:"listing_date"`
+	ListingDateSource  string         `gorm:"size:20;not null;default:local_sync" json:"listing_date_source"` // ozon / local_sync
+	SyncToken          string         `gorm:"size:64;index" json:"sync_token"`
+	Payload            datatypes.JSON `gorm:"type:jsonb" json:"payload"`
+	LastRemoteSyncedAt *time.Time     `json:"last_remote_synced_at"`
+	CreatedAt          time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt          time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+func (OzonProductCatalogItem) TableName() string {
+	return "ozon_product_catalog_items"
+}
+
 // OperationLog 操作日志表
 type OperationLog struct {
 	ID              uint           `gorm:"primaryKey" json:"id"`

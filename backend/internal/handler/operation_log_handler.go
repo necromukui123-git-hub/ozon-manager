@@ -71,6 +71,7 @@ func (h *OperationLogHandler) GetOperationLogs(c *gin.Context) {
 			OperationDetail: log.OperationDetail,
 			AffectedCount:   log.AffectedCount,
 			Status:          log.Status,
+			ErrorMessage:    log.ErrorMessage,
 			IPAddress:       log.IPAddress,
 			CreatedAt:       log.CreatedAt.Format("2006-01-02 15:04:05"),
 		}

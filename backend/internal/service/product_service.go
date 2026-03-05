@@ -1,7 +1,9 @@
 package service
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"ozon-manager/internal/dto"
@@ -100,24 +102,58 @@ func (s *ProductService) SyncProducts(shopID uint) (int, error) {
 	client := ozon.NewClient(shop.ClientID, shop.ApiKey)
 
 	// 获取所有商品
-	var allProducts []ozon.ProductListItem
+	var allProducts []ozon.ProductListV3Item
 	lastID := ""
+	seenCursor := map[string]struct{}{}
 	for {
-		resp, err := client.GetProductList(1000, lastID)
+		resp, err := client.GetProductListV3(1000, lastID, "ALL")
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("failed to get product list from ozon: %w", err)
 		}
 
 		allProducts = append(allProducts, resp.Result.Items...)
 
-		if resp.Result.LastID == "" || len(resp.Result.Items) < 1000 {
+		nextCursor := strings.TrimSpace(resp.Result.LastID)
+		if nextCursor == "" || len(resp.Result.Items) < 1000 {
 			break
 		}
-		lastID = resp.Result.LastID
+		if _, exists := seenCursor[nextCursor]; exists {
+			break
+		}
+		seenCursor[nextCursor] = struct{}{}
+		lastID = nextCursor
+	}
+
+	// 先写入基础字段，保证详情批次失败时也不至于全空
+	now := time.Now()
+	syncedIDs := make(map[int64]struct{}, len(allProducts))
+	syncErrors := make([]string, 0)
+	for _, p := range allProducts {
+		if p.ProductID <= 0 {
+			continue
+		}
+
+		sourceSKU := strings.TrimSpace(p.OfferID)
+		if sourceSKU == "" {
+			sourceSKU = strconv.FormatInt(p.ProductID, 10)
+		}
+
+		product := &model.Product{
+			ShopID:        shopID,
+			OzonProductID: p.ProductID,
+			SourceSKU:     sourceSKU,
+			Status:        "active",
+			LastSyncedAt:  &now,
+		}
+
+		if err := s.productRepo.Upsert(product); err != nil {
+			syncErrors = append(syncErrors, fmt.Sprintf("base upsert product_id=%d failed: %v", p.ProductID, err))
+			continue
+		}
+		syncedIDs[p.ProductID] = struct{}{}
 	}
 
 	// 批量获取商品详情并保存
-	syncedCount := 0
 	batchSize := 100
 	for i := 0; i < len(allProducts); i += batchSize {
 		end := i + batchSize
@@ -131,33 +167,65 @@ func (s *ProductService) SyncProducts(shopID uint) (int, error) {
 			productIDs[j] = p.ProductID
 		}
 
-		infoResp, err := client.GetProductInfo(productIDs)
+		infoResp, err := client.GetProductInfoList(productIDs, nil)
 		if err != nil {
+			syncErrors = append(syncErrors, fmt.Sprintf("info batch [%d,%d) failed: %v", i, end, err))
 			continue
 		}
 
-		for _, info := range infoResp.Result.Items {
+		for _, info := range infoResp.ItemsList() {
 			price, _ := strconv.ParseFloat(info.Price, 64)
-			now := time.Now()
+			ozonProductID := info.ProductID
+			if ozonProductID <= 0 {
+				ozonProductID = info.ID
+			}
+			if ozonProductID <= 0 {
+				continue
+			}
+			sourceSKU := strings.TrimSpace(info.OfferID)
+			if sourceSKU == "" {
+				sourceSKU = strconv.FormatInt(ozonProductID, 10)
+			}
 
 			product := &model.Product{
 				ShopID:        shopID,
-				OzonProductID: info.ProductID,
+				OzonProductID: ozonProductID,
 				OzonSKU:       info.SKU,
-				SourceSKU:     info.OfferID,
-				Name:          info.Name,
+				SourceSKU:     sourceSKU,
+				Name:          strings.TrimSpace(info.Name),
 				CurrentPrice:  price,
 				Status:        "active",
 				LastSyncedAt:  &now,
 			}
 
-			if err := s.productRepo.Upsert(product); err == nil {
-				syncedCount++
+			if err := s.productRepo.Upsert(product); err != nil {
+				syncErrors = append(syncErrors, fmt.Sprintf("detail upsert product_id=%d failed: %v", ozonProductID, err))
+				continue
 			}
+			syncedIDs[ozonProductID] = struct{}{}
 		}
 	}
 
+	syncedCount := len(syncedIDs)
+	if len(allProducts) > 0 && syncedCount == 0 {
+		return 0, fmt.Errorf("sync returned %d remote products but saved none", len(allProducts))
+	}
+	if len(syncErrors) > 0 {
+		return syncedCount, fmt.Errorf("sync completed with %d errors: %s", len(syncErrors), summarizeSyncErrors(syncErrors))
+	}
+
 	return syncedCount, nil
+}
+
+func summarizeSyncErrors(errors []string) string {
+	if len(errors) == 0 {
+		return ""
+	}
+	limit := 3
+	if len(errors) < limit {
+		limit = len(errors)
+	}
+	return strings.Join(errors[:limit], "; ")
 }
 
 // GetProductByID 获取商品详情

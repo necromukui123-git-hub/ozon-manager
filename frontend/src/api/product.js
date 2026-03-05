@@ -19,3 +19,13 @@ export function syncProducts(shopId) {
 export function getStats(shopId) {
   return request.get('/stats/overview', { params: { shop_id: shopId } })
 }
+
+// 获取 Ozon 商品目录缓存列表
+export function getOzonCatalog(params) {
+  return request.get('/products/ozon-catalog', { params })
+}
+
+// 触发 Ozon 商品目录刷新
+export function refreshOzonCatalog(payload) {
+  return request.post('/products/ozon-catalog/refresh', payload)
+}

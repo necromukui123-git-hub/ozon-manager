@@ -1,5 +1,58 @@
 # Ozon Manager 变更日志
 
+## 2026-03-05
+### 主题
+新增 Ozon 商品核心接口标准说明文档（`/v3/product/list` + `/v3/product/info/list`）。
+
+### 关键变更
+1. 新增文档：`doc/ozon-seller-product-apis-v3-list-info.md`。
+2. 文档统一沉淀：
+   - 通用鉴权与调用约束（`Client-Id`、`Api-Key`、后端调用、限流提示）。
+   - `/v3/product/list` 请求参数、游标分页与响应核心字段。
+   - `/v3/product/info/list` 批量查询参数与响应核心字段。
+   - “先 list 后 info/list”标准流程、常见错误与排障建议。
+   - cURL / Go 示例代码（与本仓库客户端封装对齐）。
+3. 文档补充兼容性说明：
+   - `/v2/product/list` 已废弃，建议统一走 `/v3/product/list`。
+   - `/v3/product/info/list` 已在官方文档中转入正式方法。
+
+### 影响范围
+1. 为后端对接、联调和排障提供统一的接口说明入口。
+2. 不涉及业务代码、数据库结构和接口行为变更。
+
+### 验证
+1. 文档与当前仓库实现对照核验：`backend/pkg/ozon/client.go`、`backend/pkg/ozon/catalog.go`、`backend/internal/service/product_service.go`。
+2. 官方来源页面已核对：`https://docs.ozon.ru/api/seller/zh/#operation/ProductAPI_GetProductList`。
+
+## 2026-03-05（补充）
+### 主题
+修复“商品列表同步成功但数据库无数据”问题（接口参数/响应结构对齐 + 同步失败语义收敛）。
+
+### 关键变更
+1. `backend/pkg/ozon/catalog.go`：
+   - `/v3/product/list` 请求体移除非标准 `current_page`。
+   - `/v3/product/info/list` 请求 `product_id` 改为字符串数组（对齐文档）。
+   - 商品详情响应兼容顶层 `items` 与历史 `result.items` 两种结构。
+2. `backend/internal/service/product_service.go`：
+   - 同步流程改为“先基础 upsert（product_id/offer_id）再详情补全”。
+   - 批次错误不再静默吞掉；有错误时返回失败，避免前端误提示成功。
+   - 远端有商品但本地最终 0 入库时直接失败。
+3. `backend/internal/service/ozon_catalog_service.go` 同步兼容 `items` 读取方式。
+4. `frontend/src/views/products/ProductList.vue` 同步失败提示改为展示后端真实错误信息。
+5. 新增/更新 `backend/pkg/ozon/catalog_test.go`，覆盖：
+   - `GetProductListV3` 请求体不含 `current_page`；
+   - `product_id` 字符串序列化；
+   - `items/result.items` 双响应兼容。
+
+### 影响范围
+1. `POST /api/v1/products/sync` 不再出现“失败但显示同步成功”的误导行为。
+2. `products` 表在详情批次失败场景下仍可保留基础商品数据，避免整表空白。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
+2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱环境执行）。
+
 ## 2026-03-03
 ### 主题
 执行引擎路由、防抢任务、插件状态面板、非 localhost 同步优化、数据库迁移规则规范化。
@@ -217,3 +270,52 @@
 ### 验证
 1. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background.js` 通过。
 2. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/popup.js` 通过。
+
+## 2026-03-04（补充二）
+### 主题
+新增 Ozon 实时商品列表能力（缓存查询 + 后台刷新 + 日期来源区分）。
+
+### 关键变更
+1. 后端新增 Ozon 商品目录缓存仓储与服务：
+   - 新增缓存查询接口 `GET /api/v1/products/ozon-catalog`。
+   - 新增刷新触发接口 `POST /api/v1/products/ozon-catalog/refresh`。
+2. Seller 接口调用链路扩展：
+   - 新增 `/v3/product/list` 调用（列表索引）。
+   - 新增 `/v3/product/info/list` 调用（详情补全）。
+   - 新增 `/v3/product/info/stocks` 调用（库存补全）。
+3. 新增上架日期来源逻辑：
+   - 优先解析 Ozon 返回时间字段；
+   - 缺失时回退本地同步时间；
+   - 每条记录标注 `listing_date_source=ozon|local_sync`。
+4. 前端新增菜单与页面：
+   - 新路由 `/products/ozon`。
+   - 页面支持可见性、OfferID/ProductID、上架日期区间、日期来源筛选，支持游标上一页/下一页与手动刷新。
+   - 页面默认“先读缓存，再后台刷新并轮询状态”。
+
+### 数据库变更
+1. 新增增量脚本：`backend/migrations/upgrade_20260304_ozon_catalog_cache.sql`。
+2. 全量基线回写：`backend/migrations/init_database.sql` 已同步新增 `ozon_product_catalog_items`。
+
+### 验证
+1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
+2. 前端构建：`cd frontend && cmd /c npm run build` 通过。
+
+## 2026-03-04（补充三）
+### 主题
+修复“商品列表-同步商品”失败（404）并增强失败日志可观测性。
+
+### 关键变更
+1. `ProductService.SyncProducts` 从 Seller 旧接口 `/v2/product/list` 切换到 `/v3/product/list`，并使用 `/v3/product/info/list` 批量拉取详情。
+2. 同步详情解析增加 `product_id/id` 兼容映射，避免因字段差异导致商品记录被跳过。
+3. 操作日志中间件新增响应体捕获与错误消息提取逻辑，失败记录可直接落地 `error_message`。
+4. 操作日志查询接口返回新增 `error_message` 字段，前端可直接显示后端已解析的失败原因。
+5. 前端请求拦截器修复错误分支变量引用问题，并补充 403/404/默认错误场景的系统日志上报（支持 `silent` 开关）。
+
+### 影响范围
+1. “商品列表 -> 同步商品”不再因旧版 Ozon 接口 404 直接失败。
+2. 出现 API 失败时，运维可在系统日志/操作日志快速看到明确错误文案，缩短排障路径。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
+2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。

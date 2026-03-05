@@ -88,6 +88,7 @@ type OperationLogItem struct {
 	OperationDetail interface{} `json:"operation_detail"`
 	AffectedCount   int         `json:"affected_count"`
 	Status          string      `json:"status"`
+	ErrorMessage    string      `json:"error_message,omitempty"`
 	IPAddress       string      `json:"ip_address"`
 	CreatedAt       string      `json:"created_at"`
 }

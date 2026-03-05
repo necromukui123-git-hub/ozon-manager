@@ -269,7 +269,7 @@ async function handleSync() {
     await fetchProducts()
   } catch (error) {
     console.error(error)
-    ElMessage.error('同步失败')
+    ElMessage.error(error?.response?.data?.message || '同步失败')
   } finally {
     syncing.value = false
   }

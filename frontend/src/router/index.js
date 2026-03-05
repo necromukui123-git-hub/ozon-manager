@@ -26,6 +26,12 @@ const routes = [
         meta: { requiresBusinessRole: true }
       },
       {
+        path: 'products/ozon',
+        name: 'OzonCatalog',
+        component: () => import('@/views/products/OzonCatalog.vue'),
+        meta: { requiresBusinessRole: true }
+      },
+      {
         path: 'promotions/batch-enroll',
         name: 'BatchEnroll',
         component: () => import('@/views/promotions/BatchEnroll.vue'),

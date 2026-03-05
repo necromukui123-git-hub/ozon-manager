@@ -58,6 +58,10 @@
             <el-icon><Goods /></el-icon>
             <span>商品列表</span>
           </el-menu-item>
+          <el-menu-item index="/products/ozon">
+            <el-icon><List /></el-icon>
+            <span>Ozon 商品列表</span>
+          </el-menu-item>
 
           <el-sub-menu index="promotions">
             <template #title>
@@ -213,7 +217,7 @@ import { THEMES, getTheme, applyTheme } from '@/utils/theme'
 import { ElMessage } from 'element-plus'
 import {
   DataLine, Goods, Promotion, Document, User, Shop, SwitchButton, Lock,
-  UserFilled, DataAnalysis, Management, InfoFilled, Fold, Expand
+  UserFilled, DataAnalysis, Management, InfoFilled, Fold, Expand, List
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
