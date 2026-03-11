@@ -1,5 +1,51 @@
 # Ozon Manager 变更日志
 
+## 2026-03-11（补充三）
+### 主题
+修复店铺活动候选同步失败时错误原因被吞掉的问题，并纠正插件支持任务说明。
+
+### 关键变更
+1. `backend/internal/repository/automation_repo.go`：
+   - `UpdateJobAndItemsByReport` 在 job 失败或部分成功时，将首个 item 失败明细同步写入 `automation_jobs.error_message`。
+2. `backend/internal/service/promotion_service.go`、`backend/internal/service/auto_promotion_service.go`：
+   - 促销同步与自动加促销在等待 extension 任务失败时，优先返回 job 明细错误，不再只报 `shop ... sync failed`。
+3. 新增纯函数测试：
+   - `backend/internal/repository/automation_repo_error_message_test.go`
+   - `backend/internal/service/automation_failure_test.go`
+4. 文档纠偏：
+   - `AGENTS.md` 的“插件当前支持任务”补上 `sync_action_candidates`，与当前仓库代码保持一致。
+
+### 影响范围
+1. 下次再遇到 `sync_action_candidates`、`sync_shop_actions`、`sync_action_products` 类 extension 任务失败时，后端返回会直接带出更底层原因。
+2. 自动加促销在店铺候选同步失败时，能够直接暴露如“插件不支持该任务类型”这类真实错误，缩短排障路径。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端定向测试：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./internal/repository ./internal/service` 通过。
+
+## 2026-03-11（补充二）
+### 主题
+修复自动加促销执行时官方候选分页 `last_id` 类型错误导致的 400 失败。
+
+### 关键变更
+1. `backend/pkg/ozon/actions.go`：
+   - `POST /v1/actions/candidates` 的请求体 `last_id` 改为始终按字符串发送。
+   - 保留响应侧对 `result.last_id` 的宽松解析，继续兼容 `string/number` 两种游标形态。
+2. `backend/pkg/ozon/actions_test.go`：
+   - 将候选接口单测从“断言 number 请求游标”改为“断言 string 请求游标”。
+   - 新增回归用例，覆盖“首轮响应返回 numeric cursor，下一轮请求仍按 string 发送”的兼容链路。
+3. 候选接口标准文档纠偏：
+   - `doc/ozon-promos-candidates-activate-standard.md` 改为说明请求体 `last_id` 使用字符串。
+   - `doc/ozon-promos-candidates-activate.openapi.yaml` 将请求 schema 改为 `string`，响应 schema 改为兼容 `string/number`。
+
+### 影响范围
+1. `POST /api/v1/promotions/auto-add/runs` 触发的官方候选刷新不再因第二页游标类型错误直接失败。
+2. 自动加促销官方活动链路可继续刷新候选并进入后续筛选/加促销步骤。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端定向测试：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./pkg/ozon ./internal/service` 通过。
+
 ## 2026-03-11（补充）
 ### 主题
 新增“自动加促销”完整链路：配置、调度、候选刷新、执行历史与逐商品失败明细。

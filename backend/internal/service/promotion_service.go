@@ -685,7 +685,7 @@ func (s *PromotionService) SyncPromotionActionsV2(shopID uint, userID uint) (*dt
 	}
 
 	if waitedJob.Status != model.AutomationJobStatusSuccess && waitedJob.Status != model.AutomationJobStatusPartialSuccess {
-		result.PartialErrors["shop"] = "shop actions sync failed"
+		result.PartialErrors["shop"] = automationJobFailureMessage(waitedJob, "shop actions sync failed")
 		return result, nil
 	}
 
@@ -934,7 +934,7 @@ func (s *PromotionService) refreshShopActionProducts(action *model.PromotionActi
 		return fmt.Errorf("shop action products sync timeout")
 	}
 	if waitedJob.Status != model.AutomationJobStatusSuccess && waitedJob.Status != model.AutomationJobStatusPartialSuccess {
-		return fmt.Errorf("shop action products sync failed")
+		return fmt.Errorf("%s", automationJobFailureMessage(waitedJob, "shop action products sync failed"))
 	}
 
 	artifact, err := s.automationService.GetLatestArtifact(waitedJob.ID, "action_products_snapshot")

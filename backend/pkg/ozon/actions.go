@@ -45,9 +45,9 @@ func (c *Client) GetActions() (*ActionsResponse, error) {
 
 // ActionCandidatesRequest 可参与促销的商品请求
 type ActionCandidatesRequest struct {
-	ActionID int64 `json:"action_id"`
-	Limit    int   `json:"limit"`
-	LastID   any   `json:"last_id,omitempty"`
+	ActionID int64  `json:"action_id"`
+	Limit    int    `json:"limit"`
+	LastID   string `json:"last_id,omitempty"`
 }
 
 // ActionCandidatesResponse 可参与促销的商品响应
@@ -84,13 +84,7 @@ func (c *Client) GetActionCandidates(actionID int64, limit int, lastID string) (
 		Limit:    limit,
 	}
 	if trimmed := strings.TrimSpace(lastID); trimmed != "" {
-		if parsedInt, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
-			req.LastID = parsedInt
-		} else if parsedFloat, floatErr := strconv.ParseFloat(trimmed, 64); floatErr == nil {
-			req.LastID = parsedFloat
-		} else {
-			req.LastID = trimmed
-		}
+		req.LastID = trimmed
 	}
 
 	respBody, err := c.doRequest("POST", "/v1/actions/candidates", req)

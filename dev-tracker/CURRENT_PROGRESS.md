@@ -151,6 +151,18 @@
    - 处理：插件新增 `sync_action_candidates` 任务，复用 Seller 候选商品接口写入候选快照；店铺活动申报改为按单活动顺序创建 job 并等待执行结果。
    - 处理：前端新增 `/promotions/auto-add` 页面与菜单，支持保存“绝对日期 + 时间 + 官方/店铺活动”配置、手动执行、轮询历史和逐商品结果详情。
    - 涉及：`backend/internal/service/auto_promotion_service.go`、`backend/internal/handler/auto_promotion_handler.go`、`backend/internal/model/auto_promotion.go`、`backend/internal/repository/auto_promotion_repo.go`、`backend/pkg/ozon/actions.go`、`browser-extension/ozon-shop-bridge/background.js`、`frontend/src/views/promotions/AutoAdd.vue`。
+31. 自动加促销官方候选刷新 `last_id` 类型漂移热修：
+   - 根因：`/v1/actions/candidates` 在真实环境中对请求体 `last_id` 按 string field 校验；旧实现把纯数字游标强转成 number，导致手动执行自动加促销时第二页开始返回 `proto: ... invalid value for string field last_id`。
+   - 处理：`ozon` 客户端候选接口请求改为始终以字符串发送 `last_id`，响应侧继续兼容 `string/number` 两种游标形态并统一归一为字符串。
+   - 处理：补充回归测试，覆盖“请求固定 string + 响应 numeric cursor 可继续复用”为下一页字符串请求的场景。
+   - 处理：同步修正文档 `doc/ozon-promos-candidates-activate-standard.md` 与 `doc/ozon-promos-candidates-activate.openapi.yaml`，避免本地说明继续误导为 `number<double>` 请求字段。
+   - 涉及：`backend/pkg/ozon/actions.go`、`backend/pkg/ozon/actions_test.go`、`doc/ozon-promos-candidates-activate-standard.md`、`doc/ozon-promos-candidates-activate.openapi.yaml`。
+32. 店铺活动候选同步失败原因透传与任务说明纠偏：
+   - 根因：`sync_action_candidates` 由浏览器扩展执行时，如果扩展仍是旧代码，会直接返回 `插件不支持该任务类型: sync_action_candidates`；后端此前只把 run 级错误收敛成 `shop action candidates sync failed`，排障信息被吞掉。
+   - 处理：`automation_repo.UpdateJobAndItemsByReport` 在 job 失败/部分成功时，自动把首个 item 失败原因同步写入 `automation_jobs.error_message`。
+   - 处理：促销同步与自动加促销链路统一改为优先透传 job 明细错误，避免继续只显示 `shop actions/products/candidates sync failed`。
+   - 处理：补充纯函数测试覆盖错误消息提取逻辑，并更新 `AGENTS.md` 的插件支持任务列表，补上 `sync_action_candidates`，避免文档继续落后于代码。
+   - 涉及：`backend/internal/repository/automation_repo.go`、`backend/internal/service/promotion_service.go`、`backend/internal/service/auto_promotion_service.go`、`backend/internal/service/automation_failure.go`、`backend/internal/repository/automation_repo_error_message_test.go`、`backend/internal/service/automation_failure_test.go`、`AGENTS.md`。
 
 ## 验证结果
 0. 后端回归测试通过（含本次商品同步修复）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
@@ -191,6 +203,8 @@
 34. 后端回归测试通过（含自动加促销）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
 35. 插件脚本语法检查通过（含 `sync_action_candidates` 任务）：`node --check browser-extension/ozon-shop-bridge/background.js`。
 36. 前端构建通过（含 `/promotions/auto-add` 页面）：`cd frontend && cmd /c npm run build`。
+37. 后端定向测试通过（含官方候选 `last_id` 字符串修复）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./pkg/ozon ./internal/service`。
+38. 后端定向测试通过（含 extension 失败原因透传）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./internal/repository ./internal/service`。
 
 ## 数据库执行记录
 0. 本次（商品同步无数据修复）无新增迁移脚本：仅修正 Ozon API 请求/响应解析、同步失败语义与前端错误提示，不涉及数据库结构变更。
@@ -218,6 +232,8 @@
 22. 用途：新增活动候选商品缓存、自动加促销配置、运行记录和逐商品结果表，为“自动加促销”页面、定时调度与失败回溯提供持久化基础。
 23. 执行条件：目标库已存在 `promotion_actions`、`products`、`shops`、`users` 等基础表；脚本支持幂等重复执行。
 24. 执行结果：开发环境 SQL 已同步，`init_database.sql` 已回写至最新结构。
+25. 本次（自动加促销官方候选 `last_id` 类型热修）无新增迁移脚本：仅调整官方候选接口请求参数类型、单元测试与本地接口文档，不涉及数据库结构变更。
+26. 本次（店铺活动候选同步失败原因透传）无新增迁移脚本：仅调整自动化任务错误消息落库与服务层错误透传，不涉及数据库结构变更。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。

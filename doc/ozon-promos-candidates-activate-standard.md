@@ -40,7 +40,7 @@ Schema: `seller_apiGetSellerProductV1Request`
 | `action_id` | `number<double>` | 否 | 活动识别号。可通过 `POST /v1/actions` 获取。 | 官方页面未显示必填标记，但按接口语义应传。 |
 | `limit` | `number<double>` | 否 | 每页返回数量。 | 默认值为 `100`。 |
 | `offset` | `number<double>` | 否 | 要跳过的元素数量。 | 已弃用；自 2025-05-05 起不应继续使用。 |
-| `last_id` | `number<double>` | 否 | 当前页最后一个值的 ID。 | 首次请求不传；后续请求传上一页响应中的 `result.last_id`。 |
+| `last_id` | `string` | 否 | 当前页最后一个值的 ID。 | 首次请求不传；后续请求传上一页响应中的 `result.last_id`；按 2026-03-11 实测，请求体应以字符串发送，即使游标只包含数字。 |
 
 ### 4.2 200 响应体
 Schema: `seller_apiGetSellerProductV1Response`
@@ -52,7 +52,7 @@ Schema: `seller_apiGetSellerProductV1Response`
 | `result` | `object` | 请求结果。 |
 | `result.products` | `object[]` | 商品清单。 |
 | `result.total` | `number<double>` | 可用于该活动的商品总数。 |
-| `result.last_id` | `number<double>` | 下一页游标。首次请求不传，后续从上一页响应中取值。 |
+| `result.last_id` | `string \| number<double>` | 下一页游标。首次请求不传，后续从上一页响应中取值；工程实现应兼容字符串和数字两种返回形态。 |
 
 `result.products[]` 字段：
 
@@ -98,7 +98,7 @@ Schema: `seller_apiGetSellerProductV1Response`
 {
   "action_id": 63337,
   "limit": 100,
-  "last_id": 1366
+  "last_id": "1366"
 }
 ```
 
@@ -151,15 +151,16 @@ Schema: `seller_apiGetSellerProductV1Response`
       }
     ],
     "total": 2,
-    "last_id": 1366
+    "last_id": "1366"
   }
 }
 ```
 
 ### 4.6 使用建议
 - 新接入时不要再使用 `offset`；应统一切换到 `last_id`。
-- 若用于批量同步候选商品，建议固定 `limit`，并以 `result.last_id` 做游标循环。
+- 若用于批量同步候选商品，建议固定 `limit`，并以 `result.last_id` 做游标循环；请求下一页时统一按字符串发送游标。
 - `result.products[]` 中多个价格/boost 字段的业务含义未在该接口页展开，落地代码前建议按实际返回值做一次联调确认。
+- 2026-03-11 实测 `POST /v1/actions/candidates` 会对请求体 `last_id` 做 string field 校验；若发送为数值，可能返回 `proto ... invalid value for string field last_id`。
 
 ## 5. 接口二：`POST /v1/actions/products/activate`
 - OperationId: `PromosProductsActivate`

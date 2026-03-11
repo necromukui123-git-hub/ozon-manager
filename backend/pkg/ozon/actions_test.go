@@ -120,13 +120,8 @@ func TestGetActionCandidatesUsesLastIDCursor(t *testing.T) {
 			if _, exists := payload["offset"]; exists {
 				t.Fatalf("request body should not contain deprecated offset: %s", string(body))
 			}
-			switch got := payload["last_id"].(type) {
-			case float64:
-				if got != 1366 {
-					t.Fatalf("last_id = %#v, want 1366", got)
-				}
-			default:
-				t.Fatalf("last_id type = %T, want float64", got)
+			if got, ok := payload["last_id"].(string); !ok || got != "1366" {
+				t.Fatalf("last_id = %#v, want %q", payload["last_id"], "1366")
 			}
 
 			resp := `{"result":{"products":[{"id":226,"price":250,"action_price":175,"max_action_price":175,"stock":0}],"total":1,"last_id":226}}`
@@ -150,6 +145,66 @@ func TestGetActionCandidatesUsesLastIDCursor(t *testing.T) {
 	}
 	if resp.Result.Products[0].MaxActionPrice != 175 {
 		t.Fatalf("max_action_price = %v, want 175", resp.Result.Products[0].MaxActionPrice)
+	}
+}
+
+func TestGetActionCandidatesReusesNumericCursorAsString(t *testing.T) {
+	t.Parallel()
+
+	requestCount := 0
+	client := NewClient("100", "test-key")
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requestCount++
+
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("failed to read request body: %v", err)
+			}
+
+			payload := map[string]any{}
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatalf("failed to decode request body: %v", err)
+			}
+
+			if requestCount == 1 {
+				if _, exists := payload["last_id"]; exists {
+					t.Fatalf("first request should omit last_id: %s", string(body))
+				}
+				resp := `{"result":{"products":[{"id":226,"price":250,"action_price":175}],"total":1,"last_id":226}}`
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(resp)),
+					Header:     make(http.Header),
+				}, nil
+			}
+
+			if got, ok := payload["last_id"].(string); !ok || got != "226" {
+				t.Fatalf("second request last_id = %#v, want %q", payload["last_id"], "226")
+			}
+			resp := `{"result":{"products":[],"total":1,"last_id":""}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(resp)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	firstResp, err := client.GetActionCandidates(63337, 100, "")
+	if err != nil {
+		t.Fatalf("first GetActionCandidates returned error: %v", err)
+	}
+	if firstResp.Result.LastID != "226" {
+		t.Fatalf("first last_id = %q, want %q", firstResp.Result.LastID, "226")
+	}
+
+	secondResp, err := client.GetActionCandidates(63337, 100, firstResp.Result.LastID)
+	if err != nil {
+		t.Fatalf("second GetActionCandidates returned error: %v", err)
+	}
+	if secondResp.Result.LastID != "" {
+		t.Fatalf("second last_id = %q, want empty", secondResp.Result.LastID)
 	}
 }
 

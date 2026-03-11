@@ -46,7 +46,7 @@ paths:
                 value:
                   action_id: 63337
                   limit: 100
-                  last_id: 1366
+                  last_id: '1366'
       responses:
         '200':
           description: 商品清单
@@ -88,7 +88,7 @@ paths:
                           min_boost: 0
                           max_boost: 0
                       total: 2
-                      last_id: 1366
+                      last_id: '1366'
         default:
           description: 错误对象。官方页面未在该接口页展开具体字段。
           content:
@@ -186,10 +186,10 @@ components:
           description: >-
             要跳过的元素数量。自 2025-05-05 起关闭，不应继续使用。
         last_id:
-          type: number
-          format: double
+          type: string
           description: >-
             当前页最后一个值的 ID。首次请求不传，后续传上一页响应中的 result.last_id。
+            2026-03-11 实测服务端按 string field 校验该字段，因此请求体应统一发送字符串。
     SellerApiGetSellerProductV1Response:
       type: object
       additionalProperties: false
@@ -212,9 +212,11 @@ components:
           format: double
           description: 可用于活动的商品总数。
         last_id:
-          type: number
-          format: double
-          description: 下一页游标。
+          oneOf:
+            - type: string
+            - type: number
+              format: double
+          description: 下一页游标。工程实现应兼容字符串和数字两种返回形态。
     SellerApiCandidateProduct:
       type: object
       additionalProperties: false

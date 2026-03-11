@@ -3,6 +3,7 @@ package repository
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -368,10 +369,33 @@ func (r *AutomationRepository) UpdateJobAndItemsByReport(jobID uint, status stri
 			"status":        status,
 			"success_items": successCount,
 			"failed_items":  failedCount,
+			"error_message": deriveJobErrorMessage(status, results),
 			"completed_at":  &now,
 		}
 		return tx.Model(&model.AutomationJob{}).Where("id = ?", jobID).Updates(jobUpdates).Error
 	})
+}
+
+func deriveJobErrorMessage(status string, results []model.AutomationJobItem) string {
+	if status != model.AutomationJobStatusFailed && status != model.AutomationJobStatusPartialSuccess {
+		return ""
+	}
+
+	for _, result := range results {
+		if msg := firstNonEmptyTrimmed(result.StepExitError, result.StepRepriceError, result.StepReaddError); msg != "" {
+			return msg
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyTrimmed(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func (r *AutomationRepository) UpdateJobStatus(jobID uint, status string) error {

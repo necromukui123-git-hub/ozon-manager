@@ -658,7 +658,7 @@ func (s *AutoPromotionService) refreshShopCandidates(action *model.PromotionActi
 		return fmt.Errorf("shop action candidates sync timeout")
 	}
 	if waitedJob.Status != model.AutomationJobStatusSuccess && waitedJob.Status != model.AutomationJobStatusPartialSuccess {
-		return fmt.Errorf("shop action candidates sync failed")
+		return fmt.Errorf("%s", automationJobFailureMessage(waitedJob, "shop action candidates sync failed"))
 	}
 
 	artifact, err := s.automationService.GetLatestArtifact(waitedJob.ID, "action_candidates_snapshot")
