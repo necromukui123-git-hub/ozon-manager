@@ -154,6 +154,8 @@ func parseOperationType(path, method string) string {
 		"POST /api/v1/promotions/batch-enroll":           "batch_enroll",
 		"POST /api/v1/promotions/process-loss":           "process_loss",
 		"POST /api/v1/promotions/remove-reprice-promote": "remove_reprice_promote",
+		"PUT /api/v1/promotions/auto-add/config":         "auto_promotion_config",
+		"POST /api/v1/promotions/auto-add/runs":          "auto_promotion_run",
 		"POST /api/v1/excel/import-loss":                 "import_loss",
 		"POST /api/v1/excel/import-reprice":              "import_reprice",
 		"POST /api/v1/products/sync":                     "sync_products",

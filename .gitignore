@@ -25,7 +25,9 @@ Thumbs.db
 .env.*.local
 
 # 敏感文档
-doc/
+doc/*
+!doc/ozon-promos-candidates-activate-standard.md
+!doc/ozon-promos-candidates-activate.openapi.yaml
 snipaste/
 err/
 

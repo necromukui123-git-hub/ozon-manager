@@ -138,6 +138,7 @@ func (r *AutomationRepository) AcquirePendingJobForAgent(agentID uint) (*model.A
 			Where("job_type IN ?", []string{
 				model.AutomationJobTypeRemoveRepriceReadd,
 				model.AutomationJobTypeSyncShopActions,
+				model.AutomationJobTypeSyncActionCandidates,
 				model.AutomationJobTypeSyncActionProducts,
 				model.AutomationJobTypeShopActionDeclare,
 				model.AutomationJobTypeShopActionRemove,

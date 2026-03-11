@@ -1,10 +1,10 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-05  
-状态：进行中（本迭代已交付，等待下一轮任务）
+最后更新时间：2026-03-11  
+状态：进行中（本次自动加促销功能已完成，等待下一轮任务）
 
 ## 本次交付单元
-本次目标：完成执行引擎路由防抢、插件状态可视化、非 localhost 自动同步优化、后端关键逻辑测试补齐，规范数据库迁移脚本职责，重构店铺活动商品详情页可读性，修复“商品列表-同步商品”404及失败日志可观测性，并补齐 Ozon 商品核心接口标准说明文档。
+本次目标：在现有促销统一流程上新增“自动加促销”能力，支持按绝对日期筛选上架商品、保存自动执行配置、手动触发执行、官方/店铺候选商品刷新、官方优先后店铺的执行顺序控制，以及可回看的执行历史与逐商品失败明细。
 
 ## 已完成（含关键文件）
 0. 商品列表同步“成功但数据库无数据”修复（按 `/doc` 重构调用与失败语义）：
@@ -138,6 +138,19 @@
    - 处理：新增兼容回退：若 `v4` 返回 404，自动回退请求 `/v3/product/info/stocks`（兼容历史环境）。
    - 处理：补齐单测：更新库存请求主路径断言为 `v4`，并新增 `v4 -> v3` 回退测试。
    - 涉及：`backend/pkg/ozon/catalog.go`、`backend/pkg/ozon/catalog_test.go`。
+29. 官方促销接口标准文档沉淀（`/v1/actions/candidates` + `/v1/actions/products/activate`）：
+   - 处理：新增 `doc/ozon-promos-candidates-activate-standard.md`，按工程说明模板沉淀两个接口的用途、鉴权、请求/响应结构、示例、分页与弃用说明。
+   - 处理：新增 `doc/ozon-promos-candidates-activate.openapi.yaml`，以轻量 OpenAPI 3.0 子集形式输出机读结构，便于后续程序消费或继续裁剪生成代码。
+   - 处理：明确 `offset` 已弃用、`last_id` 为推荐分页游标，并补齐 `result.rejected[].product_id / reason` 结构说明。
+   - 处理：更新根目录 `.gitignore`，仅对白名单放行这两份新文档，避免 `doc/` 整体忽略导致交付文件无法入库。
+   - 涉及：`doc/ozon-promos-candidates-activate-standard.md`、`doc/ozon-promos-candidates-activate.openapi.yaml`、`.gitignore`。
+30. 自动加促销功能落地（配置 + 调度 + 候选同步 + 历史）：
+   - 处理：新增 `promotion_action_candidates`、`auto_promotion_configs`、`auto_promotion_runs`、`auto_promotion_run_items` 四张表；新增 `upgrade_20260311_auto_promotion_add.sql`，并同步回写 `init_database.sql`。
+   - 处理：新增 `AutoPromotionService` 与 `AutoPromotionHandler`，提供配置读写、手动触发、定时调度、执行历史与详情接口；执行前强制刷新 Ozon 目录并按 `listing_date` 过滤目标日期商品。
+   - 处理：官方促销候选刷新链路落地到 `/v1/actions/candidates` `last_id` 分页，并对 `/v1/actions/products/activate` 的 `result.rejected[]` 做逐商品失败处理。
+   - 处理：插件新增 `sync_action_candidates` 任务，复用 Seller 候选商品接口写入候选快照；店铺活动申报改为按单活动顺序创建 job 并等待执行结果。
+   - 处理：前端新增 `/promotions/auto-add` 页面与菜单，支持保存“绝对日期 + 时间 + 官方/店铺活动”配置、手动执行、轮询历史和逐商品结果详情。
+   - 涉及：`backend/internal/service/auto_promotion_service.go`、`backend/internal/handler/auto_promotion_handler.go`、`backend/internal/model/auto_promotion.go`、`backend/internal/repository/auto_promotion_repo.go`、`backend/pkg/ozon/actions.go`、`browser-extension/ozon-shop-bridge/background.js`、`frontend/src/views/promotions/AutoAdd.vue`。
 
 ## 验证结果
 0. 后端回归测试通过（含本次商品同步修复）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
@@ -174,6 +187,10 @@
 30. 后端全量回归测试通过：`cd backend && go test ./...`。
 31. 后端定向测试通过（含库存端点 `v4` 主路径与 `v3` 回退）：`cd backend && go test ./pkg/ozon ./internal/service`。
 32. 后端全量回归测试通过（含库存端点版本修复）：`cd backend && go test ./...`。
+33. 文档交付核对完成：`doc/ozon-promos-candidates-activate-standard.md` 与 `doc/ozon-promos-candidates-activate.openapi.yaml` 已落地；接口字段、示例与分页说明已按官方页面和补充核验结果对齐。
+34. 后端回归测试通过（含自动加促销）：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...`。
+35. 插件脚本语法检查通过（含 `sync_action_candidates` 任务）：`node --check browser-extension/ozon-shop-bridge/background.js`。
+36. 前端构建通过（含 `/promotions/auto-add` 页面）：`cd frontend && cmd /c npm run build`。
 
 ## 数据库执行记录
 0. 本次（商品同步无数据修复）无新增迁移脚本：仅修正 Ozon API 请求/响应解析、同步失败语义与前端错误提示，不涉及数据库结构变更。
@@ -196,6 +213,11 @@
 17. 本次（`.gitignore` 收敛优化）无新增迁移脚本：仅调整版本控制忽略规则，不涉及数据库结构变更。
 18. 本次（`/v3/product/info/list` `primary_image` 多形态兼容修复）无新增迁移脚本：仅涉及 Ozon 响应解析与单元测试增强，不涉及数据库结构变更。
 19. 本次（`/v3/product/info/stocks` 404 修复）无新增迁移脚本：仅涉及库存接口版本切换与兼容回退逻辑，不涉及数据库结构变更。
+20. 本次（官方促销接口文档沉淀）无新增迁移脚本：仅新增 `doc/` 标准接口文档与 `dev-tracker` 追踪记录，不涉及数据库结构变更。
+21. 本次新增可执行升级脚本：`backend/migrations/upgrade_20260311_auto_promotion_add.sql`（自动加促销配置、候选缓存与运行历史）。
+22. 用途：新增活动候选商品缓存、自动加促销配置、运行记录和逐商品结果表，为“自动加促销”页面、定时调度与失败回溯提供持久化基础。
+23. 执行条件：目标库已存在 `promotion_actions`、`products`、`shops`、`users` 等基础表；脚本支持幂等重复执行。
+24. 执行结果：开发环境 SQL 已同步，`init_database.sql` 已回写至最新结构。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。
@@ -203,6 +225,6 @@
 3. 执行引擎路由监控指标尚未落地。
 
 ## 下一步（最多 3 项）
-1. 产出 Chrome 商店上架清单、权限说明与隐私政策文案。
-2. 执行多店铺 mixed mode 联调回归并沉淀异常处置手册。
+1. 执行自动加促销真实店铺联调，重点核对绝对日期语义、官方 `rejected[]` 场景和店铺候选为空场景。
+2. 产出 Chrome 商店上架清单、权限说明与隐私政策文案。
 3. 增加路由监控指标和告警（extension 在线率、fallback 次数、冲突阻断次数）。

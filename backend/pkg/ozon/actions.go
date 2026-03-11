@@ -3,6 +3,8 @@ package ozon
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // Action 促销活动
@@ -45,14 +47,88 @@ func (c *Client) GetActions() (*ActionsResponse, error) {
 type ActionCandidatesRequest struct {
 	ActionID int64 `json:"action_id"`
 	Limit    int   `json:"limit"`
-	Offset   int   `json:"offset"`
+	LastID   any   `json:"last_id,omitempty"`
 }
 
 // ActionCandidatesResponse 可参与促销的商品响应
 type ActionCandidatesResponse struct {
 	Result struct {
+		Products []ActionCandidate `json:"products"`
+		Total    int               `json:"total"`
+		LastID   string            `json:"last_id"`
+	} `json:"result"`
+}
+
+type ActionCandidate struct {
+	ID                        int64   `json:"id"`
+	ProductID                 int64   `json:"product_id"`
+	Price                     float64 `json:"price"`
+	ActionPrice               float64 `json:"action_price"`
+	AlertMaxActionPriceFailed bool    `json:"alert_max_action_price_failed"`
+	AlertMaxActionPrice       float64 `json:"alert_max_action_price"`
+	MaxActionPrice            float64 `json:"max_action_price"`
+	AddMode                   string  `json:"add_mode"`
+	Stock                     int     `json:"stock"`
+	MinStock                  int     `json:"min_stock"`
+	CurrentBoost              float64 `json:"current_boost"`
+	PriceMinElastic           float64 `json:"price_min_elastic"`
+	PriceMaxElastic           float64 `json:"price_max_elastic"`
+	MinBoost                  float64 `json:"min_boost"`
+	MaxBoost                  float64 `json:"max_boost"`
+}
+
+// GetActionCandidates 获取可参与促销的商品
+func (c *Client) GetActionCandidates(actionID int64, limit int, lastID string) (*ActionCandidatesResponse, error) {
+	req := ActionCandidatesRequest{
+		ActionID: actionID,
+		Limit:    limit,
+	}
+	if trimmed := strings.TrimSpace(lastID); trimmed != "" {
+		if parsedInt, err := strconv.ParseInt(trimmed, 10, 64); err == nil {
+			req.LastID = parsedInt
+		} else if parsedFloat, floatErr := strconv.ParseFloat(trimmed, 64); floatErr == nil {
+			req.LastID = parsedFloat
+		} else {
+			req.LastID = trimmed
+		}
+	}
+
+	respBody, err := c.doRequest("POST", "/v1/actions/candidates", req)
+	if err != nil {
+		return nil, err
+	}
+
+	var raw struct {
+		Result struct {
+			Products []ActionCandidate `json:"products"`
+			Total    int               `json:"total"`
+			LastID   interface{}       `json:"last_id"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(respBody, &raw); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	var resp ActionCandidatesResponse
+	resp.Result.Products = raw.Result.Products
+	resp.Result.Total = raw.Result.Total
+	resp.Result.LastID = parseCursorValue(raw.Result.LastID)
+	return &resp, nil
+}
+
+// ActionProductsRequest 已参与促销的商品请求
+type ActionProductsRequest struct {
+	ActionID int64  `json:"action_id"`
+	Limit    int    `json:"limit"`
+	LastID   string `json:"last_id,omitempty"`
+}
+
+// ActionProductsResponse 已参与促销的商品响应
+type ActionProductsResponse struct {
+	Result struct {
 		Products []ActionProduct `json:"products"`
 		Total    int             `json:"total"`
+		LastID   string          `json:"last_id"`
 	} `json:"result"`
 }
 
@@ -72,43 +148,6 @@ type ActionProduct struct {
 	PriceMaxElastic           float64 `json:"price_max_elastic"`
 	MinBoost                  float64 `json:"min_boost"`
 	MaxBoost                  float64 `json:"max_boost"`
-}
-
-// GetActionCandidates 获取可参与促销的商品
-func (c *Client) GetActionCandidates(actionID int64, limit, offset int) (*ActionCandidatesResponse, error) {
-	req := ActionCandidatesRequest{
-		ActionID: actionID,
-		Limit:    limit,
-		Offset:   offset,
-	}
-
-	respBody, err := c.doRequest("POST", "/v1/actions/candidates", req)
-	if err != nil {
-		return nil, err
-	}
-
-	var resp ActionCandidatesResponse
-	if err := json.Unmarshal(respBody, &resp); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
-	}
-
-	return &resp, nil
-}
-
-// ActionProductsRequest 已参与促销的商品请求
-type ActionProductsRequest struct {
-	ActionID int64  `json:"action_id"`
-	Limit    int    `json:"limit"`
-	LastID   string `json:"last_id,omitempty"`
-}
-
-// ActionProductsResponse 已参与促销的商品响应
-type ActionProductsResponse struct {
-	Result struct {
-		Products []ActionProduct `json:"products"`
-		Total    int             `json:"total"`
-		LastID   string          `json:"last_id"`
-	} `json:"result"`
 }
 
 // GetActionProducts 获取已参与促销的商品
@@ -147,8 +186,14 @@ type ActivateProductItem struct {
 // ActivateProductsResponse 添加商品到促销响应
 type ActivateProductsResponse struct {
 	Result struct {
-		ProductIDs []int64 `json:"product_ids"`
+		ProductIDs []int64                `json:"product_ids"`
+		Rejected   []ActivateRejectedItem `json:"rejected"`
 	} `json:"result"`
+}
+
+type ActivateRejectedItem struct {
+	ProductID int64  `json:"product_id"`
+	Reason    string `json:"reason"`
 }
 
 // ActivateProducts 添加商品到促销活动
@@ -169,6 +214,21 @@ func (c *Client) ActivateProducts(actionID int64, products []ActivateProductItem
 	}
 
 	return &resp, nil
+}
+
+func parseCursorValue(value interface{}) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(v)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case json.Number:
+		return v.String()
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", v))
+	}
 }
 
 // DeactivateProductsRequest 从促销活动移除商品

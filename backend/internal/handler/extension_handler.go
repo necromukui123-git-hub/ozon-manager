@@ -84,6 +84,10 @@ func (h *ExtensionHandler) Poll(c *gin.Context) {
 
 	meta := map[string]interface{}{}
 	switch job.JobType {
+	case model.AutomationJobTypeSyncActionCandidates:
+		if artifact, err := h.automationService.GetLatestArtifact(job.ID, "sync_action_candidates_meta"); err == nil {
+			_ = json.Unmarshal(artifact.Meta, &meta)
+		}
 	case model.AutomationJobTypeSyncActionProducts:
 		if artifact, err := h.automationService.GetLatestArtifact(job.ID, "sync_action_products_meta"); err == nil {
 			_ = json.Unmarshal(artifact.Meta, &meta)

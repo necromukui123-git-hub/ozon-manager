@@ -40,6 +40,7 @@ func main() {
 	ozonCatalogRepo := repository.NewOzonCatalogRepository(db)
 	promotionRepo := repository.NewPromotionRepository(db)
 	automationRepo := repository.NewAutomationRepository(db)
+	autoPromotionRepo := repository.NewAutoPromotionRepository(db)
 	operationLogRepo := repository.NewOperationLogRepository(db)
 
 	// 初始化Service
@@ -50,6 +51,8 @@ func main() {
 	ozonCatalogService := service.NewOzonCatalogService(ozonCatalogRepo, shopRepo)
 	automationService := service.NewAutomationService(automationRepo, productRepo, shopRepo)
 	promotionService := service.NewPromotionService(productRepo, promotionRepo, shopRepo, automationService)
+	autoPromotionService := service.NewAutoPromotionService(autoPromotionRepo, productRepo, promotionRepo, shopRepo, ozonCatalogRepo, ozonCatalogService, automationService, promotionService)
+	autoPromotionService.StartScheduler()
 
 	// 初始化Handler
 	authHandler := handler.NewAuthHandler(authService)
@@ -57,6 +60,7 @@ func main() {
 	shopHandler := handler.NewShopHandler(shopService)
 	productHandler := handler.NewProductHandler(productService, shopService, ozonCatalogService)
 	promotionHandler := handler.NewPromotionHandler(promotionService, shopService)
+	autoPromotionHandler := handler.NewAutoPromotionHandler(autoPromotionService, shopService)
 	automationHandler := handler.NewAutomationHandler(automationService, shopService)
 	extensionHandler := handler.NewExtensionHandler(automationService, shopService)
 	operationLogHandler := handler.NewOperationLogHandler(operationLogRepo)
@@ -207,6 +211,11 @@ func main() {
 					promotions.POST("/unified-remove", promotionHandler.UnifiedRemove)
 					promotions.POST("/unified-process-loss", promotionHandler.UnifiedProcessLoss)
 					promotions.POST("/unified-reprice-promote", promotionHandler.UnifiedRepricePromote)
+					promotions.GET("/auto-add/config", autoPromotionHandler.GetConfig)
+					promotions.PUT("/auto-add/config", autoPromotionHandler.UpdateConfig)
+					promotions.POST("/auto-add/runs", autoPromotionHandler.StartRun)
+					promotions.GET("/auto-add/runs", autoPromotionHandler.ListRuns)
+					promotions.GET("/auto-add/runs/:id", autoPromotionHandler.GetRunDetail)
 				}
 
 				automation := business.Group("/automation")

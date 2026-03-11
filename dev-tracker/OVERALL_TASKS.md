@@ -1,6 +1,6 @@
 # Ozon Manager 开发总任务
 
-最后更新时间：2026-03-05  
+最后更新时间：2026-03-11  
 负责人：团队 + Codex  
 范围：统一官方促销与店铺促销的一套业务流程，并让店铺促销在浏览器登录态下低打扰执行。
 
@@ -36,6 +36,8 @@
 | T11 | 商品列表“同步商品”404修复与失败日志可观测性补全 | done | 点击“同步商品”可成功拉取 Ozon 商品；系统日志/操作日志可直接查看失败原因 | 依赖 Seller v3 商品接口稳定 |
 | T12 | Ozon 商品接口标准说明文档沉淀（`/v3/product/list` + `/v3/product/info/list`） | done | 在 `doc/` 产出工程可用版接口文档，覆盖鉴权、请求参数、分页、响应结构、错误处理与示例 | 依赖 Ozon 官方文档持续更新，需定期回看 |
 | T13 | `/v3/product/list` 响应字段对齐与目录可见性推导修复 | done | 客户端可解析 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`；目录刷新不再依赖 list 响应 `visibility`，改为优先 `info.visible`，其次 `archived`，最后 `ALL` | 依赖 Seller v3 列表/详情字段稳定 |
+| T14 | 官方促销接口标准说明文档沉淀（`/v1/actions/candidates` + `/v1/actions/products/activate`） | done | 在 `doc/` 产出一份人读版 Markdown 与一份机读版 YAML，覆盖鉴权、分页、请求/响应结构、示例与弃用说明 | 依赖 Ozon 官方文档持续更新，需定期回看 |
+| T15 | 自动添加商品至促销活动（配置 + 调度 + 执行历史） | done | 新增“自动加促销”页面；支持保存绝对日期配置、手动执行、官方/店铺活动候选刷新、按上架日期筛商品、执行历史与逐商品失败明细 | 依赖 Ozon 目录刷新、官方候选接口与浏览器插件执行链稳定 |
 
 ## 近期完成里程碑（已完成）
 1. 按店铺执行引擎模式（`auto`/`extension`/`agent`）已落地。
@@ -55,6 +57,8 @@
 15. 已新增 `doc/ozon-seller-product-apis-v3-list-info.md`，沉淀 `/v3/product/list` 与 `/v3/product/info/list` 的标准工程说明（含调用流程、示例与排障要点）。
 16. 商品同步链路已补齐 `/v3/product/info/list` 响应兼容（`items/result.items`）与失败语义收敛：批次失败不再假成功，且先落基础数据避免整表为空。
 17. `/v3/product/list` 客户端响应结构已对齐实测字段（含 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`），目录缓存可见性改为“优先 `info.visible`，其次 `archived`，最后 `ALL`”。
+18. 已新增 `doc/ozon-promos-candidates-activate-standard.md` 与 `doc/ozon-promos-candidates-activate.openapi.yaml`，沉淀官方促销候选商品查询与商品加入促销两个接口的标准说明，明确 `last_id` 分页替代 `offset`，并补齐 `result.rejected` 结构。
+19. 已新增“自动加促销”完整链路：后端新增配置/运行历史/候选缓存表与调度器，插件支持 `sync_action_candidates` 任务，前端新增 `/promotions/auto-add` 页面，支持保存配置、手动执行和逐商品历史查看。
 
 ## 阶段完成标准
 1. 官方与店铺促销在统一 UX 下稳定可用。

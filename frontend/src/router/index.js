@@ -32,6 +32,12 @@ const routes = [
         meta: { requiresBusinessRole: true }
       },
       {
+        path: 'promotions/auto-add',
+        name: 'AutoPromotionAdd',
+        component: () => import('@/views/promotions/AutoAdd.vue'),
+        meta: { requiresBusinessRole: true }
+      },
+      {
         path: 'promotions/batch-enroll',
         name: 'BatchEnroll',
         component: () => import('@/views/promotions/BatchEnroll.vue'),

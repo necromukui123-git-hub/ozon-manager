@@ -304,3 +304,73 @@ func (r *PromotionRepository) ListActionProducts(shopID uint, promotionActionID 
 
 	return items, total, nil
 }
+
+func (r *PromotionRepository) ReplaceActionCandidates(action *model.PromotionAction, candidates []model.PromotionActionCandidate) error {
+	now := time.Now()
+	for index := range candidates {
+		candidates[index].PromotionActionID = action.ID
+		candidates[index].ShopID = action.ShopID
+		candidates[index].LastSyncedAt = &now
+	}
+
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for index := range candidates {
+			candidate := candidates[index]
+			var existing model.PromotionActionCandidate
+			err := tx.Where("promotion_action_id = ? AND source_sku = ?", action.ID, candidate.SourceSKU).First(&existing).Error
+			if err == gorm.ErrRecordNotFound {
+				if createErr := tx.Create(&candidate).Error; createErr != nil {
+					return createErr
+				}
+				continue
+			}
+			if err != nil {
+				return err
+			}
+
+			candidate.ID = existing.ID
+			if saveErr := tx.Save(&candidate).Error; saveErr != nil {
+				return saveErr
+			}
+		}
+
+		sourceSKUs := make([]string, 0, len(candidates))
+		for _, candidate := range candidates {
+			sourceSKUs = append(sourceSKUs, candidate.SourceSKU)
+		}
+
+		if len(sourceSKUs) > 0 {
+			if err := tx.Where("promotion_action_id = ? AND source_sku NOT IN ?", action.ID, sourceSKUs).Delete(&model.PromotionActionCandidate{}).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := tx.Where("promotion_action_id = ?", action.ID).Delete(&model.PromotionActionCandidate{}).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+func (r *PromotionRepository) ListActionCandidatesByActionIDsAndSourceSKUs(shopID uint, actionIDs []uint, sourceSKUs []string) ([]model.PromotionActionCandidate, error) {
+	items := make([]model.PromotionActionCandidate, 0)
+	if len(actionIDs) == 0 || len(sourceSKUs) == 0 {
+		return items, nil
+	}
+
+	err := r.db.Where("shop_id = ? AND promotion_action_id IN ? AND source_sku IN ?", shopID, actionIDs, sourceSKUs).
+		Find(&items).Error
+	return items, err
+}
+
+func (r *PromotionRepository) ListActionProductsByActionIDsAndSourceSKUs(shopID uint, actionIDs []uint, sourceSKUs []string) ([]model.PromotionActionProduct, error) {
+	items := make([]model.PromotionActionProduct, 0)
+	if len(actionIDs) == 0 || len(sourceSKUs) == 0 {
+		return items, nil
+	}
+
+	err := r.db.Where("shop_id = ? AND promotion_action_id IN ? AND source_sku IN ?", shopID, actionIDs, sourceSKUs).
+		Find(&items).Error
+	return items, err
+}

@@ -379,6 +379,8 @@ async function executeJob(job, state) {
     switch (job.job_type) {
       case 'sync_shop_actions':
         return await executeSyncShopActions(tab.id)
+      case 'sync_action_candidates':
+        return await executeSyncActionCandidates(tab.id, job)
       case 'sync_action_products':
         return await executeSyncActionProducts(tab.id, job)
       case 'shop_action_declare':
@@ -533,6 +535,35 @@ async function executeSyncActionProducts(tabID, job) {
       source_action_id: sourceActionID,
       items,
       payload_count: (payloads || []).length,
+    },
+  }
+}
+
+async function executeSyncActionCandidates(tabID, job) {
+  const sourceActionID = String(job?.meta?.source_action_id || '').trim()
+  if (!sourceActionID) {
+    return {
+      status: 'failed',
+      results: [buildSyncResult('__sync_action_candidates__', false, '任务缺少 source_action_id')],
+      meta: {},
+    }
+  }
+
+  const rawItems = await runScript(tabID, scriptFetchCandidates, [sourceActionID])
+  const items = uniqueBy(
+    (rawItems || [])
+      .map((item) => normalizeActionProduct(item, 'candidate'))
+      .filter(Boolean),
+    (item) => buildActionProductDedupKey(item),
+  )
+
+  return {
+    status: 'success',
+    results: [buildSyncResult('__sync_action_candidates__', true, '')],
+    meta: {
+      source_action_id: sourceActionID,
+      items,
+      candidate_count: items.length,
     },
   }
 }
@@ -740,6 +771,9 @@ async function runScript(tabID, func, args) {
 function buildJobFailureResults(job, message) {
   if (job?.job_type === 'sync_shop_actions') {
     return [buildSyncResult('__sync_shop_actions__', false, message)]
+  }
+  if (job?.job_type === 'sync_action_candidates') {
+    return [buildSyncResult('__sync_action_candidates__', false, message)]
   }
   if (job?.job_type === 'sync_action_products') {
     return [buildSyncResult('__sync_action_products__', false, message)]

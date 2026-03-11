@@ -1,5 +1,65 @@
 # Ozon Manager 变更日志
 
+## 2026-03-11（补充）
+### 主题
+新增“自动加促销”完整链路：配置、调度、候选刷新、执行历史与逐商品失败明细。
+
+### 关键变更
+1. 后端新增自动加促销数据模型与迁移：
+   - 新增 `promotion_action_candidates`、`auto_promotion_configs`、`auto_promotion_runs`、`auto_promotion_run_items`。
+   - 新增升级脚本 `backend/migrations/upgrade_20260311_auto_promotion_add.sql`。
+   - `backend/migrations/init_database.sql` 已同步回写到最新结构。
+2. 后端新增 `AutoPromotionService` / `AutoPromotionHandler`：
+   - 提供配置读取、保存、手动触发、历史列表、详情查询接口。
+   - 服务启动后按分钟扫描启用配置，按保存的绝对日期执行。
+   - 执行前先刷新 Ozon 目录，再刷新所选活动候选商品缓存。
+3. 官方促销执行链增强：
+   - `/v1/actions/candidates` 改为 `last_id` 分页。
+   - `/v1/actions/products/activate` 解析 `result.rejected[]`，按商品记录失败原因。
+4. 插件新增 `sync_action_candidates` 任务：
+   - 复用 Seller 候选商品接口同步店铺活动候选商品。
+   - 产物类型新增 `action_candidates_snapshot`，供后端导入候选缓存。
+5. 前端新增页面：`/promotions/auto-add`。
+   - 支持保存“启用状态 + 执行时间 + 绝对日期 + 官方/店铺活动”配置。
+   - 支持手动执行、运行中轮询、历史记录和逐商品详情。
+
+### 影响范围
+1. 用户可以在独立页面完成自动加促销配置与手动触发，不再依赖“批量报名”页面人工重复操作。
+2. 官方与店铺活动都纳入同一条自动执行链，且失败结果可按商品追踪。
+3. 本次包含数据库结构变更，需要执行 `upgrade_20260311_auto_promotion_add.sql` 升级旧库。
+
+### 验证
+1. 后端回归：`cd backend && $env:GOCACHE=\"$env:TEMP\\ozon-manager-gocache\"; go test ./...` 通过。
+2. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background.js` 通过。
+3. 前端构建：`cd frontend && cmd /c npm run build` 通过。
+
+## 2026-03-11
+### 主题
+新增官方促销接口标准说明文档：`/v1/actions/candidates` 与 `/v1/actions/products/activate`。
+
+### 关键变更
+1. 新增文档：`doc/ozon-promos-candidates-activate-standard.md`。
+2. 新增机读规范：`doc/ozon-promos-candidates-activate.openapi.yaml`。
+3. 文档统一沉淀：
+   - 通用鉴权头（`Client-Id`、`Api-Key`）。
+   - `POST /v1/actions/candidates` 的请求体、游标分页、`offset` 弃用说明、候选商品响应字段与示例。
+   - `POST /v1/actions/products/activate` 的请求体限制（`products <= 1000`）、成功返回、`result.rejected` 结构与示例。
+   - 错误响应说明与典型调用顺序（先查促销、再查候选、最后加促销）。
+4. 文档补充兼容性说明：
+   - `offset` 自 2025-05-05 起不应继续使用，应切换为 `last_id`。
+   - `result.rejected[]` 明确为对象数组，包含 `product_id` 与 `reason` 两个字段。
+5. 根目录 `.gitignore` 增加精确白名单规则，确保新增的两份 `doc/` 文档可进入版本控制，同时不放开整个 `doc/` 目录。
+
+### 影响范围
+1. 为官方促销商品筛选与自动加促销流程提供统一的人读版和机读版接口说明。
+2. 不涉及业务代码、数据库结构和接口行为变更。
+
+### 验证
+1. 文档与官方来源页面已核对：
+   - `https://docs.ozon.ru/api/seller/zh/#operation/PromosCandidates`
+   - `https://docs.ozon.ru/api/seller/zh/#operation/PromosProductsActivate`
+2. 文档内部字段一致性已人工核对完成。
+
 ## 2026-03-05（补充四）
 ### 主题
 修复 Ozon 商品目录刷新 `404 page not found`：库存接口从 `/v3/product/info/stocks` 切换到 `/v4/product/info/stocks`。

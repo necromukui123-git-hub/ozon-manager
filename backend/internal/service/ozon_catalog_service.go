@@ -220,6 +220,38 @@ func (s *OzonCatalogService) TriggerRefresh(req *dto.OzonCatalogRefreshRequest) 
 	return resp, nil
 }
 
+func (s *OzonCatalogService) RefreshShopCatalogSync(shopID uint) error {
+	if _, err := s.shopRepo.GetWithCredentials(shopID); err != nil {
+		return fmt.Errorf("shop not found")
+	}
+
+	now := time.Now()
+	s.refreshMu.Lock()
+	state, exists := s.refreshStateBy[shopID]
+	if !exists {
+		state = &ozonCatalogRefreshState{}
+		s.refreshStateBy[shopID] = state
+	}
+	if state.Running {
+		s.refreshMu.Unlock()
+		return fmt.Errorf("catalog refresh already running")
+	}
+	state.Running = true
+	state.LastStartedAt = &now
+	state.LastError = ""
+	s.refreshMu.Unlock()
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			s.updateRefreshState(shopID, fmt.Errorf("panic: %v", recovered))
+		}
+	}()
+
+	err := s.syncCatalogFromOzon(shopID)
+	s.updateRefreshState(shopID, err)
+	return err
+}
+
 func (s *OzonCatalogService) refreshShopCatalog(shopID uint) {
 	defer func() {
 		if recovered := recover(); recovered != nil {

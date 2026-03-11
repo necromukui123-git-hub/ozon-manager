@@ -153,6 +153,36 @@ func (s *AutomationService) CreateSyncShopActionsJob(userID uint, shopID uint) (
 	return s.automationRepo.FindJobByIDAndShop(job.ID, shopID)
 }
 
+func (s *AutomationService) CreateSyncActionCandidatesJob(userID uint, shopID uint, promotionActionID uint, sourceActionID string) (*model.AutomationJob, error) {
+	job := &model.AutomationJob{
+		ShopID:     shopID,
+		CreatedBy:  userID,
+		JobType:    model.AutomationJobTypeSyncActionCandidates,
+		Status:     model.AutomationJobStatusPending,
+		RateLimit:  1,
+		TotalItems: 1,
+	}
+	items := []model.AutomationJobItem{{
+		SourceSKU:         fmt.Sprintf("__sync_action_candidates__:%d", promotionActionID),
+		TargetPrice:       0.01,
+		OverallStatus:     model.AutomationStepStatusPending,
+		StepExitStatus:    model.AutomationStepStatusPending,
+		StepRepriceStatus: model.AutomationStepStatusPending,
+		StepReaddStatus:   model.AutomationStepStatusPending,
+	}}
+	if err := s.automationRepo.CreateJobWithItems(job, items); err != nil {
+		return nil, err
+	}
+	meta := map[string]interface{}{
+		"promotion_action_id": promotionActionID,
+		"source_action_id":    sourceActionID,
+	}
+	if err := s.automationRepo.CreateArtifact(job.ID, "sync_action_candidates_meta", meta); err != nil {
+		return nil, err
+	}
+	return s.automationRepo.FindJobByIDAndShop(job.ID, shopID)
+}
+
 func (s *AutomationService) CreateSyncActionProductsJob(userID uint, shopID uint, promotionActionID uint, sourceActionID string) (*model.AutomationJob, error) {
 	job := &model.AutomationJob{
 		ShopID:     shopID,
@@ -701,6 +731,8 @@ func artifactTypeForJob(jobType string, fallback string) string {
 	switch jobType {
 	case model.AutomationJobTypeSyncShopActions:
 		return "shop_actions_snapshot"
+	case model.AutomationJobTypeSyncActionCandidates:
+		return "action_candidates_snapshot"
 	case model.AutomationJobTypeSyncActionProducts:
 		return "action_products_snapshot"
 	case model.AutomationJobTypeShopActionDeclare, model.AutomationJobTypeShopActionRemove:
@@ -715,6 +747,7 @@ func artifactTypeForJob(jobType string, fallback string) string {
 func extensionSupportedJobTypes() []string {
 	return []string{
 		model.AutomationJobTypeSyncShopActions,
+		model.AutomationJobTypeSyncActionCandidates,
 		model.AutomationJobTypeSyncActionProducts,
 		model.AutomationJobTypeShopActionDeclare,
 		model.AutomationJobTypeShopActionRemove,

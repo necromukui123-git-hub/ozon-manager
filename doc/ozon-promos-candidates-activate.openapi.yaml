@@ -1,0 +1,353 @@
+openapi: 3.0.0
+info:
+  title: Ozon Seller API Promotions Endpoints Subset
+  version: "1.0.0"
+  description: >-
+    Subset extracted and normalized from the official Ozon Seller API Chinese
+    documentation for promotion candidate query and promotion product activate
+    endpoints.
+  x-source-pages:
+    - https://docs.ozon.ru/api/seller/zh/#operation/PromosCandidates
+    - https://docs.ozon.ru/api/seller/zh/#operation/PromosProductsActivate
+  x-verified-at: 2026-03-11+08:00
+servers:
+  - url: https://api-seller.ozon.ru
+tags:
+  - name: Promos
+    description: 官方促销相关接口
+paths:
+  /v1/actions/candidates:
+    post:
+      tags:
+        - Promos
+      summary: 可用的促销商品清单
+      operationId: PromosCandidates
+      description: |-
+        通过识别号获取可参与促销活动的商品清单的方法。
+
+        自 2025-05-05 起，offset 分页参数关闭，应改用 last_id。
+      parameters:
+        - $ref: '#/components/parameters/Client-Id'
+        - $ref: '#/components/parameters/Api-Key'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SellerApiGetSellerProductV1Request'
+            examples:
+              first_page:
+                summary: 首页查询
+                value:
+                  action_id: 63337
+                  limit: 100
+              next_page:
+                summary: 下一页查询
+                value:
+                  action_id: 63337
+                  limit: 100
+                  last_id: 1366
+      responses:
+        '200':
+          description: 商品清单
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerApiGetSellerProductV1Response'
+              examples:
+                success:
+                  value:
+                    result:
+                      products:
+                        - id: 226
+                          price: 250
+                          action_price: 0
+                          alert_max_action_price_failed: true
+                          alert_max_action_price: 31
+                          max_action_price: 175
+                          add_mode: NOT_SET
+                          stock: 0
+                          min_stock: 0
+                          current_boost: 0
+                          price_min_elastic: 0
+                          price_max_elastic: 0
+                          min_boost: 0
+                          max_boost: 0
+                        - id: 1366
+                          price: 2300
+                          action_price: 630
+                          alert_max_action_price_failed: true
+                          alert_max_action_price: 31
+                          max_action_price: 770
+                          add_mode: MANUAL
+                          stock: 0
+                          min_stock: 0
+                          current_boost: 0
+                          price_min_elastic: 0
+                          price_max_elastic: 0
+                          min_boost: 0
+                          max_boost: 0
+                      total: 2
+                      last_id: 1366
+        default:
+          description: 错误对象。官方页面未在该接口页展开具体字段。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+  /v1/actions/products/activate:
+    post:
+      tags:
+        - Promos
+      summary: 在促销活动中增加一个商品
+      operationId: PromosProductsActivate
+      description: 一种向现有促销活动添加商品的方法。
+      parameters:
+        - $ref: '#/components/parameters/Client-Id'
+        - $ref: '#/components/parameters/Api-Key'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SellerApiActivateProductV1Request'
+            examples:
+              activate_products:
+                value:
+                  action_id: 60564
+                  products:
+                    - product_id: 1389
+                      action_price: 356
+                      stock: 10
+      responses:
+        '200':
+          description: 加入促销的商品
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SellerApiProductV1Response'
+              examples:
+                all_success:
+                  value:
+                    result:
+                      product_ids:
+                        - 1389
+                      rejected: []
+                partial_success:
+                  value:
+                    result:
+                      product_ids:
+                        - 1389
+                      rejected:
+                        - product_id: 2001
+                          reason: price exceeds max_action_price
+        default:
+          description: 错误对象。官方页面未在该接口页展开具体字段。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericError'
+components:
+  parameters:
+    Client-Id:
+      name: Client-Id
+      in: header
+      required: true
+      schema:
+        type: string
+      description: 用户识别号。
+    Api-Key:
+      name: Api-Key
+      in: header
+      required: true
+      schema:
+        type: string
+      description: API 密钥。
+  schemas:
+    SellerApiGetSellerProductV1Request:
+      type: object
+      description: 查询促销候选商品的请求体。
+      additionalProperties: false
+      properties:
+        action_id:
+          type: number
+          format: double
+          description: >-
+            活动识别号。可通过 POST /v1/actions 获取。官方页面未显示必填标记，但按接口语义应传。
+        limit:
+          type: number
+          format: double
+          default: 100
+          description: 每页返回数量。默认 100。
+        offset:
+          type: number
+          format: double
+          deprecated: true
+          description: >-
+            要跳过的元素数量。自 2025-05-05 起关闭，不应继续使用。
+        last_id:
+          type: number
+          format: double
+          description: >-
+            当前页最后一个值的 ID。首次请求不传，后续传上一页响应中的 result.last_id。
+    SellerApiGetSellerProductV1Response:
+      type: object
+      additionalProperties: false
+      required:
+        - result
+      properties:
+        result:
+          $ref: '#/components/schemas/SellerApiGetSellerProductV1Result'
+    SellerApiGetSellerProductV1Result:
+      type: object
+      additionalProperties: false
+      properties:
+        products:
+          type: array
+          description: 商品清单。
+          items:
+            $ref: '#/components/schemas/SellerApiCandidateProduct'
+        total:
+          type: number
+          format: double
+          description: 可用于活动的商品总数。
+        last_id:
+          type: number
+          format: double
+          description: 下一页游标。
+    SellerApiCandidateProduct:
+      type: object
+      additionalProperties: false
+      description: >-
+        候选商品项。部分字段在官方页面仅通过响应示例展示，未逐项展开详细说明。
+      properties:
+        id:
+          type: number
+          format: double
+          description: 商品识别号。
+        price:
+          type: number
+          format: double
+          description: 商品当前价格。
+        action_price:
+          type: number
+          format: double
+          description: 商品当前活动价。
+        alert_max_action_price_failed:
+          type: boolean
+          description: 最高活动价校验失败标志。
+        alert_max_action_price:
+          type: number
+          format: double
+          description: 最高活动价提示值。
+        max_action_price:
+          type: number
+          format: double
+          description: 允许加入该活动的最高活动价。
+        add_mode:
+          type: string
+          description: 加入促销的模式。示例值包括 NOT_SET、MANUAL。
+        stock:
+          type: number
+          format: double
+          description: 当前活动库存。
+        min_stock:
+          type: number
+          format: double
+          description: 最低库存阈值。
+        current_boost:
+          type: number
+          format: double
+          description: 当前 boost 值。
+        price_min_elastic:
+          type: number
+          format: double
+          description: 弹性促销相关最低价格字段。
+        price_max_elastic:
+          type: number
+          format: double
+          description: 弹性促销相关最高价格字段。
+        min_boost:
+          type: number
+          format: double
+          description: 最小 boost 值。
+        max_boost:
+          type: number
+          format: double
+          description: 最大 boost 值。
+    SellerApiActivateProductV1Request:
+      type: object
+      additionalProperties: false
+      required:
+        - action_id
+        - products
+      properties:
+        action_id:
+          type: number
+          format: double
+          description: 活动识别号。可通过 POST /v1/actions 获取。
+        products:
+          type: array
+          description: 待添加的商品列表。
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/SellerApiActivateProductItem'
+    SellerApiActivateProductItem:
+      type: object
+      additionalProperties: false
+      required:
+        - product_id
+        - action_price
+      properties:
+        product_id:
+          type: number
+          format: double
+          description: 商品识别号。
+        action_price:
+          type: number
+          format: double
+          description: 商品活动期间的价格。
+        stock:
+          type: number
+          format: double
+          description: 《库存折扣》促销中的商品单位数量。
+    SellerApiProductV1Response:
+      type: object
+      additionalProperties: false
+      required:
+        - result
+      properties:
+        result:
+          type: object
+          additionalProperties: false
+          properties:
+            product_ids:
+              type: array
+              description: 已添加到促销活动中的商品 ID 列表。
+              items:
+                type: number
+                format: double
+            rejected:
+              type: array
+              description: >-
+                无法添加到促销活动中的商品列表。product_id / reason 字段为本次补充核实后的明确结构。
+              items:
+                $ref: '#/components/schemas/SellerApiProductRejectedItem'
+    SellerApiProductRejectedItem:
+      type: object
+      additionalProperties: false
+      required:
+        - product_id
+        - reason
+      properties:
+        product_id:
+          type: number
+          format: double
+          description: 商品识别号。
+        reason:
+          type: string
+          description: 该商品未被加入促销活动的原因。
+    GenericError:
+      type: object
+      description: 官方页面在该接口页仅标注为 default 错误对象，未展开字段。
+      additionalProperties: true

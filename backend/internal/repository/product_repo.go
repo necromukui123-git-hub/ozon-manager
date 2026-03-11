@@ -50,6 +50,38 @@ func (r *ProductRepository) FindByShopID(shopID uint) ([]model.Product, error) {
 	return products, err
 }
 
+func (r *ProductRepository) FindByOzonProductIDs(shopID uint, ozonProductIDs []int64) (map[int64]model.Product, error) {
+	result := make(map[int64]model.Product)
+	if len(ozonProductIDs) == 0 {
+		return result, nil
+	}
+
+	products := make([]model.Product, 0, len(ozonProductIDs))
+	if err := r.db.Where("shop_id = ? AND ozon_product_id IN ?", shopID, ozonProductIDs).Find(&products).Error; err != nil {
+		return nil, err
+	}
+	for _, product := range products {
+		result[product.OzonProductID] = product
+	}
+	return result, nil
+}
+
+func (r *ProductRepository) FindBySourceSKUs(shopID uint, sourceSKUs []string) (map[string]model.Product, error) {
+	result := make(map[string]model.Product)
+	if len(sourceSKUs) == 0 {
+		return result, nil
+	}
+
+	products := make([]model.Product, 0, len(sourceSKUs))
+	if err := r.db.Where("shop_id = ? AND source_sku IN ?", shopID, sourceSKUs).Find(&products).Error; err != nil {
+		return nil, err
+	}
+	for _, product := range products {
+		result[product.SourceSKU] = product
+	}
+	return result, nil
+}
+
 // FindWithFilters 带筛选条件的商品列表
 func (r *ProductRepository) FindWithFilters(shopID uint, isLoss *bool, isPromoted *bool, keyword string, page, pageSize int) ([]model.Product, int64, error) {
 	var products []model.Product

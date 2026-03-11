@@ -106,6 +106,32 @@ export function unifiedRepricePromote(data) {
   return request.post('/promotions/unified-reprice-promote', data)
 }
 
+// ========== 自动加促销 ==============
+
+export function getAutoPromotionConfig(shopId) {
+  return request.get('/promotions/auto-add/config', {
+    params: { shop_id: shopId }
+  })
+}
+
+export function updateAutoPromotionConfig(data) {
+  return request.put('/promotions/auto-add/config', data)
+}
+
+export function startAutoPromotionRun(data) {
+  return request.post('/promotions/auto-add/runs', data)
+}
+
+export function listAutoPromotionRuns(params) {
+  return request.get('/promotions/auto-add/runs', { params })
+}
+
+export function getAutoPromotionRunDetail(runId, shopId) {
+  return request.get(`/promotions/auto-add/runs/${runId}`, {
+    params: { shop_id: shopId }
+  })
+}
+
 // ========== Excel 相关 ==============
 
 // 导入亏损商品
