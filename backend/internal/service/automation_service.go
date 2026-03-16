@@ -183,6 +183,29 @@ func (s *AutomationService) CreateSyncActionCandidatesJob(userID uint, shopID ui
 	return s.automationRepo.FindJobByIDAndShop(job.ID, shopID)
 }
 
+func (s *AutomationService) CreateSyncSearchCPOProductsJob(userID uint, shopID uint) (*model.AutomationJob, error) {
+	job := &model.AutomationJob{
+		ShopID:     shopID,
+		CreatedBy:  userID,
+		JobType:    model.AutomationJobTypeSyncSearchCPOProducts,
+		Status:     model.AutomationJobStatusPending,
+		RateLimit:  1,
+		TotalItems: 1,
+	}
+	items := []model.AutomationJobItem{{
+		SourceSKU:         "__sync_search_cpo_products__",
+		TargetPrice:       0.01,
+		OverallStatus:     model.AutomationStepStatusPending,
+		StepExitStatus:    model.AutomationStepStatusPending,
+		StepRepriceStatus: model.AutomationStepStatusPending,
+		StepReaddStatus:   model.AutomationStepStatusPending,
+	}}
+	if err := s.automationRepo.CreateJobWithItems(job, items); err != nil {
+		return nil, err
+	}
+	return s.automationRepo.FindJobByIDAndShop(job.ID, shopID)
+}
+
 func (s *AutomationService) CreateSyncActionProductsJob(userID uint, shopID uint, promotionActionID uint, sourceActionID string) (*model.AutomationJob, error) {
 	job := &model.AutomationJob{
 		ShopID:     shopID,
@@ -733,6 +756,8 @@ func artifactTypeForJob(jobType string, fallback string) string {
 		return "shop_actions_snapshot"
 	case model.AutomationJobTypeSyncActionCandidates:
 		return "action_candidates_snapshot"
+	case model.AutomationJobTypeSyncSearchCPOProducts:
+		return "search_cpo_products_snapshot"
 	case model.AutomationJobTypeSyncActionProducts:
 		return "action_products_snapshot"
 	case model.AutomationJobTypeShopActionDeclare, model.AutomationJobTypeShopActionRemove:
@@ -748,6 +773,7 @@ func extensionSupportedJobTypes() []string {
 	return []string{
 		model.AutomationJobTypeSyncShopActions,
 		model.AutomationJobTypeSyncActionCandidates,
+		model.AutomationJobTypeSyncSearchCPOProducts,
 		model.AutomationJobTypeSyncActionProducts,
 		model.AutomationJobTypeShopActionDeclare,
 		model.AutomationJobTypeShopActionRemove,

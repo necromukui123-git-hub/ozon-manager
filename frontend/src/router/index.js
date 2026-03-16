@@ -38,6 +38,12 @@ const routes = [
         meta: { requiresBusinessRole: true }
       },
       {
+        path: 'promotions/search-cpo',
+        name: 'SearchCPO',
+        component: () => import('@/views/promotions/SearchCPO.vue'),
+        meta: { requiresBusinessRole: true }
+      },
+      {
         path: 'promotions/batch-enroll',
         name: 'BatchEnroll',
         component: () => import('@/views/promotions/BatchEnroll.vue'),

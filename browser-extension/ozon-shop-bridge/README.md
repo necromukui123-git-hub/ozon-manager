@@ -42,7 +42,9 @@
 ## 当前支持任务类型
 
 - `sync_shop_actions`
+- `sync_action_candidates`
 - `sync_action_products`
+- `sync_search_cpo_products`
 - `shop_action_declare`
 - `shop_action_remove`
 - `promo_unified_enroll`

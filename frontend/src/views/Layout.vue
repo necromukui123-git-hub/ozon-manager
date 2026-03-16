@@ -69,6 +69,7 @@
               <span>促销管理</span>
             </template>
             <el-menu-item index="/promotions/auto-add">自动加促销</el-menu-item>
+            <el-menu-item index="/promotions/search-cpo">CPO 商品报名</el-menu-item>
             <el-menu-item index="/promotions/actions">活动列表</el-menu-item>
             <el-menu-item index="/promotions/batch-enroll">批量报名</el-menu-item>
             <el-menu-item index="/promotions/loss-process">亏损处理</el-menu-item>

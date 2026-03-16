@@ -136,6 +136,44 @@ func (r *OzonCatalogRepository) FindExistingByProductIDs(shopID uint, productIDs
 	return result, nil
 }
 
+func (r *OzonCatalogRepository) FindByOfferIDs(shopID uint, offerIDs []string) (map[string]model.OzonProductCatalogItem, error) {
+	result := make(map[string]model.OzonProductCatalogItem)
+	if len(offerIDs) == 0 {
+		return result, nil
+	}
+
+	items := make([]model.OzonProductCatalogItem, 0, len(offerIDs))
+	if err := r.db.Where("shop_id = ? AND offer_id IN ?", shopID, offerIDs).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.OfferID == "" {
+			continue
+		}
+		result[item.OfferID] = item
+	}
+	return result, nil
+}
+
+func (r *OzonCatalogRepository) FindBySKUs(shopID uint, skus []int64) (map[int64]model.OzonProductCatalogItem, error) {
+	result := make(map[int64]model.OzonProductCatalogItem)
+	if len(skus) == 0 {
+		return result, nil
+	}
+
+	items := make([]model.OzonProductCatalogItem, 0, len(skus))
+	if err := r.db.Where("shop_id = ? AND sku IN ?", shopID, skus).Find(&items).Error; err != nil {
+		return nil, err
+	}
+	for _, item := range items {
+		if item.SKU <= 0 {
+			continue
+		}
+		result[item.SKU] = item
+	}
+	return result, nil
+}
+
 func (r *OzonCatalogRepository) GetLatestSyncedAt(shopID uint) (*time.Time, error) {
 	var item model.OzonProductCatalogItem
 	err := r.db.

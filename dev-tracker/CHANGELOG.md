@@ -1,5 +1,123 @@
 # Ozon Manager 变更日志
 
+## 2026-03-17（补充三）
+### 主题
+为 Search CPO 刷新增加“真实请求头捕获”兜底，避免页面能请求成功但插件仍读不到 `x-adv-current-organisation`。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/manifest.json`：
+   - 新增 `webRequest` 权限，并修正 `manifest.json` 中该权限的声明格式，确保扩展能正常注册请求头监听。
+2. `browser-extension/ozon-shop-bridge/background_search_cpo.js`：
+   - 监听 `https://seller.ozon.ru/performance-api/seller-api/search-performance-cpo/*` 的出站请求头。
+   - 把捕获到的 `x-adv-current-organisation / x-o3-company-id / x-o3-language / x-o3-app-name` 按 `tabId` 缓存到扩展本地存储。
+   - `sync_search_cpo_products` 复用现有 CPO 页签时，若页面探测失败，会退回使用这份真实请求头上下文并注入页面。
+3. 提示语义：
+   - 若刚重载插件、页面尚未产生任何真实 CPO 请求，错误文案会明确提示“先手动刷新该页面一次”。
+
+### 影响范围
+1. 首次重载扩展后，只需让目标 CPO 页面产生一次真实请求，后续插件即可复用真实请求头完成刷新。
+2. 本次不涉及后端接口、前端页面和数据库结构变更。
+
+### 验证
+1. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js` 通过。
+2. 插件清单解析：`Get-Content browser-extension/ozon-shop-bridge/manifest.json -Raw | ConvertFrom-Json | Out-Null` 通过。
+
+## 2026-03-17（补充二）
+### 主题
+修复 Search CPO 页面明明能发请求、插件却读不到 `x-adv-current-organisation` 的问题。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo.js`：
+   - `scriptReadSearchCPOContext` 从“只读 storage/cookie”扩展为同时扫描页面全局状态、请求配置对象和常见框架根对象。
+   - 对 `organization/organisation/company/language/appName` 相关字段增加对象值解析，兼容值不是纯字符串而是对象结构的场景。
+   - 成功解析的上下文会缓存在当前页面，供后续 `scriptFetchSearchCPOProducts` 直接复用。
+2. Search CPO 刷新链路：
+   - `scriptFetchSearchCPOProducts` 改为优先复用页面探测阶段缓存下来的 `companyId/language/appName/advOrganisation`。
+   - 仅在缓存不存在时才回退到 cookie/storage，减少“页面真实请求头存在但插件误判缺失”的情况。
+
+### 影响范围
+1. 已打开且已正常加载的 Seller CPO 页面，更可能被插件正确读取到请求上下文。
+2. 本次不改变后端接口、前端页面和数据库结构。
+
+### 验证
+1. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js` 通过。
+
+## 2026-03-17（补充）
+### 主题
+修复 Search CPO 刷新隐藏商品时默认新开 Ozon 页签的问题，改为优先复用已打开的 Seller CPO 页面。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo.js`：
+   - `sync_search_cpo_products` 不再走通用 `ensureSellerLoggedInTab()` 工作页流程，避免刷新时默认创建新的 Seller 页签。
+   - 新增现有页签扫描逻辑，仅复用 URL 位于 `seller.ozon.ru/app/advertisement/product/cpo...` 的已打开页签。
+2. Search CPO 页面上下文探测：
+   - 刷新前先在候选页签中实时读取 `sc_company_id/x-o3-company-id` 与 `x-adv-current-organisation`。
+   - 若未找到已打开的 CPO 页面，直接返回“请先打开 Seller 推广按订单付费页面后重试”。
+   - 若页面缺少组织上下文，直接返回“请在该页面刷新或重新进入后重试”。
+3. 变更边界：
+   - 本次仅调整 `sync_search_cpo_products` 的页签复用策略。
+   - 其它店铺活动同步、候选同步、统一报名/移除等任务继续沿用当前静默工作页机制。
+
+### 影响范围
+1. 点击“刷新隐藏商品”时，插件会优先复用用户当前已经打开的 CPO 页面，不再默认新开 Ozon 页面打断操作。
+2. Search CPO 刷新仍然通过 Seller 页面上下文直接调用 `performance-api`，不是回退成页面点击式自动化。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js` 通过。
+
+## 2026-03-17
+### 主题
+补强 Search CPO 已关闭商品报名链路：官方目录缓存兜底、官方/店铺结果解耦、页面状态语义对齐。
+
+### 关键变更
+1. 后端 `SearchCPOService`：
+   - 运行前按 `source_sku` 同时查询本地商品与 Ozon 目录缓存。
+   - 官方活动报名新增 `offer_id/sku -> ozon_product_id` 兜底，避免仅因本地 `products` 未命中而失败。
+   - 官方活动价按“本地当前价 -> CPO 缓存价 -> 目录缓存价”顺序解析。
+2. 店铺活动执行链：
+   - 移除“官方失败自动跳过店铺活动”的旧逻辑。
+   - 逐商品总状态新增 `partial_success`，可明确显示“官方失败 / 店铺成功”这类混合结果。
+3. 前端 `SearchCPO` 页面：
+   - 将 `SEARCH_PROMO_STATUS_DISABLED` 明确展示为“已关闭”。
+   - 执行说明改为推荐先筛选“已关闭”商品后再报名。
+4. 测试：
+   - 新增 `backend/internal/service/search_cpo_service_test.go`，覆盖目录缓存匹配、官方价格解析与状态汇总。
+
+### 影响范围
+1. Search CPO 商品即使未命中本地 `products` 表，也可在目录缓存存在时继续参与官方活动报名。
+2. 同一商品的官方与店铺活动结果不再互相遮蔽，运行详情更接近真实执行结果。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./...` 通过。
+2. 前端：`cd frontend && cmd /c npm run build` 通过。
+## 2026-03-14
+### 主题
+新增 Search CPO 隐藏商品批量报名能力（页面 + 后端 + 插件任务扩展）。
+
+### 关键变更
+1. 后端新增 Search CPO 模块：
+   - 新增模型、仓储、服务、handler 与路由，支持配置保存、商品刷新、任务执行、历史查询、详情查看。
+   - 新增任务类型 `sync_search_cpo_products` 并接入自动化任务分发能力。
+2. 前端新增页面：
+   - 新增 `/promotions/search-cpo` 与菜单“CPO 商品报名”。
+   - 支持本地筛选后按“当前筛选结果”执行报名，支持运行历史和逐商品详情。
+3. 数据库迁移：
+   - 新增增量脚本 `backend/migrations/upgrade_20260313_search_cpo_bulk_enroll.sql`。
+   - `backend/migrations/init_database.sql` 已同步回写到最新结构。
+4. 插件侧：
+   - 插件主入口改为 `browser-extension/ozon-shop-bridge/manifest.json -> background_search_cpo.js`，支持隐藏 CPO 商品抓取任务。
+
+### 影响范围
+1. 运营可在单页完成 Search CPO 商品刷新、筛选、批量报名和历史追踪。
+2. 官方活动按当前筛选商品精准报名；店铺活动复用 unified 异步任务链路。
+3. 若插件主入口仍指向旧 `background.js`，会出现“插件不支持该任务类型: sync_search_cpo_products”。
+
+### 验证
+1. 后端：`go test ./...` 通过。
+2. 前端：`cmd /c npm run build` 通过。
+3. 插件：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js` 通过。
 ## 2026-03-11（补充三）
 ### 主题
 修复店铺活动候选同步失败时错误原因被吞掉的问题，并纠正插件支持任务说明。
@@ -492,3 +610,6 @@
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
+
+
+

@@ -7,7 +7,8 @@
     "storage",
     "alarms",
     "tabs",
-    "scripting"
+    "scripting",
+    "webRequest"
   ],
   "host_permissions": [
     "https://seller.ozon.ru/*",
@@ -20,7 +21,7 @@
     "https://*/*"
   ],
   "background": {
-    "service_worker": "background.js",
+    "service_worker": "background_search_cpo.js",
     "type": "module"
   },
   "action": {
@@ -41,3 +42,4 @@
     }
   ]
 }
+

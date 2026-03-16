@@ -132,6 +132,42 @@ export function getAutoPromotionRunDetail(runId, shopId) {
   })
 }
 
+// ========== CPO 隐藏商品批量报名 ==========
+
+export function getSearchCPOConfig(shopId) {
+  return request.get('/promotions/search-cpo/config', {
+    params: { shop_id: shopId }
+  })
+}
+
+export function updateSearchCPOConfig(data) {
+  return request.put('/promotions/search-cpo/config', data)
+}
+
+export function listSearchCPOProducts(shopId) {
+  return request.get('/promotions/search-cpo/products', {
+    params: { shop_id: shopId }
+  })
+}
+
+export function refreshSearchCPOProducts(data) {
+  return request.post('/promotions/search-cpo/products/refresh', data)
+}
+
+export function startSearchCPORun(data) {
+  return request.post('/promotions/search-cpo/runs', data)
+}
+
+export function listSearchCPORuns(params) {
+  return request.get('/promotions/search-cpo/runs', { params })
+}
+
+export function getSearchCPORunDetail(runId, shopId) {
+  return request.get(`/promotions/search-cpo/runs/${runId}`, {
+    params: { shop_id: shopId }
+  })
+}
+
 // ========== Excel 相关 ==============
 
 // 导入亏损商品

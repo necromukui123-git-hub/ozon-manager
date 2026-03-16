@@ -255,6 +255,90 @@ CREATE TABLE IF NOT EXISTS auto_promotion_run_items (
 );
 
 -- ============================================================
+-- 13. CPO 隐藏商品默认配置
+-- ============================================================
+CREATE TABLE IF NOT EXISTS search_cpo_configs (
+    id                  SERIAL PRIMARY KEY,
+    shop_id             INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    official_action_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    shop_action_ids     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(shop_id)
+);
+
+-- ============================================================
+-- 14. CPO 隐藏商品缓存
+-- ============================================================
+CREATE TABLE IF NOT EXISTS search_cpo_products (
+    id                  SERIAL PRIMARY KEY,
+    shop_id             INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    sku                 VARCHAR(120),
+    source_sku          VARCHAR(120) NOT NULL,
+    image_url           TEXT,
+    title               VARCHAR(500),
+    category_name       VARCHAR(300),
+    price               DECIMAL(12, 2),
+    is_in_stock         BOOLEAN NOT NULL DEFAULT FALSE,
+    search_promo_status VARCHAR(80),
+    is_favorite         BOOLEAN NOT NULL DEFAULT FALSE,
+    orders              BIGINT NOT NULL DEFAULT 0,
+    spent               DECIMAL(12, 2) NOT NULL DEFAULT 0,
+    clicks              BIGINT NOT NULL DEFAULT 0,
+    ctr_percent         DECIMAL(8, 4) NOT NULL DEFAULT 0,
+    stock_total         BIGINT NOT NULL DEFAULT 0,
+    payload             JSONB,
+    last_synced_at      TIMESTAMP,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(shop_id, source_sku)
+);
+
+-- ============================================================
+-- 15. CPO 批量报名运行表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS search_cpo_runs (
+    id                  SERIAL PRIMARY KEY,
+    shop_id             INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    triggered_by        INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    status              VARCHAR(30) NOT NULL DEFAULT 'pending',
+    filter_snapshot     JSONB DEFAULT '{}'::jsonb,
+    action_snapshot     JSONB DEFAULT '{}'::jsonb,
+    total_fetched       INTEGER DEFAULT 0,
+    total_selected      INTEGER DEFAULT 0,
+    total_processed     INTEGER DEFAULT 0,
+    success_items       INTEGER DEFAULT 0,
+    failed_items        INTEGER DEFAULT 0,
+    skipped_items       INTEGER DEFAULT 0,
+    error_message       TEXT,
+    started_at          TIMESTAMP,
+    completed_at        TIMESTAMP,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 16. CPO 批量报名运行明细表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS search_cpo_run_items (
+    id                  SERIAL PRIMARY KEY,
+    run_id              INTEGER NOT NULL REFERENCES search_cpo_runs(id) ON DELETE CASCADE,
+    product_cache_id    INTEGER REFERENCES search_cpo_products(id) ON DELETE SET NULL,
+    source_sku          VARCHAR(120) NOT NULL,
+    sku                 VARCHAR(120),
+    title               VARCHAR(500),
+    search_promo_status VARCHAR(80),
+    overall_status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+    official_status     VARCHAR(20) NOT NULL DEFAULT 'pending',
+    shop_status         VARCHAR(20) NOT NULL DEFAULT 'pending',
+    official_results    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    shop_results        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_id, source_sku)
+);
+
+-- ============================================================
 -- 13. Ozon 商品目录缓存表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS ozon_product_catalog_items (
@@ -425,6 +509,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_auto_promotion_runs_config_trigger_schedul
 CREATE INDEX IF NOT EXISTS idx_auto_promotion_run_items_run_id ON auto_promotion_run_items(run_id);
 CREATE INDEX IF NOT EXISTS idx_auto_promotion_run_items_product_id ON auto_promotion_run_items(product_id);
 CREATE INDEX IF NOT EXISTS idx_auto_promotion_run_items_overall_status ON auto_promotion_run_items(overall_status);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_configs_shop_id ON search_cpo_configs(shop_id);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_products_shop_id ON search_cpo_products(shop_id);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_products_source_sku ON search_cpo_products(source_sku);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_products_status ON search_cpo_products(search_promo_status);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_runs_shop_id ON search_cpo_runs(shop_id);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_runs_status ON search_cpo_runs(status);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_run_items_run_id ON search_cpo_run_items(run_id);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_run_items_source_sku ON search_cpo_run_items(source_sku);
 CREATE INDEX IF NOT EXISTS idx_ozon_catalog_shop_product ON ozon_product_catalog_items(shop_id, ozon_product_id);
 CREATE INDEX IF NOT EXISTS idx_ozon_catalog_shop_date ON ozon_product_catalog_items(shop_id, listing_date);
 CREATE INDEX IF NOT EXISTS idx_ozon_catalog_shop_visibility ON ozon_product_catalog_items(shop_id, visibility);

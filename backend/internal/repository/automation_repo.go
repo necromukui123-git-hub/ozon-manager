@@ -140,6 +140,7 @@ func (r *AutomationRepository) AcquirePendingJobForAgent(agentID uint) (*model.A
 				model.AutomationJobTypeRemoveRepriceReadd,
 				model.AutomationJobTypeSyncShopActions,
 				model.AutomationJobTypeSyncActionCandidates,
+				model.AutomationJobTypeSyncSearchCPOProducts,
 				model.AutomationJobTypeSyncActionProducts,
 				model.AutomationJobTypeShopActionDeclare,
 				model.AutomationJobTypeShopActionRemove,

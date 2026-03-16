@@ -41,6 +41,7 @@ func main() {
 	promotionRepo := repository.NewPromotionRepository(db)
 	automationRepo := repository.NewAutomationRepository(db)
 	autoPromotionRepo := repository.NewAutoPromotionRepository(db)
+	searchCPORepo := repository.NewSearchCPORepository(db)
 	operationLogRepo := repository.NewOperationLogRepository(db)
 
 	// 初始化Service
@@ -52,6 +53,7 @@ func main() {
 	automationService := service.NewAutomationService(automationRepo, productRepo, shopRepo)
 	promotionService := service.NewPromotionService(productRepo, promotionRepo, shopRepo, automationService)
 	autoPromotionService := service.NewAutoPromotionService(autoPromotionRepo, productRepo, promotionRepo, shopRepo, ozonCatalogRepo, ozonCatalogService, automationService, promotionService)
+	searchCPOService := service.NewSearchCPOService(searchCPORepo, productRepo, promotionRepo, shopRepo, ozonCatalogRepo, automationService, promotionService)
 	autoPromotionService.StartScheduler()
 
 	// 初始化Handler
@@ -61,6 +63,7 @@ func main() {
 	productHandler := handler.NewProductHandler(productService, shopService, ozonCatalogService)
 	promotionHandler := handler.NewPromotionHandler(promotionService, shopService)
 	autoPromotionHandler := handler.NewAutoPromotionHandler(autoPromotionService, shopService)
+	searchCPOHandler := handler.NewSearchCPOHandler(searchCPOService, shopService)
 	automationHandler := handler.NewAutomationHandler(automationService, shopService)
 	extensionHandler := handler.NewExtensionHandler(automationService, shopService)
 	operationLogHandler := handler.NewOperationLogHandler(operationLogRepo)
@@ -216,6 +219,13 @@ func main() {
 					promotions.POST("/auto-add/runs", autoPromotionHandler.StartRun)
 					promotions.GET("/auto-add/runs", autoPromotionHandler.ListRuns)
 					promotions.GET("/auto-add/runs/:id", autoPromotionHandler.GetRunDetail)
+					promotions.GET("/search-cpo/config", searchCPOHandler.GetConfig)
+					promotions.PUT("/search-cpo/config", searchCPOHandler.UpdateConfig)
+					promotions.GET("/search-cpo/products", searchCPOHandler.ListProducts)
+					promotions.POST("/search-cpo/products/refresh", searchCPOHandler.RefreshProducts)
+					promotions.POST("/search-cpo/runs", searchCPOHandler.StartRun)
+					promotions.GET("/search-cpo/runs", searchCPOHandler.ListRuns)
+					promotions.GET("/search-cpo/runs/:id", searchCPOHandler.GetRunDetail)
 				}
 
 				automation := business.Group("/automation")
