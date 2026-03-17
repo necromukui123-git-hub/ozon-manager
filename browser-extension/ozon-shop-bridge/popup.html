@@ -5,68 +5,150 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ozon Bridge</title>
   <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-soft: #eef4ff;
+      --border: #d9e2ef;
+      --text: #1f2937;
+      --muted: #5b6472;
+      --primary: #1769ff;
+      --primary-soft: #dce8ff;
+      --success: #127a4a;
+      --success-soft: #dff7ea;
+      --warning: #915f00;
+      --warning-soft: #fff1cb;
+      --danger: #b42318;
+      --danger-soft: #ffe3e0;
+    }
+
     body {
       margin: 0;
-      padding: 12px;
-      width: 320px;
+      padding: 14px;
+      width: 340px;
       font-family: "Segoe UI", "PingFang SC", sans-serif;
-      background: #f6f8fb;
-      color: #1f2937;
+      background: radial-gradient(circle at top right, #e9f2ff 0, var(--bg) 42%);
+      color: var(--text);
     }
+
     h1 {
-      margin: 0 0 10px 0;
+      margin: 0 0 12px;
       font-size: 16px;
+      font-weight: 700;
     }
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      margin-bottom: 10px;
-    }
-    label {
-      font-size: 12px;
-      color: #4b5563;
-    }
-    input[type="text"], input[type="number"] {
-      border: 1px solid #d1d5db;
-      border-radius: 8px;
-      padding: 6px 8px;
-      font-size: 12px;
-      background: #fff;
-    }
+
     .row {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-bottom: 12px;
+    }
+
+    label,
+    summary {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    .card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
       margin-bottom: 10px;
     }
+
+    .card-primary {
+      background: var(--surface-soft);
+    }
+
+    .card[data-tone="success"] {
+      background: var(--success-soft);
+      border-color: #b8e4cb;
+      color: var(--success);
+    }
+
+    .card[data-tone="warning"] {
+      background: var(--warning-soft);
+      border-color: #f1d27c;
+      color: var(--warning);
+    }
+
+    .card[data-tone="danger"] {
+      background: var(--danger-soft);
+      border-color: #f2b0a9;
+      color: var(--danger);
+    }
+
+    .button-row {
+      display: grid;
+      grid-template-columns: 1fr 1.4fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
     button {
-      width: 100%;
       border: 0;
-      border-radius: 8px;
-      padding: 8px 10px;
-      background: #2563eb;
+      border-radius: 10px;
+      padding: 9px 10px;
+      background: var(--primary);
       color: #fff;
       font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
     }
+
+    button.secondary {
+      background: #dbe7ff;
+      color: #0f3ea8;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.7;
+    }
+
     .hint {
-      margin-top: 8px;
+      margin: 10px 0;
       font-size: 11px;
-      color: #6b7280;
-      line-height: 1.4;
+      line-height: 1.5;
+      color: var(--muted);
       white-space: pre-wrap;
     }
-    .status {
-      margin-top: 8px;
-      border-radius: 8px;
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      padding: 8px;
-      font-size: 11px;
-      color: #374151;
-      line-height: 1.4;
-      white-space: pre-wrap;
+
+    details {
+      margin-top: 6px;
+      border: 1px dashed var(--border);
+      border-radius: 12px;
+      padding: 8px 10px 2px;
+      background: rgba(255, 255, 255, 0.75);
+    }
+
+    summary {
+      cursor: pointer;
+      font-weight: 600;
+      margin-bottom: 8px;
     }
   </style>
 </head>
@@ -83,26 +165,37 @@
     <input id="apiBaseUrl" type="text" placeholder="http://127.0.0.1:8080">
   </div>
 
-  <div class="field">
-    <label for="adminOrigin">管理端 Origin（可选）</label>
-    <input id="adminOrigin" type="text" placeholder="https://admin.example.com">
+  <div id="connection" class="card card-primary" data-tone="neutral">正在检测管理端连接状态...</div>
+  <div id="status" class="card">初始化中...</div>
+
+  <div class="button-row">
+    <button id="detectBtn" class="secondary" type="button">重新检测</button>
+    <button id="saveBtn" type="button">保存并立即同步一次</button>
   </div>
 
-  <div class="field">
-    <label for="shopId">店铺 ID</label>
-    <input id="shopId" type="number" min="1" placeholder="例如 1">
-  </div>
+  <div class="hint">普通用户只需要打开管理端并保持登录。插件会自动同步登录态和当前店铺。
+如果首次使用的是非 localhost 域名，点击“重新检测”时按提示授权即可。</div>
 
-  <div class="field">
-    <label for="token">登录 Token（通常自动同步）</label>
-    <input id="token" type="text" placeholder="Bearer token">
-  </div>
+  <details>
+    <summary>高级设置 / 排障</summary>
 
-  <button id="saveBtn" type="button">保存并立即同步一次</button>
+    <div class="field">
+      <label for="adminOrigin">管理端 Origin（仅排障）</label>
+      <input id="adminOrigin" type="text" placeholder="https://admin.example.com">
+    </div>
 
-  <div class="hint">默认会从后端地址推导同源页面进行 token/shop_id 自动同步。
-如管理端与后端不同源，可填写“管理端 Origin”并保存。</div>
-  <div id="status" class="status">初始化中...</div>
+    <div class="field">
+      <label for="shopId">店铺 ID（仅排障）</label>
+      <input id="shopId" type="number" min="1" placeholder="例如 1">
+    </div>
+
+    <div class="field">
+      <label for="token">手动 Token（仅排障）</label>
+      <input id="token" type="text" placeholder="仅自动连接不可用时填写">
+    </div>
+
+    <div class="hint">只有自动连接管理端不可用时，才需要填写这里的兜底配置。</div>
+  </details>
 
   <script src="popup.js"></script>
 </body>

@@ -1,5 +1,31 @@
 # Ozon Manager 变更日志
 
+## 2026-03-18
+### 主题
+插件改为“自动连接管理端登录态”为主流程，普通用户无需再手动复制 token。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo.js`：
+   - 新增 `OZON_MANAGER_CHECK_AUTH_SYNC` 消息，用于主动检测管理端连接状态。
+   - 插件会扫描已打开的管理端页签，实时读取 `localStorage.token` 与 `currentShopId`，并返回 `connected / missing_login / missing_shop / permission_required / sync_unavailable / failed` 结构化状态。
+   - `handleAuthSync` 与本地存储新增管理端连接元数据，popup 可直接展示连接来源、最近检测与失败原因。
+2. `browser-extension/ozon-shop-bridge/popup.html`、`popup.js`：
+   - popup 主界面改为自动连接优先，新增“重新检测”按钮。
+   - `Token / 店铺 ID / 管理端 Origin` 默认收进“高级设置 / 排障”，避免普通用户被引导去手填凭证。
+   - 首屏明确展示“请先登录 / 请先选择店铺 / 需要授权 / 未打开管理端页面 / 已连接”等状态。
+3. `browser-extension/ozon-shop-bridge/README.md`：
+   - 使用说明改写为“先登录管理端并选择店铺，非 localhost 首次授权即可”，并明确高级设置仅用于排障兜底。
+
+### 影响范围
+1. 普通用户不再需要通过 F12 手动复制 token；插件默认按“打开管理端并登录”完成接入。
+2. 非 localhost 管理端首次接入时，会通过 popup 的“重新检测”触发域名授权。
+3. 本次不涉及后端业务接口与数据库结构变更。
+
+### 验证
+1. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js` 通过。
+2. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/popup.js` 通过。
+3. 插件语法检查：`node --check browser-extension/ozon-shop-bridge/content-auth-sync.js` 通过。
+
 ## 2026-03-17（补充三）
 ### 主题
 为 Search CPO 刷新增加“真实请求头捕获”兜底，避免页面能请求成功但插件仍读不到 `x-adv-current-organisation`。
@@ -610,6 +636,3 @@
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
-
-
-

@@ -1,10 +1,10 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-17  
-状态：进行中（Search CPO 报名链路已补强，页签复用体验已修正，待真实店铺回归）
+最后更新时间：2026-03-18  
+状态：进行中（插件登录态自动接入主流程已收敛，待真实环境回归）
 
 ## 本次交付单元
-本次目标：收敛 Search CPO 刷新体验，避免“刷新隐藏商品”默认新开 Ozon 页签；同时保持 CPO 接口抓取继续依赖已打开 Seller CPO 页面里的实时上下文。
+本次目标：把插件默认使用路径收敛为“自动连接当前管理端登录态”，避免普通用户再通过 F12 手动复制 token；同时保留高级设置作为排障兜底。
 
 ## 已完成（含关键文件）
 0. 商品列表同步“成功但数据库无数据”修复（按 `/doc` 重构调用与失败语义）：
@@ -193,6 +193,12 @@
    - 处理：一旦捕获到 `x-adv-current-organisation / x-o3-company-id / x-o3-language / x-o3-app-name`，就按 `tabId` 缓存在扩展存储中；`sync_search_cpo_products` 扫描到对应 CPO 页签时会优先把这份真实上下文注入页面后再执行刷新。
    - 处理：若刚重载插件导致还没捕获到任何真实请求头，错误文案会明确提示先手动刷新一次该 CPO 页面。
    - 涉及：`browser-extension/ozon-shop-bridge/manifest.json`、`browser-extension/ozon-shop-bridge/background_search_cpo.js`。
+38. 插件登录态自动连接主流程收敛：
+   - 根因：popup 默认暴露 `token/shop_id` 手填，普通用户容易被引导去 F12 复制 token；同时插件缺少“管理端是否已登录 / 已选店铺 / 已授权”的显式状态。
+   - 处理：`background_search_cpo.js` 新增 `OZON_MANAGER_CHECK_AUTH_SYNC`，主动扫描管理端页签并读取 `localStorage.token/currentShopId`，返回 `connected / missing_login / missing_shop / permission_required / sync_unavailable / failed` 结构化状态。
+   - 处理：popup 重构为“自动连接为主”，新增“重新检测”；默认将 `Token / 店铺 ID / 管理端 Origin` 收进“高级设置 / 排障”，并首屏展示连接来源、管理端 Origin、最近检测和立即同步结果。
+   - 处理：`README.md` 同步改写为普通用户说明：先在管理端登录并选择店铺，非 localhost 首次授权即可，只有自动连接失败时才使用高级设置兜底。
+   - 涉及：`browser-extension/ozon-shop-bridge/background_search_cpo.js`、`browser-extension/ozon-shop-bridge/popup.html`、`browser-extension/ozon-shop-bridge/popup.js`、`browser-extension/ozon-shop-bridge/README.md`。
 ## 验证结果
 0. 后端回归测试通过（含本次商品同步修复）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
 0. 前端构建通过（含“同步商品”错误提示调整）：`cd frontend && cmd /c npm run build`（非沙箱环境执行）。
@@ -244,6 +250,7 @@
 45. 插件脚本语法检查通过（含 Search CPO 页面上下文提取扩大）：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
 46. 插件脚本语法检查通过（含 Search CPO 真实请求头捕获兜底）：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
 47. 插件清单解析校验通过（含 `webRequest` 权限声明修正）：`Get-Content browser-extension/ozon-shop-bridge/manifest.json -Raw | ConvertFrom-Json | Out-Null`。
+48. 插件脚本语法检查通过（含管理端自动连接状态收敛）：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`、`node --check browser-extension/ozon-shop-bridge/popup.js`、`node --check browser-extension/ozon-shop-bridge/content-auth-sync.js`。
 ## 数据库执行记录
 0. 本次（商品同步无数据修复）无新增迁移脚本：仅修正 Ozon API 请求/响应解析、同步失败语义与前端错误提示，不涉及数据库结构变更。
 1. 本轮新增可执行升级脚本：`backend/migrations/upgrade_legacy_to_current.sql`（历史总升级）。
@@ -281,12 +288,13 @@
 32. 本次（Search CPO 刷新页签复用修复）无新增迁移脚本：仅调整插件页签选择与页面上下文探测逻辑，不涉及数据库结构变更。
 33. 本次（Search CPO 页面上下文提取范围扩大）无新增迁移脚本：仅调整插件在 Seller CPO 页面中的上下文发现策略，不涉及数据库结构变更。
 34. 本次（Search CPO 真实请求头捕获兜底）无新增迁移脚本：仅调整扩展权限与请求头缓存策略，不涉及数据库结构变更。
+35. 本次（插件登录态自动连接主流程收敛）无新增迁移脚本：仅调整插件 popup / background 状态契约与说明文案，不涉及数据库结构变更。
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。
 2. 缺少真实环境下长时间混合在线回归报告。
 3. 执行引擎路由监控指标尚未落地。
 
 ## 下一步（最多 3 项）
-1. 执行 Search CPO 真实店铺联调，重点核对“已关闭”商品集合、官方目录缓存兜底命中率，以及刷新隐藏商品时是否稳定复用已打开 CPO 页签。
+1. 执行插件真实环境回归，重点核对同源 / 非 localhost 授权、管理端登录态切换、切店铺后 `currentShopId` 自动同步，以及“保存并立即同步一次”提示是否与真实状态一致。
 2. 产出 Chrome 商店上架清单、权限说明与隐私政策文案。
 3. 增加路由监控指标和告警（extension 在线率、fallback 次数、冲突阻断次数）。

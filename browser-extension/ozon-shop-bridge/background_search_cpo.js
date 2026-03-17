@@ -5,6 +5,16 @@ const DEFAULT_POLL_INTERVAL_MS = 5000
 const SEARCH_CPO_CONTEXT_STORAGE_KEY = 'searchCpoRequestContext'
 const SEARCH_CPO_CONTEXT_MAX_AGE_MS = 30 * 60 * 1000
 const SEARCH_CPO_REQUEST_URL_PATTERN = `${SELLER_BASE_URL}/performance-api/seller-api/search-performance-cpo/*`
+const AUTH_SYNC_STATUS_UNKNOWN = 'unknown'
+const AUTH_SYNC_STATUS_CONNECTED = 'connected'
+const AUTH_SYNC_STATUS_MISSING_LOGIN = 'missing_login'
+const AUTH_SYNC_STATUS_MISSING_SHOP = 'missing_shop'
+const AUTH_SYNC_STATUS_PERMISSION_REQUIRED = 'permission_required'
+const AUTH_SYNC_STATUS_SYNC_UNAVAILABLE = 'sync_unavailable'
+const AUTH_SYNC_STATUS_FAILED = 'failed'
+const AUTH_SYNC_SOURCE_AUTO = 'auto'
+const AUTH_SYNC_SOURCE_MANUAL = 'manual'
+const AUTH_SYNC_SOURCE_NONE = 'none'
 
 
 const DEFAULT_STATE = {
@@ -18,6 +28,11 @@ const DEFAULT_STATE = {
   pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
   lastRunAt: '',
   lastError: '',
+  authSyncStatus: AUTH_SYNC_STATUS_UNKNOWN,
+  authSyncSource: AUTH_SYNC_SOURCE_NONE,
+  authSyncMessage: '等待检测管理端连接状态',
+  authSyncOrigin: '',
+  authSyncCheckedAt: '',
 }
 
 let pollInFlight = false
@@ -70,15 +85,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (type === 'OZON_MANAGER_CHECK_AUTH_SYNC') {
+    checkAuthSync(message?.payload || {})
+      .then(async (result) => {
+        const state = await readState()
+        sendResponse({ ok: true, result, state })
+      })
+      .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }))
+    return true
+  }
+
   if (type === 'OZON_MANAGER_SET_CONFIG') {
     saveStatePatch(message?.payload || {})
       .then(async () => {
-        const state = await readState()
-        await ensureAuthSyncContentScript(state, true)
+        const authSync = await checkAuthSync({ requestPermission: true })
         await ensurePollingAlarm()
         const sync = await pollOnce()
         const latestState = await readState()
-        sendResponse({ ok: true, state: latestState, sync })
+        sendResponse({ ok: true, state: latestState, sync, authSync })
       })
       .catch((error) => sendResponse({ ok: false, error: error?.message || String(error) }))
     return true
@@ -127,9 +151,125 @@ async function saveStatePatch(patch) {
   }
   if (typeof patch.lastRunAt === 'string') next.lastRunAt = patch.lastRunAt
   if (typeof patch.lastError === 'string') next.lastError = patch.lastError
+  if (typeof patch.authSyncStatus === 'string') next.authSyncStatus = patch.authSyncStatus || AUTH_SYNC_STATUS_UNKNOWN
+  if (typeof patch.authSyncSource === 'string') next.authSyncSource = patch.authSyncSource || AUTH_SYNC_SOURCE_NONE
+  if (typeof patch.authSyncMessage === 'string') next.authSyncMessage = patch.authSyncMessage
+  if (typeof patch.authSyncOrigin === 'string') next.authSyncOrigin = normalizeHTTPOrigin(patch.authSyncOrigin)
+  if (typeof patch.authSyncCheckedAt === 'string') next.authSyncCheckedAt = patch.authSyncCheckedAt
   if (Object.keys(next).length > 0) {
     await chrome.storage.local.set(next)
   }
+}
+
+function hasSavedAuthConfig(state) {
+  return Boolean(state?.authToken && state?.shopId)
+}
+
+function getSavedAuthSource(state) {
+  return hasSavedAuthConfig(state) ? AUTH_SYNC_SOURCE_MANUAL : AUTH_SYNC_SOURCE_NONE
+}
+
+function buildAuthSyncResult(status, source, message, extra = {}) {
+  return {
+    auth_sync_status: status || AUTH_SYNC_STATUS_UNKNOWN,
+    sync_source: source || AUTH_SYNC_SOURCE_NONE,
+    admin_origin: normalizeHTTPOrigin(extra.admin_origin || ''),
+    token_present: Boolean(extra.token_present),
+    shop_present: Boolean(extra.shop_present),
+    message: String(message || '').trim() || '管理端连接状态未知',
+    checked_at: String(extra.checked_at || '').trim() || new Date().toISOString(),
+  }
+}
+
+function buildAuthSyncStoragePatch(result, snapshot) {
+  const patch = {
+    authSyncStatus: result?.auth_sync_status || AUTH_SYNC_STATUS_UNKNOWN,
+    authSyncSource: result?.sync_source || AUTH_SYNC_SOURCE_NONE,
+    authSyncMessage: result?.message || '',
+    authSyncOrigin: result?.admin_origin || '',
+    authSyncCheckedAt: result?.checked_at || new Date().toISOString(),
+  }
+  if (snapshot?.token) {
+    patch.authToken = snapshot.token
+  }
+  if (snapshot?.shop_id) {
+    patch.shopId = snapshot.shop_id
+  }
+  return patch
+}
+
+async function persistAuthSyncResult(result, snapshot) {
+  await saveStatePatch(buildAuthSyncStoragePatch(result, snapshot))
+}
+
+function normalizeManagerAuthSnapshot(raw) {
+  if (!raw || typeof raw !== 'object') return null
+
+  const token = typeof raw.token === 'string' ? raw.token.trim() : ''
+  const shopID = Number(raw.shop_id || 0)
+  return {
+    token,
+    shop_id: Number.isFinite(shopID) && shopID > 0 ? shopID : null,
+    origin: normalizeHTTPOrigin(raw.origin || ''),
+  }
+}
+
+function makeAuthSyncResultFromSnapshot(snapshot, state) {
+  const tokenPresent = Boolean(snapshot?.token)
+  const shopPresent = Boolean(snapshot?.shop_id)
+  const savedSource = getSavedAuthSource(state)
+  const adminOrigin = snapshot?.origin || ''
+
+  if (tokenPresent && shopPresent) {
+    return buildAuthSyncResult(
+      AUTH_SYNC_STATUS_CONNECTED,
+      AUTH_SYNC_SOURCE_AUTO,
+      '已连接管理端，可自动执行任务',
+      {
+        admin_origin: adminOrigin,
+        token_present: true,
+        shop_present: true,
+      },
+    )
+  }
+
+  if (!tokenPresent) {
+    return buildAuthSyncResult(
+      AUTH_SYNC_STATUS_MISSING_LOGIN,
+      savedSource,
+      savedSource === AUTH_SYNC_SOURCE_MANUAL
+        ? '当前管理端未登录，插件将继续使用已保存配置'
+        : '请先在管理端登录',
+      {
+        admin_origin: adminOrigin,
+        token_present: Boolean(state?.authToken),
+        shop_present: Boolean(state?.shopId),
+      },
+    )
+  }
+
+  return buildAuthSyncResult(
+    AUTH_SYNC_STATUS_MISSING_SHOP,
+    savedSource === AUTH_SYNC_SOURCE_MANUAL ? AUTH_SYNC_SOURCE_MANUAL : AUTH_SYNC_SOURCE_AUTO,
+    savedSource === AUTH_SYNC_SOURCE_MANUAL
+      ? '当前管理端已登录但未选择店铺，插件将继续使用已保存配置'
+      : '请先在管理端选择店铺',
+    {
+      admin_origin: adminOrigin,
+      token_present: true,
+      shop_present: Boolean(state?.shopId),
+    },
+  )
+}
+
+function buildAuthSyncTabPatterns(state) {
+  return buildAuthSyncOrigins(state).map((origin) => `${origin}/*`)
+}
+
+function getPreferredAuthSyncOrigin(state) {
+  const adminOrigin = normalizeHTTPOrigin(state?.adminOrigin || '')
+  if (adminOrigin) return adminOrigin
+  return normalizeHTTPOrigin(state?.apiBaseUrl || '')
 }
 
 function normalizeSearchCPOText(value) {
@@ -234,18 +374,12 @@ function selectSearchCPORequestContextForTab(context, tabID) {
 async function handleAuthSync(payload) {
   if (!payload || typeof payload !== 'object') return
 
-  const patch = {}
-  if (typeof payload.token === 'string' && payload.token.trim()) {
-    patch.authToken = payload.token.trim()
-  }
-  const shopID = Number(payload.shop_id || 0)
-  if (Number.isFinite(shopID) && shopID > 0) {
-    patch.shopId = shopID
-  }
+  const state = await readState()
+  const snapshot = normalizeManagerAuthSnapshot(payload)
+  if (!snapshot) return
 
-  if (Object.keys(patch).length > 0) {
-    await chrome.storage.local.set(patch)
-  }
+  const result = makeAuthSyncResultFromSnapshot(snapshot, state)
+  await persistAuthSyncResult(result, snapshot)
 }
 
 async function ensurePollingAlarm() {
@@ -280,7 +414,7 @@ async function pollOnce() {
       return {
         ok: false,
         skipped: true,
-        error: '配置不完整，请检查 token、shop_id、后端地址',
+        error: '配置不完整，请先连接管理端，或在高级设置填写后端地址与兜底配置',
       }
     }
 
@@ -449,6 +583,115 @@ function buildAuthSyncOrigins(state) {
   return Array.from(origins)
 }
 
+async function findManagementTabs(state) {
+  const patterns = buildAuthSyncTabPatterns(state)
+  if (patterns.length === 0) return []
+
+  const tabs = await chrome.tabs.query({ url: patterns })
+  const seen = new Set()
+  return (tabs || [])
+    .filter((tab) => {
+      const tabID = Number(tab?.id || 0)
+      if (tabID <= 0 || seen.has(tabID)) return false
+      seen.add(tabID)
+      return true
+    })
+    .sort(compareTabPriority)
+}
+
+async function checkAuthSync(options = {}) {
+  const state = await readState()
+  const requestPermission = Boolean(options?.requestPermission)
+  const preferredOrigin = getPreferredAuthSyncOrigin(state)
+  const savedSource = getSavedAuthSource(state)
+  const permission = await ensureAuthSyncContentScript(state, requestPermission)
+
+  if (!permission.ok) {
+    const result = buildAuthSyncResult(
+      AUTH_SYNC_STATUS_PERMISSION_REQUIRED,
+      savedSource,
+      savedSource === AUTH_SYNC_SOURCE_MANUAL
+        ? '未授予管理端页面权限，当前继续使用已保存配置'
+        : permission.message || '需要授权访问管理端页面',
+      {
+        admin_origin: preferredOrigin,
+        token_present: Boolean(state?.authToken),
+        shop_present: Boolean(state?.shopId),
+      },
+    )
+    await persistAuthSyncResult(result)
+    return result
+  }
+
+  const tabs = await findManagementTabs(state)
+  if (tabs.length === 0) {
+    const result = buildAuthSyncResult(
+      AUTH_SYNC_STATUS_SYNC_UNAVAILABLE,
+      savedSource,
+      savedSource === AUTH_SYNC_SOURCE_MANUAL
+        ? '未检测到已打开的管理端页面，当前继续使用已保存配置'
+        : '请先打开管理端页面后重试',
+      {
+        admin_origin: preferredOrigin,
+        token_present: Boolean(state?.authToken),
+        shop_present: Boolean(state?.shopId),
+      },
+    )
+    await persistAuthSyncResult(result)
+    return result
+  }
+
+  let bestResult = null
+  let bestSnapshot = null
+  let lastError = ''
+  for (const tab of tabs) {
+    try {
+      const snapshot = normalizeManagerAuthSnapshot(await runScript(tab.id, scriptReadManagerAuthSnapshot, []))
+      if (!snapshot) continue
+
+      const result = makeAuthSyncResultFromSnapshot(snapshot, state)
+      if (result.auth_sync_status === AUTH_SYNC_STATUS_CONNECTED) {
+        await persistAuthSyncResult(result, snapshot)
+        return result
+      }
+      if (
+        !bestResult ||
+        (bestResult.auth_sync_status === AUTH_SYNC_STATUS_MISSING_LOGIN &&
+          result.auth_sync_status === AUTH_SYNC_STATUS_MISSING_SHOP)
+      ) {
+        bestResult = result
+        bestSnapshot = snapshot
+      }
+    } catch (error) {
+      lastError = error?.message || String(error)
+    }
+  }
+
+  if (bestResult) {
+    await persistAuthSyncResult(bestResult, bestSnapshot)
+    return bestResult
+  }
+
+  const result = buildAuthSyncResult(
+    lastError ? AUTH_SYNC_STATUS_FAILED : AUTH_SYNC_STATUS_SYNC_UNAVAILABLE,
+    savedSource,
+    lastError
+      ? (savedSource === AUTH_SYNC_SOURCE_MANUAL
+          ? `读取管理端登录态失败，当前继续使用已保存配置：${lastError}`
+          : `读取管理端登录态失败：${lastError}`)
+      : (savedSource === AUTH_SYNC_SOURCE_MANUAL
+          ? '未能从管理端页面读取登录态，当前继续使用已保存配置'
+          : '暂时无法读取管理端登录态，请打开管理端页面后重试'),
+    {
+      admin_origin: preferredOrigin,
+      token_present: Boolean(state?.authToken),
+      shop_present: Boolean(state?.shopId),
+    },
+  )
+  await persistAuthSyncResult(result)
+  return result
+}
+
 async function ensureAuthSyncContentScript(state, requestPermission) {
   const allOrigins = buildAuthSyncOrigins(state)
   const dynamicOrigins = allOrigins.filter((origin) => !isLocalOrigin(origin))
@@ -460,17 +703,23 @@ async function ensureAuthSyncContentScript(state, requestPermission) {
     } catch {
       // ignore if not registered
     }
-    return
+    return { ok: true, message: '' }
   }
 
   const hasPermission = await chrome.permissions.contains({ origins: dynamicMatches })
   if (!hasPermission) {
     if (!requestPermission) {
-      return
+      return {
+        ok: false,
+        message: '需要授权访问管理端页面',
+      }
     }
     const granted = await chrome.permissions.request({ origins: dynamicMatches })
     if (!granted) {
-      throw new Error('未授予管理端域名权限，无法自动同步 token/shop_id')
+      return {
+        ok: false,
+        message: '未授予管理端页面权限，请点击“重新检测”后允许访问',
+      }
     }
   }
 
@@ -489,6 +738,8 @@ async function ensureAuthSyncContentScript(state, requestPermission) {
       persistAcrossSessions: true,
     },
   ])
+
+  return { ok: true, message: '' }
 }
 
 async function executeJob(job, state) {
@@ -1743,6 +1994,17 @@ function createExtensionID() {
 }
 
 // ===== Functions executed inside seller tab =====
+
+function scriptReadManagerAuthSnapshot() {
+  const token = localStorage.getItem('token') || ''
+  const rawShopID = localStorage.getItem('currentShopId')
+  const parsedShopID = Number(rawShopID || '')
+  return {
+    origin: window.location.origin,
+    token: String(token || '').trim(),
+    shop_id: Number.isFinite(parsedShopID) && parsedShopID > 0 ? parsedShopID : null,
+  }
+}
 
 function scriptPrimeSearchCPOContext(context) {
   const current = window.__ozonManagerSearchCPOContext && typeof window.__ozonManagerSearchCPOContext === 'object'
