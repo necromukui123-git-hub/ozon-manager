@@ -74,8 +74,9 @@ const context = {
       ok: true,
       status: 200,
       statusText: 'OK',
+      headers: { get: () => 'application/json; charset=utf-8' },
+      text: async () => JSON.stringify({ code: 200, data: {} }),
       json: async () => ({ code: 200, data: {} }),
-      text: async () => '',
     }
   },
   chrome,
@@ -87,7 +88,11 @@ vm.createContext(context)
 const sources = [
   'browser-extension/ozon-shop-bridge/background_search_cpo.js',
   'browser-extension/ozon-shop-bridge/background_search_cpo_response_patch.js',
+  'browser-extension/ozon-shop-bridge/background_search_cpo_fetch_diagnostics_patch.js',
   'browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch.js',
+  'browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v2.js',
+  'browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v3.js',
+  'browser-extension/ozon-shop-bridge/background_search_cpo_remove_result_patch.js',
 ]
 for (const relativePath of sources) {
   new vm.Script(loadSource(relativePath), { filename: path.basename(relativePath) }).runInContext(context)
@@ -95,7 +100,16 @@ for (const relativePath of sources) {
 
 assert.equal(typeof context.executeSyncSearchCPOAvailability, 'function', 'availability executor missing after worker load')
 assert.equal(typeof context.registerExtension, 'function', 'registerExtension missing after worker load')
-assert.match(String(context.normalizeSearchCPOAvailabilityItems), /runtimeFormatSearchCPOAvailabilityError/)
+assert.match(String(context.normalizeSearchCPOAvailabilityItems), /runtimeV3FormatSearchCPOAvailabilityError/)
+assert.equal(typeof context.normalizeSearchCPORemoveOperationMessage, 'function', 'remove message normalizer missing after worker load')
+assert.match(
+  context.normalizeSearchCPORemoveOperationMessage(
+    'remove',
+    '3231133',
+    'API error (status 404): {"code":5,"message":"rpc error: code = NotFound desc = Resource not found"}',
+  ),
+  /^__SKIPPED__:action_not_found:/,
+)
 
 const availabilityFixture = {
   skuToIsSearchPromoAvailable: {
@@ -117,11 +131,12 @@ const execution = await context.executeSyncSearchCPOAvailability({
   meta: { sku_map: { 'offer-1': '3323213720' } },
 })
 assert.equal(execution.status, 'success')
-assert.equal(execution.meta.parser_revision, '2026-03-20-a')
-assert.equal(execution.meta.build_revision, '2026-03-20-a')
+assert.equal(execution.meta.parser_revision, '2026-03-20-d')
+assert.equal(execution.meta.build_revision, '2026-03-20-d')
 assert.equal(execution.meta.items[0].availability_promo, true)
 assert.equal(execution.meta.items[0].payload.requested_sku, '3323213720')
-assert.equal(execution.meta.items[0].payload.parser_revision, '2026-03-20-a')
+assert.equal(execution.meta.items[0].payload.parser_revision, '2026-03-20-d')
+assert.equal(execution.meta.items[0].payload.build_revision, '2026-03-20-d')
 
 await context.registerExtension({
   apiBaseUrl: 'http://127.0.0.1:8080',
@@ -133,7 +148,7 @@ const registerCall = fetchCalls.find((call) => String(call.url).endsWith('/api/v
 assert.ok(registerCall, 'register call missing')
 const registerPayload = JSON.parse(registerCall.options.body)
 assert.equal(registerPayload.version, '0.1.0')
-assert.equal(registerPayload.build_revision, '2026-03-20-a')
+assert.equal(registerPayload.build_revision, '2026-03-20-d')
 
 fetchCalls.length = 0
 context.readState = async () => ({
@@ -149,6 +164,10 @@ assert.equal(pollResult.ok, true)
 const pollCall = fetchCalls.find((call) => String(call.url).endsWith('/api/v1/extension/poll'))
 assert.ok(pollCall, 'poll call missing')
 const pollPayload = JSON.parse(pollCall.options.body)
-assert.equal(pollPayload.build_revision, '2026-03-20-a')
+assert.equal(pollPayload.build_revision, '2026-03-20-d')
 
 console.log('Search CPO service worker order checks passed')
+
+
+
+

@@ -200,9 +200,12 @@ func (s *PromotionService) exitAllPromotions(client *ozon.Client, shopID uint, p
 	}
 
 	for _, pp := range promotedProducts {
-		_, err := client.DeactivateProducts(pp.ActionID, []int64{product.OzonProductID})
+		resp, err := client.DeactivateProducts(pp.ActionID, []int64{product.OzonProductID})
 		if err != nil {
 			return err
+		}
+		if reason := officialDeactivateResultError(resp, product.OzonProductID); reason != "" {
+			return fmt.Errorf(reason)
 		}
 		s.promotionRepo.ExitPromotion(product.ID, pp.PromotionType)
 	}
@@ -1198,21 +1201,25 @@ func (s *PromotionService) removeFromOfficialActions(shopID uint, officialAction
 			continue
 		}
 
-		hasError := false
+		actionErrors := make([]string, 0, len(officialActions))
 		for _, action := range officialActions {
-			_, deErr := client.DeactivateProducts(action.ActionID, []int64{product.OzonProductID})
+			resp, deErr := client.DeactivateProducts(action.ActionID, []int64{product.OzonProductID})
 			if deErr != nil {
-				hasError = true
+				actionErrors = append(actionErrors, fmt.Sprintf("%s: %s", displayActionName(action), strings.TrimSpace(deErr.Error())))
+				continue
+			}
+			if reason := officialDeactivateResultError(resp, product.OzonProductID); reason != "" {
+				actionErrors = append(actionErrors, fmt.Sprintf("%s: %s", displayActionName(action), reason))
 			}
 		}
 
-		if hasError {
+		if len(actionErrors) > 0 {
 			result.FailedCount++
 			result.Details = append(result.Details, dto.EnrollDetail{
 				ProductID: product.ID,
 				SourceSKU: sku,
 				Status:    "failed",
-				Error:     "部分活动退出失败",
+				Error:     strings.Join(actionErrors, "; "),
 			})
 			continue
 		}
@@ -1230,6 +1237,23 @@ func (s *PromotionService) removeFromOfficialActions(shopID uint, officialAction
 	}
 
 	return result, nil
+}
+
+func officialDeactivateResultError(resp *ozon.DeactivateProductsResponse, productID int64) string {
+	if resp == nil {
+		return "官方活动退出失败"
+	}
+	for _, rejected := range resp.Result.Rejected {
+		if rejected.ProductID == productID {
+			return firstNonEmptyServiceTrimmed(rejected.Reason, "官方活动退出失败")
+		}
+	}
+	for _, successID := range resp.Result.ProductIDs {
+		if successID == productID {
+			return ""
+		}
+	}
+	return "官方活动返回未知结果"
 }
 
 func (s *PromotionService) CreateUnifiedShopActionsJob(userID, shopID uint, jobType string, shopActions []model.PromotionAction, skus []string) (*model.AutomationJob, error) {

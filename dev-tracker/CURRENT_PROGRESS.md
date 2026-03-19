@@ -1,10 +1,10 @@
 # Ozon Manager 当前进度
 
 最后更新时间：2026-03-20  
-状态：进行中（Search CPO availability 运行时诊断已补齐，待 reload 插件后做真实 Seller 复测）
+状态：进行中（Search CPO 迁移退出判定与 state3 识别已修正，待 reload 插件后做真实 Seller 复测）
 
 ## 本次交付单元
-本次目标：在保留现有 Search CPO 自动化链路的前提下，为 availability 补齐运行时诊断与 `build_revision/parser_revision` 透传，让“未匹配响应”能直接落到 `requested_sku`、响应 key 摘要和当前扩展解析版本，而不是只剩泛化报错。
+本次目标：在保留现有 Search CPO availability 诊断链路的前提下，修正状态迁移自动化里“退出其它活动”和 `state3_trigger` 的真实判定，使 `404/NotFound` 型店铺活动退出不再阻断迁移、官方活动退出能透出 `rejected[]` 原因、`SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true` 的商品可直接进入 `state3_trigger`。
 
 ## 已完成（含关键文件）
 0. Search CPO 刷新状态落库修复：
@@ -26,6 +26,10 @@
 5. Search CPO availability 运行时诊断补强：
    - 新增 `browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch.js`，在不改现有主链路的前提下补齐 `search_promo_availability` 的 envelope 宽松解析、`requested_sku/parser_revision/response_root_keys/sample_response_keys` 诊断字段，以及 availability / reason map key 计数。
    - `background_search_cpo_bootstrap.js` 现会在原 `background_search_cpo_response_patch.js` 之后继续加载 runtime diagnostics patch；extension register 会额外上报 `build_revision`，availability report artifact 会写入 `build_revision/parser_revision` 和逐 SKU 诊断 payload。
+   - 本批继续新增 `background_search_cpo_fetch_diagnostics_patch.js`、`background_search_cpo_runtime_diagnostics_patch_v2.js` 与 `background_search_cpo_runtime_diagnostics_patch_v3.js`：`search_promo_availability` 不再在 `response.json()` 失败后静默丢失现场，而会把 `response_kind/http_status/content_type/parse_error/response_excerpt` 一起回传；扩展 build/parser revision 已提升到 `2026-03-20-d`。
+6. Search CPO automation 详情取证面板：
+   - 后端 `GetAutomationRunDetail` 会从 `search_cpo_products.availability_payload` 解析 availability 诊断，并随自动化详情接口返回 `availability_checked_at`、`requested_sku`、`build_revision`、`response_content_type`、`response_parse_error`、`response_excerpt` 等字段。
+   - 前端 `SearchCPO.vue` 的“状态迁移详情”新增展开式诊断面板，点开单个商品即可直接看到 availability 的请求 SKU、HTTP/Content-Type、root/sample keys、解析错误和响应摘要，不用再手查数据库 artifact。
 6. Search CPO 后端失败透传补强：
    - `backend/internal/dto/extension.go`、`backend/internal/service/automation_service.go` 已接收并记录 extension `build_revision`；extension report 事件会附带 `build_revision/parser_revision`。
    - `backend/internal/service/automation_failure.go` 已在 Search CPO 三类 job 失败时优先保留逐 SKU 细节，并在需要时补齐 `source_sku=` 前缀，避免运行历史和页面错误只剩泛化文案。
@@ -35,6 +39,18 @@
    - Search CPO service worker 加载顺序回归通过：`node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-service-worker-order.mjs`。
    - 后端定向测试通过：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./internal/service`。
 
+7. Search CPO 迁移退出判定与 state3 修正：
+   - `backend/internal/service/search_cpo_automation.go` 已放宽 `state3_trigger`：当商品 live 状态满足 `SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true` 时，即使没有历史 `state2_detected_at` 也会进入迁移后半段，并在首次命中时回填 `state2_detected_at`。
+   - 店铺活动退出现在会把“商品当前不在活动中”与 `404/NotFound` 归类为可跳过结果，不再阻断后续 `enable` / `carrots/batch_enable`；逐动作明细会保留 `action_not_found/source_action_id` 诊断。
+   - 官方活动退出已按 `doc\按订单付费推广商品操作\官方deactivate.txt` 对齐 `product_ids + rejected[]` 响应，逐 SKU 错误会直接透出具体 `reason`，不再只剩“部分活动退出失败”。
+8. 数据库与迁移：
+   - 本次无新增表结构变更，无新增 migration 脚本。
+9. 本批验证结果：
+   - 店铺活动退出补丁语法检查通过：`node --check browser-extension/ozon-shop-bridge/background_search_cpo_remove_result_patch.js`。
+   - Search CPO parser 样本回归通过：`node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`。
+   - Search CPO service worker 加载顺序与 remove 分类回归通过：`node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-service-worker-order.mjs`。
+   - 后端定向测试通过：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./pkg/ozon ./internal/service`。
+   - 前端构建通过：`cd frontend && cmd /c npm run build`。
 5. 数据库与迁移：
    - 本次无新增表结构变更，无新增 migration 脚本。
 6. 本批验证结果：
@@ -347,4 +363,9 @@
 1. reload 扩展后在真实 Seller 环境复测 `search_promo_availability`，确认新的 `requested_sku/parser_revision/root_keys` 诊断是否足以直接定位 live 响应漂移或 SKU 匹配问题。
 2. 继续补强第三步退出链路的真实结果判定，重点核对官方/店铺活动 remove 的逐 SKU 明细与幂等表现。
 3. 结合真实联调结果补充 Search CPO 自动化逐步骤测试与交付口径，准备拆分下一批实现。
+
+
+
+
+
 

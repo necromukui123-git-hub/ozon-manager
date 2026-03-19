@@ -2,6 +2,63 @@
 
 ## 2026-03-20
 ### 主题
+修正 Search CPO 状态迁移里的退出判定与 `state3_trigger`，让店铺活动 `404/NotFound` 不再误阻断迁移，并按官方 `deactivate` 响应解析逐商品失败原因。
+
+### 关键变更
+1. `backend/internal/service/search_cpo_automation.go`：
+   - `state3_trigger` 已放宽为 live 条件触发：`SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true` 的商品，即使没有历史 `state2_detected_at` 也会进入迁移后半段，并在首次命中时回填检测时间。
+   - 店铺活动退出结果新增细分：`商品当前不在活动中` 与 `404/NotFound` 会归类为 `skipped`，不再阻断后续 `enable` / `Morkovsk`；退出步骤会保留逐动作诊断信息。
+2. `backend/pkg/ozon/actions.go`、`backend/internal/service/promotion_service.go`：
+   - 官方活动退出已按 `doc/按订单付费推广商品操作/官方deactivate.txt` 对齐 `product_ids + rejected[]` 响应。
+   - `removeFromOfficialActions` 与 `exitAllPromotions` 现在会识别 `rejected[].reason` 和“未知结果”，不再只把无 transport error 的退出一律视为成功。
+3. `browser-extension/ozon-shop-bridge/background_search_cpo_remove_result_patch.js`、`background_search_cpo_bootstrap.js`：
+   - extension 新增 Search CPO 店铺活动退出补丁，把 remove 阶段的 `404/NotFound` 统一归类为可跳过的 `action_not_found`，同时保留 `source_action_id` 与原始错误摘要。
+   - Search CPO 扩展 build/parser revision 已提升到 `2026-03-20-d`，并同步更新回归脚本断言。
+4. `backend/internal/service/search_cpo_automation_test.go`、`backend/internal/service/promotion_service_official_products_test.go`、`backend/pkg/ozon/actions_test.go`：
+   - 新增/补充单测，覆盖 `state3_trigger` 放宽、店铺退出 `404` 归类、官方 `deactivate` 的 `rejected[]` 解析。
+
+### 影响范围
+1. `3340371883` 这类 `SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true` 的商品，不再因为缺少历史 `state2_detected_at` 被误跳过。
+2. `3352634622` 这类店铺活动退出返回 `404/NotFound` 的商品，不再因为前置退出误判失败而直接跳过后续 `enable` 和 `Morkovsk`。
+3. 无数据库结构变更，无新增 migration 脚本；本次仅修正 Search CPO 自动化、官方退出响应解析和 extension remove 结果归类。
+
+### 验证
+1. `node --check browser-extension/ozon-shop-bridge/background_search_cpo_remove_result_patch.js`
+2. `node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`
+3. `node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-service-worker-order.mjs`
+4. `cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./pkg/ozon ./internal/service`
+5. `cd frontend && cmd /c npm run build`
+## 2026-03-20
+### 主题
+补齐 Search CPO availability 的原始响应摘要诊断，并把诊断字段直接展示到自动化详情页，避免排障必须手查数据库 artifact。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo_bootstrap.js`、`background_search_cpo_fetch_diagnostics_patch.js`、`background_search_cpo_runtime_diagnostics_patch_v2.js`、`background_search_cpo_runtime_diagnostics_patch_v3.js`：
+   - service worker 继续沿用补丁式加载，不重写现有大脚本；在原 response/runtime patch 之后补上一层 fetch diagnostics patch、runtime diagnostics v2 patch 和 runtime diagnostics v3 patch。
+   - `search_promo_availability` 在 HTTP 200 但返回 HTML、空值或非 JSON 时，不再在 `response.json()` 失败后静默变成空对象，而会保留 `response_kind/http_status/content_type/parse_error/response_excerpt`。本轮进一步把 availability 页面执行改成自包含 inline wrapper，避免 executeScript 依赖 service worker 外部 helper。
+   - extension register / poll / availability report 的 `build_revision/parser_revision` 已提升到 `2026-03-20-d`。
+2. `backend/internal/dto/search_cpo_automation.go`、`backend/internal/service/search_cpo_automation.go`：
+   - 自动化详情接口新增 availability 诊断结构，后端会从 `search_cpo_products.availability_payload` 解析 `requested_sku`、`build_revision`、`response_content_type`、`response_parse_error`、`response_excerpt`、root/sample keys 等字段并返回给前端。
+   - 无需新增表结构；继续复用已有 `availability_payload` 落库结果。
+3. `frontend/src/views/promotions/SearchCPO.vue`：
+   - “状态迁移详情”表格新增展开式 availability 诊断面板，单个商品可直接查看请求 SKU、HTTP、Content-Type、解析错误、业务原因和响应摘要。
+4. `browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`、`verify-search-cpo-service-worker-order.mjs`：
+   - 回归脚本已纳入 fetch diagnostics patch / runtime v2 / runtime v3 patch，并覆盖 `2026-03-20-d` 版本断言和 HTML/parse-error 诊断场景。
+
+### 影响范围
+1. 当 CPO 自动化再次报“未匹配到 search_promo_availability 响应”时，页面上就能直接区分是请求 SKU 映射错误、旧扩展、返回 HTML/挑战页，还是脚本根本没拿到结构化对象。
+2. 无数据库结构变更，无新增 migration 脚本；本次仅补充扩展诊断、后端透传和前端展示。
+
+### 验证
+1. `node --check browser-extension/ozon-shop-bridge/background_search_cpo_fetch_diagnostics_patch.js`
+2. `node --check browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v2.js`
+3. `node --check browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v3.js`
+4. `node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`
+5. `node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-service-worker-order.mjs`
+6. `cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./internal/service`
+7. `cd frontend && cmd /c npm run build`
+## 2026-03-20
+### 主题
 补齐 Search CPO availability 运行时诊断，避免“未匹配响应”只留下泛化错误，并把当前扩展解析版本一起透传到后端。
 
 ### 关键变更
@@ -814,5 +871,10 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
+
+
+
+
+
 
 

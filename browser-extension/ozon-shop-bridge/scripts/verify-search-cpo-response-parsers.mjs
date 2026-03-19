@@ -24,6 +24,8 @@ function loadPatchContext() {
   const sources = [
     'browser-extension/ozon-shop-bridge/background_search_cpo_response_patch.js',
     'browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch.js',
+    'browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v2.js',
+    'browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v3.js',
   ].map((relativePath) => ({
     relativePath,
     source: readFileSync(path.join(repoRoot, relativePath), 'utf8'),
@@ -75,7 +77,8 @@ const availabilityBySKU = Object.fromEntries(availabilityItems.map((item) => [it
 assert.equal(availabilityBySKU['3323213720'].availability_promo, true, 'expected sku 3323213720 availability=true')
 assert.equal(availabilityBySKU['3328977168'].availability_promo, false, 'expected sku 3328977168 availability=false')
 assert.equal(availabilityBySKU['3328977168'].payload.unavailableReason, 'PROMOTION_UNAVAILABLE_REASON_NO_SALES')
-assert.equal(availabilityBySKU['3323213720'].payload.parser_revision, '2026-03-20-a')
+assert.equal(availabilityBySKU['3323213720'].payload.parser_revision, '2026-03-20-d')
+assert.equal(availabilityBySKU['3323213720'].payload.build_revision, '2026-03-20-d')
 assert.equal(availabilityBySKU['3323213720'].payload.requested_sku, '3323213720')
 assert.ok(availabilityItems.every((item) => item.error === ''), 'availability parser should not report missing matches for fixture')
 
@@ -95,14 +98,24 @@ const mixedAvailability = normalizeSearchCPOAvailabilityItems(
 )
 assert.equal(mixedAvailability[0].error, '', 'known sku should still succeed in mixed response')
 assert.match(mixedAvailability[1].error, /requested_sku=9999999999/)
-assert.match(mixedAvailability[1].error, /parser_revision=2026-03-20-a/)
+assert.match(mixedAvailability[1].error, /parser_revision=2026-03-20-d/)
+assert.match(mixedAvailability[1].error, /result_type=object/)
 
 const missingAvailability = normalizeSearchCPOAvailabilityItems(
-  { data: { skuToIsSearchPromoAvailable: { '100': true } } },
+  {
+    response_kind: 'text',
+    response_content_type: 'text/html; charset=utf-8',
+    response_parse_error: "Unexpected token '<'",
+    response_excerpt: '<!doctype html><html>challenge</html>',
+  },
   [{ sourceSKU: '999', targetSKU: '999' }],
 )
 assert.match(missingAvailability[0].error, /未匹配到 search_promo_availability 响应/)
-assert.match(missingAvailability[0].error, /availability_keys=1/)
+assert.match(missingAvailability[0].error, /content_type=text\/html/)
+assert.match(missingAvailability[0].error, /parse_error=Unexpected token/)
+assert.equal(missingAvailability[0].payload.response_kind, 'text')
+assert.equal(missingAvailability[0].payload.response_parse_error, "Unexpected token '<'")
+assert.equal(missingAvailability[0].payload.response_excerpt, '<!doctype html><html>challenge</html>')
 
 const enableResponse = readDocResponse('doc/按订单付费推广商品操作/enable.txt')
 const enablePairs = enableResponse.bids.map((item) => ({ sourceSKU: item.sku, targetSKU: item.sku }))
@@ -149,3 +162,6 @@ assert.equal(failedMorkovsk[0].status, 'failed', 'morkovsk business failure shou
 assert.match(failedMorkovsk[0].error, /CARROT_ERROR_BID_TOO_LOW/)
 
 console.log('Search CPO parser checks passed')
+
+
+

@@ -51,3 +51,39 @@ func TestResolveOfficialActionProductID(t *testing.T) {
 		})
 	}
 }
+
+func TestOfficialDeactivateResultError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success when product id returned in product_ids", func(t *testing.T) {
+		t.Parallel()
+		resp := &ozon.DeactivateProductsResponse{}
+		resp.Result.ProductIDs = []int64{14975}
+
+		if errText := officialDeactivateResultError(resp, 14975); errText != "" {
+			t.Fatalf("officialDeactivateResultError() = %q, want empty", errText)
+		}
+	})
+
+	t.Run("rejected reason wins for matching product id", func(t *testing.T) {
+		t.Parallel()
+		resp := &ozon.DeactivateProductsResponse{}
+		resp.Result.Rejected = []ozon.ActivateRejectedItem{{
+			ProductID: 14976,
+			Reason:    "product already archived",
+		}}
+
+		if errText := officialDeactivateResultError(resp, 14976); errText != "product already archived" {
+			t.Fatalf("officialDeactivateResultError() = %q, want %q", errText, "product already archived")
+		}
+	})
+
+	t.Run("unknown result when response has no success and no rejection", func(t *testing.T) {
+		t.Parallel()
+		resp := &ozon.DeactivateProductsResponse{}
+
+		if errText := officialDeactivateResultError(resp, 14977); errText != "官方活动返回未知结果" {
+			t.Fatalf("officialDeactivateResultError() = %q, want %q", errText, "官方活动返回未知结果")
+		}
+	})
+}

@@ -234,7 +234,8 @@ type DeactivateProductsRequest struct {
 // DeactivateProductsResponse 移除商品响应
 type DeactivateProductsResponse struct {
 	Result struct {
-		ProductIDs []int64 `json:"product_ids"`
+		ProductIDs []int64                `json:"product_ids"`
+		Rejected   []ActivateRejectedItem `json:"rejected"`
 	} `json:"result"`
 }
 

@@ -365,6 +365,84 @@
       </div>
 
       <el-table v-if="automationDetail" :data="automationDetail.items || []" max-height="560" v-loading="automationDetailLoading">
+        <el-table-column type="expand" width="48">
+          <template #default="{ row }">
+            <div class="availability-debug-panel">
+              <div class="availability-debug-title">可推广状态诊断</div>
+              <div class="availability-debug-grid">
+                <div>
+                  <span class="availability-debug-label">可推广状态</span>
+                  <el-tag size="small" :type="availabilityTagType(row.availability_promo)">
+                    {{ availabilityLabel(row.availability_promo) }}
+                  </el-tag>
+                </div>
+                <div>
+                  <span class="availability-debug-label">检查时间</span>
+                  <span>{{ row.availability_checked_at || '-' }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">requested_sku</span>
+                  <span>{{ row.availability_diagnostics?.requested_sku || row.sku || '-' }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">parser_revision</span>
+                  <span>{{ row.availability_diagnostics?.parser_revision || '-' }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">build_revision</span>
+                  <span>{{ row.availability_diagnostics?.build_revision || '-' }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">脚本结果类型</span>
+                  <span>{{ row.availability_diagnostics?.script_result_type || '-' }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">响应类型</span>
+                  <span>{{ row.availability_diagnostics?.response_kind || '-' }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">HTTP</span>
+                  <span>{{ formatAvailabilityHTTP(row.availability_diagnostics) }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">Content-Type</span>
+                  <span>{{ row.availability_diagnostics?.response_content_type || '-' }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">availability keys</span>
+                  <span>{{ row.availability_diagnostics?.availability_map_key_count ?? 0 }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">reason keys</span>
+                  <span>{{ row.availability_diagnostics?.reason_map_key_count ?? 0 }}</span>
+                </div>
+                <div>
+                  <span class="availability-debug-label">业务原因</span>
+                  <span>{{ row.availability_diagnostics?.unavailable_reason || '-' }}</span>
+                </div>
+              </div>
+              <div class="availability-debug-block">
+                <div class="availability-debug-label">root keys</div>
+                <div>{{ joinAvailabilityDiagnosticKeys(row.availability_diagnostics?.response_root_keys) }}</div>
+              </div>
+              <div class="availability-debug-block">
+                <div class="availability-debug-label">sample keys</div>
+                <div>{{ joinAvailabilityDiagnosticKeys(row.availability_diagnostics?.sample_response_keys) }}</div>
+              </div>
+              <div v-if="row.availability_diagnostics?.response_parse_error" class="availability-debug-block">
+                <div class="availability-debug-label">解析错误</div>
+                <div class="error-text">{{ row.availability_diagnostics.response_parse_error }}</div>
+              </div>
+              <div v-if="row.availability_diagnostics?.response_excerpt" class="availability-debug-block">
+                <div class="availability-debug-label">响应摘要</div>
+                <pre class="availability-debug-pre">{{ row.availability_diagnostics.response_excerpt }}</pre>
+              </div>
+              <div v-if="!row.availability_diagnostics && !row.availability_checked_at" class="result-line-muted">
+                当前没有可展示的 availability 诊断。
+              </div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column prop="source_sku" label="source_sku" width="160" />
         <el-table-column prop="sku" label="sku" width="130" />
         <el-table-column prop="title" label="商品" min-width="220" />
@@ -891,6 +969,18 @@ function availabilityTagType(value) {
   return 'warning'
 }
 
+function joinAvailabilityDiagnosticKeys(keys) {
+  return Array.isArray(keys) && keys.length > 0 ? keys.join(' | ') : '-'
+}
+
+function formatAvailabilityHTTP(diagnostics) {
+  const status = Number(diagnostics?.response_http_status || 0)
+  const statusText = String(diagnostics?.response_http_status_text || '').trim()
+  if (status > 0 && statusText) return `${status} ${statusText}`
+  if (status > 0) return String(status)
+  return '-'
+}
+
 function searchPromoStatusLabel(status) {
   if (status === 'SEARCH_PROMO_STATUS_ENABLED') return '已开启'
   if (status === 'SEARCH_PROMO_STATUS_DISABLED') return '已关闭'
@@ -1037,6 +1127,58 @@ function triggerModeLabel(mode) {
 .metric-time {
   font-size: 12px;
   line-height: 1.4;
+}
+
+.availability-debug-panel {
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(5, 150, 105, 0.05);
+  border: 1px solid rgba(5, 150, 105, 0.12);
+}
+
+.availability-debug-title {
+  margin-bottom: 10px;
+  font-family: 'Rubik', 'Nunito Sans', sans-serif;
+  font-size: 14px;
+  color: #065f46;
+}
+
+.availability-debug-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 18px;
+  margin-bottom: 12px;
+}
+
+.availability-debug-grid > div,
+.availability-debug-block {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #134e4a;
+}
+
+.availability-debug-label {
+  display: inline-block;
+  min-width: 112px;
+  margin-right: 8px;
+  color: #0f766e;
+}
+
+.availability-debug-block + .availability-debug-block {
+  margin-top: 8px;
+}
+
+.availability-debug-pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 118, 110, 0.12);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #1f2937;
 }
 
 .hero-shell h2 {

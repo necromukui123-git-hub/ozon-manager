@@ -237,3 +237,36 @@ func TestActivateProductsParsesRejectedItems(t *testing.T) {
 		t.Fatalf("rejected reason = %q", resp.Result.Rejected[0].Reason)
 	}
 }
+
+func TestDeactivateProductsParsesRejectedItems(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("100", "test-key")
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			resp := `{"result":{"product_ids":[14975],"rejected":[{"product_id":14976,"reason":"product already archived"}]}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(resp)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	resp, err := client.DeactivateProducts(66011, []int64{14975, 14976})
+	if err != nil {
+		t.Fatalf("DeactivateProducts returned error: %v", err)
+	}
+	if len(resp.Result.ProductIDs) != 1 || resp.Result.ProductIDs[0] != 14975 {
+		t.Fatalf("product_ids = %+v, want [14975]", resp.Result.ProductIDs)
+	}
+	if len(resp.Result.Rejected) != 1 {
+		t.Fatalf("rejected len = %d, want 1", len(resp.Result.Rejected))
+	}
+	if resp.Result.Rejected[0].ProductID != 14976 {
+		t.Fatalf("rejected product_id = %d, want 14976", resp.Result.Rejected[0].ProductID)
+	}
+	if resp.Result.Rejected[0].Reason != "product already archived" {
+		t.Fatalf("rejected reason = %q", resp.Result.Rejected[0].Reason)
+	}
+}
