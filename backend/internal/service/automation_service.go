@@ -411,11 +411,12 @@ func (s *AutomationService) ExtensionRegister(userID uint, req *dto.ExtensionReg
 	}
 
 	capabilities := map[string]interface{}{
-		"kind":         "chrome_extension",
-		"user_id":      userID,
-		"shop_id":      req.ShopID,
-		"extension_id": req.ExtensionID,
-		"version":      req.Version,
+		"kind":           "chrome_extension",
+		"user_id":        userID,
+		"shop_id":        req.ShopID,
+		"extension_id":   req.ExtensionID,
+		"version":        req.Version,
+		"build_revision": strings.TrimSpace(req.BuildRevision),
 	}
 	capabilityBytes, _ := json.Marshal(capabilities)
 	hostname := fmt.Sprintf("shop-%d", req.ShopID)
@@ -432,9 +433,10 @@ func (s *AutomationService) ExtensionRegister(userID uint, req *dto.ExtensionReg
 
 func (s *AutomationService) ExtensionPoll(userID uint, req *dto.ExtensionPollRequest) (*model.AutomationJob, error) {
 	if _, err := s.ExtensionRegister(userID, &dto.ExtensionRegisterRequest{
-		ShopID:      req.ShopID,
-		ExtensionID: req.ExtensionID,
-		Name:        "Chrome Extension",
+		ShopID:        req.ShopID,
+		ExtensionID:   req.ExtensionID,
+		Name:          "Chrome Extension",
+		BuildRevision: req.BuildRevision,
 	}); err != nil {
 		return nil, err
 	}
@@ -540,6 +542,12 @@ func (s *AutomationService) ExtensionReport(userID uint, req *dto.ExtensionRepor
 		"status":       req.Status,
 		"count":        len(req.Results),
 		"extension_id": req.ExtensionID,
+	}
+	if buildRevision := strings.TrimSpace(fmt.Sprint(req.Meta["build_revision"])); buildRevision != "" && buildRevision != "<nil>" {
+		payload["build_revision"] = buildRevision
+	}
+	if parserRevision := strings.TrimSpace(fmt.Sprint(req.Meta["parser_revision"])); parserRevision != "" && parserRevision != "<nil>" {
+		payload["parser_revision"] = parserRevision
 	}
 	payloadBytes, _ := json.Marshal(payload)
 	event := &model.AutomationJobEvent{

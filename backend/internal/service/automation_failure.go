@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"strings"
 
 	"ozon-manager/internal/model"
@@ -11,14 +12,49 @@ func automationJobFailureMessage(job *model.AutomationJob, fallback string) stri
 		return fallback
 	}
 	if trimmed := strings.TrimSpace(job.ErrorMessage); trimmed != "" {
-		return trimmed
+		return decorateAutomationFailureMessage(job.JobType, firstAutomationFailureSourceSKU(job.Items), trimmed)
 	}
 	for _, item := range job.Items {
 		if trimmed := firstNonEmptyServiceTrimmed(item.StepExitError, item.StepRepriceError, item.StepReaddError); trimmed != "" {
-			return trimmed
+			return decorateAutomationFailureMessage(job.JobType, item.SourceSKU, trimmed)
 		}
 	}
 	return fallback
+}
+
+func decorateAutomationFailureMessage(jobType, sourceSKU, message string) string {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return ""
+	}
+	if !isSearchCPOAutomationJobType(jobType) {
+		return trimmed
+	}
+	normalizedSourceSKU := strings.TrimSpace(sourceSKU)
+	if normalizedSourceSKU == "" || strings.Contains(trimmed, "source_sku=") {
+		return trimmed
+	}
+	return fmt.Sprintf("source_sku=%s: %s", normalizedSourceSKU, trimmed)
+}
+
+func isSearchCPOAutomationJobType(jobType string) bool {
+	switch strings.TrimSpace(jobType) {
+	case model.AutomationJobTypeSyncSearchCPOAvailability,
+		model.AutomationJobTypeSearchCPOEnableProducts,
+		model.AutomationJobTypeSearchCPOBatchEnableMorkovsk:
+		return true
+	default:
+		return false
+	}
+}
+
+func firstAutomationFailureSourceSKU(items []model.AutomationJobItem) string {
+	for _, item := range items {
+		if trimmed := strings.TrimSpace(item.SourceSKU); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func firstNonEmptyServiceTrimmed(values ...string) string {

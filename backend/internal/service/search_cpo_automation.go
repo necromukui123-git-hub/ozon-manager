@@ -45,17 +45,29 @@ type searchCPOAutomationRunInput struct {
 }
 
 type searchCPOAvailabilityArtifact struct {
-	Items []searchCPOAvailabilityArtifactItem `json:"items"`
+	ParserRevision          string                              `json:"parser_revision,omitempty"`
+	BuildRevision           string                              `json:"build_revision,omitempty"`
+	ResponseRootKeys        []string                            `json:"response_root_keys,omitempty"`
+	SampleResponseKeys      []string                            `json:"sample_response_keys,omitempty"`
+	AvailabilityMapKeyCount int                                 `json:"availability_map_key_count,omitempty"`
+	ReasonMapKeyCount       int                                 `json:"reason_map_key_count,omitempty"`
+	Items                   []searchCPOAvailabilityArtifactItem `json:"items"`
 }
 
 type searchCPOAvailabilityArtifactItem struct {
-	SourceSKU         string          `json:"source_sku"`
-	SKU               string          `json:"sku"`
-	SearchPromoStatus string          `json:"search_promo_status"`
-	CarrotsStatus     string          `json:"carrots_status"`
-	AvailabilityPromo *bool           `json:"availability_promo"`
-	Error             string          `json:"error,omitempty"`
-	Payload           json.RawMessage `json:"payload,omitempty"`
+	SourceSKU               string          `json:"source_sku"`
+	SKU                     string          `json:"sku"`
+	RequestedSKU            string          `json:"requested_sku,omitempty"`
+	ParserRevision          string          `json:"parser_revision,omitempty"`
+	ResponseRootKeys        []string        `json:"response_root_keys,omitempty"`
+	SampleResponseKeys      []string        `json:"sample_response_keys,omitempty"`
+	AvailabilityMapKeyCount int             `json:"availability_map_key_count,omitempty"`
+	ReasonMapKeyCount       int             `json:"reason_map_key_count,omitempty"`
+	SearchPromoStatus       string          `json:"search_promo_status"`
+	CarrotsStatus           string          `json:"carrots_status"`
+	AvailabilityPromo       *bool           `json:"availability_promo"`
+	Error                   string          `json:"error,omitempty"`
+	Payload                 json.RawMessage `json:"payload,omitempty"`
 }
 
 type searchCPOStepArtifact struct {

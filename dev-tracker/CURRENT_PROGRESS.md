@@ -1,10 +1,10 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-19  
-状态：进行中（Search CPO 三接口响应结构已按本地样本对齐，待 reload 插件后做真实 Seller 联调）
+最后更新时间：2026-03-20  
+状态：进行中（Search CPO availability 运行时诊断已补齐，待 reload 插件后做真实 Seller 复测）
 
 ## 本次交付单元
-本次目标：在保留现有 Search CPO 自动化链路的前提下，对齐 `search_promo_availability`、`product/enable`、`carrots/batch_enable` 三个 Seller 私有接口的真实响应结构，避免 availability 误报“未匹配响应”，并补齐 enable / Morkovsk 的逐 SKU 业务失败判定。
+本次目标：在保留现有 Search CPO 自动化链路的前提下，为 availability 补齐运行时诊断与 `build_revision/parser_revision` 透传，让“未匹配响应”能直接落到 `requested_sku`、响应 key 摘要和当前扩展解析版本，而不是只剩泛化报错。
 
 ## 已完成（含关键文件）
 0. Search CPO 刷新状态落库修复：
@@ -23,6 +23,18 @@
 4. Search CPO 状态迁移链路回写修复：
    - 自动化 `enable` 成功后会把本地 `search_promo_status` 推进为 `SEARCH_PROMO_STATUS_ENABLED`，`Morkovsk` 成功后同步推进 `carrots_status` 与 `morkovsk_joined_at`，并把 `state2` 正确推进到 `state3_trigger/joined`。
    - 新增 `buildSearchCPOSKUMeta*` 单测，覆盖 `source_sku != sku` 场景。
+5. Search CPO availability 运行时诊断补强：
+   - 新增 `browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch.js`，在不改现有主链路的前提下补齐 `search_promo_availability` 的 envelope 宽松解析、`requested_sku/parser_revision/response_root_keys/sample_response_keys` 诊断字段，以及 availability / reason map key 计数。
+   - `background_search_cpo_bootstrap.js` 现会在原 `background_search_cpo_response_patch.js` 之后继续加载 runtime diagnostics patch；extension register 会额外上报 `build_revision`，availability report artifact 会写入 `build_revision/parser_revision` 和逐 SKU 诊断 payload。
+6. Search CPO 后端失败透传补强：
+   - `backend/internal/dto/extension.go`、`backend/internal/service/automation_service.go` 已接收并记录 extension `build_revision`；extension report 事件会附带 `build_revision/parser_revision`。
+   - `backend/internal/service/automation_failure.go` 已在 Search CPO 三类 job 失败时优先保留逐 SKU 细节，并在需要时补齐 `source_sku=` 前缀，避免运行历史和页面错误只剩泛化文案。
+7. 本批验证结果：
+   - runtime diagnostics 补丁脚本语法检查通过：`node --check browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch.js`。
+   - Search CPO parser 样本 + envelope 回归通过：`node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`。
+   - Search CPO service worker 加载顺序回归通过：`node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-service-worker-order.mjs`。
+   - 后端定向测试通过：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./internal/service`。
+
 5. 数据库与迁移：
    - 本次无新增表结构变更，无新增 migration 脚本。
 6. 本批验证结果：
@@ -325,13 +337,14 @@
 35. 本次（插件登录态自动连接主流程收敛）无新增迁移脚本：仅调整插件 popup / background 状态契约与说明文案，不涉及数据库结构变更。
 36. 本次（Search CPO 刷新去掉 `notAvailableOnly`）无新增迁移脚本：仅调整插件抓取请求体、前端文案与交付文档，不涉及数据库结构变更。
 37. 本次（Search CPO 自动化 extension 分发修复）无新增迁移脚本：仅调整插件任务路由与交付文档，不涉及数据库结构变更。
+38. 本次（Search CPO availability 运行时诊断补强）无新增迁移脚本：仅新增扩展 runtime diagnostics patch、后端错误透传和回归脚本，不涉及数据库结构变更。
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。
 2. 缺少真实环境下长时间混合在线回归报告。
 3. 执行引擎路由监控指标尚未落地。
 
 ## 下一步（最多 3 项）
-1. 在真实 Seller 环境联调 `search_promo_availability`、`product/enable`、`carrots/batch_enable` 的响应结构，必要时补充宽松解析与失败透传。
+1. reload 扩展后在真实 Seller 环境复测 `search_promo_availability`，确认新的 `requested_sku/parser_revision/root_keys` 诊断是否足以直接定位 live 响应漂移或 SKU 匹配问题。
 2. 继续补强第三步退出链路的真实结果判定，重点核对官方/店铺活动 remove 的逐 SKU 明细与幂等表现。
 3. 结合真实联调结果补充 Search CPO 自动化逐步骤测试与交付口径，准备拆分下一批实现。
 

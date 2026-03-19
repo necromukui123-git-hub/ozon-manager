@@ -1,5 +1,30 @@
 # Ozon Manager 变更日志
 
+## 2026-03-20
+### 主题
+补齐 Search CPO availability 运行时诊断，避免“未匹配响应”只留下泛化错误，并把当前扩展解析版本一起透传到后端。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo_bootstrap.js`、`background_search_cpo_runtime_diagnostics_patch.js`：
+   - 在原 `background_search_cpo_response_patch.js` 之后继续加载 runtime diagnostics patch，不改现有 CPO 页签复用、请求头捕获和 job 分发主链路。
+   - availability parser 新增对 `data/result/payload/response` 包裹层的宽松搜索；未命中时错误文案会带 `source_sku`、`requested_sku`、`parser_revision`、响应 key 摘要和 map key 数量。
+2. `backend/internal/dto/extension.go`、`backend/internal/service/automation_service.go`、`automation_failure.go`：
+   - extension register 新增 `build_revision`，extension report 事件会附带 `build_revision/parser_revision`。
+   - Search CPO 三类 job 的失败消息会优先保留逐 SKU 细节，并在需要时补齐 `source_sku=` 前缀，降低页面和运行历史排障成本。
+3. `browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`、`verify-search-cpo-service-worker-order.mjs`：
+   - parser 样本回归新增 envelope 变体与诊断字段断言。
+   - 新增 service worker 加载顺序回归，验证 `background_search_cpo.js -> background_search_cpo_response_patch.js -> runtime diagnostics patch` 的真实 override 顺序和 `build_revision` 上报。
+
+### 影响范围
+1. `CPO 商品报名 -> 手动执行一次` 若 availability 仍失败，页面错误不再只有“未匹配到 search_promo_availability 响应”，而会直接给出 `requested_sku`、解析版本和响应 key 摘要。
+2. 当前剩余不确定性已收敛到真实 Seller live 响应本身，不再卡在“浏览器到底跑的是哪版 parser”。
+3. 无数据库结构变更，无新增 migration 脚本；本次仅调整扩展 diagnostics、后端透传与回归脚本。
+
+### 验证
+1. `node --check browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch.js`
+2. `node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`
+3. `node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-service-worker-order.mjs`
+4. `cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./internal/service`
 ## 2026-03-19
 ### 主题
 修复 Search CPO 自动化三接口响应解析漂移，避免 availability 误报“未匹配响应”，并补齐 enable / Morkovsk 的逐 SKU 业务失败判定。

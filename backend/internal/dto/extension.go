@@ -1,10 +1,11 @@
 package dto
 
 type ExtensionRegisterRequest struct {
-	ShopID      uint   `json:"shop_id" binding:"required"`
-	ExtensionID string `json:"extension_id" binding:"required,max=120"`
-	Name        string `json:"name" binding:"max=120"`
-	Version     string `json:"version" binding:"max=60"`
+	ShopID        uint   `json:"shop_id" binding:"required"`
+	ExtensionID   string `json:"extension_id" binding:"required,max=120"`
+	Name          string `json:"name" binding:"max=120"`
+	Version       string `json:"version" binding:"max=60"`
+	BuildRevision string `json:"build_revision" binding:"max=80"`
 }
 
 type ExtensionRegisterResponse struct {
@@ -13,8 +14,9 @@ type ExtensionRegisterResponse struct {
 }
 
 type ExtensionPollRequest struct {
-	ShopID      uint   `json:"shop_id" binding:"required"`
-	ExtensionID string `json:"extension_id" binding:"required,max=120"`
+	ShopID        uint   `json:"shop_id" binding:"required"`
+	ExtensionID   string `json:"extension_id" binding:"required,max=120"`
+	BuildRevision string `json:"build_revision" binding:"max=80"`
 }
 
 type ExtensionPollResponse struct {
