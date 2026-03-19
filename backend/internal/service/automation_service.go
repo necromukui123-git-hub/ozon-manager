@@ -758,6 +758,12 @@ func artifactTypeForJob(jobType string, fallback string) string {
 		return "action_candidates_snapshot"
 	case model.AutomationJobTypeSyncSearchCPOProducts:
 		return "search_cpo_products_snapshot"
+	case model.AutomationJobTypeSyncSearchCPOAvailability:
+		return "search_cpo_availability_snapshot"
+	case model.AutomationJobTypeSearchCPOEnableProducts:
+		return "search_cpo_enable_snapshot"
+	case model.AutomationJobTypeSearchCPOBatchEnableMorkovsk:
+		return "search_cpo_morkovsk_snapshot"
 	case model.AutomationJobTypeSyncActionProducts:
 		return "action_products_snapshot"
 	case model.AutomationJobTypeShopActionDeclare, model.AutomationJobTypeShopActionRemove:
@@ -774,6 +780,9 @@ func extensionSupportedJobTypes() []string {
 		model.AutomationJobTypeSyncShopActions,
 		model.AutomationJobTypeSyncActionCandidates,
 		model.AutomationJobTypeSyncSearchCPOProducts,
+		model.AutomationJobTypeSyncSearchCPOAvailability,
+		model.AutomationJobTypeSearchCPOEnableProducts,
+		model.AutomationJobTypeSearchCPOBatchEnableMorkovsk,
 		model.AutomationJobTypeSyncActionProducts,
 		model.AutomationJobTypeShopActionDeclare,
 		model.AutomationJobTypeShopActionRemove,

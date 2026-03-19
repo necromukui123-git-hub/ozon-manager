@@ -92,6 +92,10 @@ func (h *ExtensionHandler) Poll(c *gin.Context) {
 		if artifact, err := h.automationService.GetLatestArtifact(job.ID, "sync_action_products_meta"); err == nil {
 			_ = json.Unmarshal(artifact.Meta, &meta)
 		}
+	case model.AutomationJobTypeSearchCPOBatchEnableMorkovsk:
+		if artifact, err := h.automationService.GetLatestArtifact(job.ID, "search_cpo_morkovsk_meta"); err == nil {
+			_ = json.Unmarshal(artifact.Meta, &meta)
+		}
 	case model.AutomationJobTypeRemoveRepriceReadd:
 		if artifact, err := h.automationService.GetLatestArtifact(job.ID, "remove_reprice_readd_meta"); err == nil {
 			_ = json.Unmarshal(artifact.Meta, &meta)

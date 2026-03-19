@@ -262,6 +262,9 @@ CREATE TABLE IF NOT EXISTS search_cpo_configs (
     shop_id             INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
     official_action_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
     shop_action_ids     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    auto_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
+    schedule_time       VARCHAR(5) NOT NULL DEFAULT '09:05',
+    enable_step         BOOLEAN NOT NULL DEFAULT TRUE,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(shop_id)
@@ -271,26 +274,33 @@ CREATE TABLE IF NOT EXISTS search_cpo_configs (
 -- 14. CPO 隐藏商品缓存
 -- ============================================================
 CREATE TABLE IF NOT EXISTS search_cpo_products (
-    id                  SERIAL PRIMARY KEY,
-    shop_id             INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
-    sku                 VARCHAR(120),
-    source_sku          VARCHAR(120) NOT NULL,
-    image_url           TEXT,
-    title               VARCHAR(500),
-    category_name       VARCHAR(300),
-    price               DECIMAL(12, 2),
-    is_in_stock         BOOLEAN NOT NULL DEFAULT FALSE,
-    search_promo_status VARCHAR(80),
-    is_favorite         BOOLEAN NOT NULL DEFAULT FALSE,
-    orders              BIGINT NOT NULL DEFAULT 0,
-    spent               DECIMAL(12, 2) NOT NULL DEFAULT 0,
-    clicks              BIGINT NOT NULL DEFAULT 0,
-    ctr_percent         DECIMAL(8, 4) NOT NULL DEFAULT 0,
-    stock_total         BIGINT NOT NULL DEFAULT 0,
-    payload             JSONB,
-    last_synced_at      TIMESTAMP,
-    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id                      SERIAL PRIMARY KEY,
+    shop_id                 INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    sku                     VARCHAR(120),
+    source_sku              VARCHAR(120) NOT NULL,
+    image_url               TEXT,
+    title                   VARCHAR(500),
+    category_name           VARCHAR(300),
+    price                   DECIMAL(12, 2),
+    is_in_stock             BOOLEAN NOT NULL DEFAULT FALSE,
+    search_promo_status     VARCHAR(80),
+    carrots_status          VARCHAR(80),
+    availability_promo      BOOLEAN,
+    availability_payload    JSONB,
+    availability_checked_at TIMESTAMP,
+    rule_state              VARCHAR(40),
+    state2_detected_at      TIMESTAMP,
+    morkovsk_joined_at      TIMESTAMP,
+    is_favorite             BOOLEAN NOT NULL DEFAULT FALSE,
+    orders                  BIGINT NOT NULL DEFAULT 0,
+    spent                   DECIMAL(12, 2) NOT NULL DEFAULT 0,
+    clicks                  BIGINT NOT NULL DEFAULT 0,
+    ctr_percent             DECIMAL(8, 4) NOT NULL DEFAULT 0,
+    stock_total             BIGINT NOT NULL DEFAULT 0,
+    payload                 JSONB,
+    last_synced_at          TIMESTAMP,
+    created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(shop_id, source_sku)
 );
 
@@ -333,6 +343,64 @@ CREATE TABLE IF NOT EXISTS search_cpo_run_items (
     shop_status         VARCHAR(20) NOT NULL DEFAULT 'pending',
     official_results    JSONB NOT NULL DEFAULT '[]'::jsonb,
     shop_results        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(run_id, source_sku)
+);
+
+-- ============================================================
+-- 17. CPO 自动化运行表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS search_cpo_auto_runs (
+    id                    SERIAL PRIMARY KEY,
+    config_id             INTEGER REFERENCES search_cpo_configs(id) ON DELETE SET NULL,
+    shop_id               INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
+    triggered_by          INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    trigger_mode          VARCHAR(20) NOT NULL,
+    trigger_date          DATE NOT NULL,
+    status                VARCHAR(30) NOT NULL DEFAULT 'pending',
+    filter_snapshot       JSONB DEFAULT '{}'::jsonb,
+    config_snapshot       JSONB DEFAULT '{}'::jsonb,
+    total_fetched         INTEGER DEFAULT 0,
+    total_state1          INTEGER DEFAULT 0,
+    total_state2          INTEGER DEFAULT 0,
+    total_state3_trigger  INTEGER DEFAULT 0,
+    total_processed       INTEGER DEFAULT 0,
+    success_items         INTEGER DEFAULT 0,
+    failed_items          INTEGER DEFAULT 0,
+    skipped_items         INTEGER DEFAULT 0,
+    error_message         TEXT,
+    started_at            TIMESTAMP,
+    completed_at          TIMESTAMP,
+    created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 18. CPO 自动化运行明细表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS search_cpo_auto_run_items (
+    id                  SERIAL PRIMARY KEY,
+    run_id              INTEGER NOT NULL REFERENCES search_cpo_auto_runs(id) ON DELETE CASCADE,
+    product_cache_id    INTEGER REFERENCES search_cpo_products(id) ON DELETE SET NULL,
+    source_sku          VARCHAR(120) NOT NULL,
+    sku                 VARCHAR(120),
+    title               VARCHAR(500),
+    search_promo_status VARCHAR(80),
+    carrots_status      VARCHAR(80),
+    availability_promo  BOOLEAN,
+    rule_state_before   VARCHAR(40),
+    rule_state_after    VARCHAR(40),
+    overall_status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+    initial_status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+    enable_status       VARCHAR(20) NOT NULL DEFAULT 'pending',
+    exit_status         VARCHAR(20) NOT NULL DEFAULT 'pending',
+    morkovsk_status     VARCHAR(20) NOT NULL DEFAULT 'pending',
+    initial_results     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    enable_result       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    exit_results        JSONB NOT NULL DEFAULT '[]'::jsonb,
+    morkovsk_result     JSONB NOT NULL DEFAULT '{}'::jsonb,
+    message             TEXT,
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(run_id, source_sku)
@@ -513,10 +581,16 @@ CREATE INDEX IF NOT EXISTS idx_search_cpo_configs_shop_id ON search_cpo_configs(
 CREATE INDEX IF NOT EXISTS idx_search_cpo_products_shop_id ON search_cpo_products(shop_id);
 CREATE INDEX IF NOT EXISTS idx_search_cpo_products_source_sku ON search_cpo_products(source_sku);
 CREATE INDEX IF NOT EXISTS idx_search_cpo_products_status ON search_cpo_products(search_promo_status);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_products_rule_state ON search_cpo_products(rule_state);
 CREATE INDEX IF NOT EXISTS idx_search_cpo_runs_shop_id ON search_cpo_runs(shop_id);
 CREATE INDEX IF NOT EXISTS idx_search_cpo_runs_status ON search_cpo_runs(status);
 CREATE INDEX IF NOT EXISTS idx_search_cpo_run_items_run_id ON search_cpo_run_items(run_id);
 CREATE INDEX IF NOT EXISTS idx_search_cpo_run_items_source_sku ON search_cpo_run_items(source_sku);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_auto_runs_shop_id ON search_cpo_auto_runs(shop_id);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_auto_runs_status ON search_cpo_auto_runs(status);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_auto_runs_trigger_date ON search_cpo_auto_runs(trigger_date);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_auto_run_items_run_id ON search_cpo_auto_run_items(run_id);
+CREATE INDEX IF NOT EXISTS idx_search_cpo_auto_run_items_source_sku ON search_cpo_auto_run_items(source_sku);
 CREATE INDEX IF NOT EXISTS idx_ozon_catalog_shop_product ON ozon_product_catalog_items(shop_id, ozon_product_id);
 CREATE INDEX IF NOT EXISTS idx_ozon_catalog_shop_date ON ozon_product_catalog_items(shop_id, listing_date);
 CREATE INDEX IF NOT EXISTS idx_ozon_catalog_shop_visibility ON ozon_product_catalog_items(shop_id, visibility);
@@ -557,3 +631,5 @@ BEGIN
     RAISE NOTICE '请及时修改默认密码！';
     RAISE NOTICE '========================================';
 END $$;
+
+

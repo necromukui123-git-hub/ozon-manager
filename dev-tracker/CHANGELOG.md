@@ -1,5 +1,33 @@
 # Ozon Manager 变更日志
 
+## 2026-03-19
+### 主题
+落地 Search CPO Morkovsk 三阶段自动化第一批实现，补齐计划文件、后端自动化骨架、插件私有接口执行链路，以及现有 Search CPO 页面的自动化入口。
+
+### 关键变更
+1. `dev-tracker/SEARCH_CPO_MORKOVSK_AUTOMATION_PLAN.md`：
+   - 新增跨会话可复用的完整实现计划，明确状态定义、接口边界、数据库改动、推荐执行顺序与测试要求。
+2. Search CPO 自动化后端：
+   - `search_cpo_configs` 新增 `auto_enabled`、`schedule_time`、`enable_step`。
+   - `search_cpo_products` 新增 `carrots_status`、`availability_promo`、`availability_payload`、`availability_checked_at`、`rule_state`、`state2_detected_at`、`morkovsk_joined_at`。
+   - 新增 `search_cpo_auto_runs`、`search_cpo_auto_run_items`、对应 DTO / repository / handler / service / 路由，以及 `upgrade_20260319_search_cpo_morkovsk_automation.sql`。
+   - `SearchCPOService` 已具备手动触发、定时调度、availability 同步、state1 报名 + enable、state3 退出其它活动后加入 Morkovsk 的首版骨架。
+3. 插件侧：
+   - `background_search_cpo.js` 新增 `sync_search_cpo_availability`、`search_cpo_enable_products`、`search_cpo_batch_enable_morkovsk` 三类 job。
+   - 已接入 Seller 私有 `search_promo_availability`、`product/enable`、`carrots/batch_enable`。
+   - 店铺活动 remove 场景改为优先按 active 商品命中，SKU 不在活动中时返回 `skipped`。
+4. 前端：
+   - `SearchCPO.vue` 已新增自动化配置区、手动执行一次按钮、自动化历史与自动化详情弹窗。
+   - 商品列表已展示 `carrotsStatus`、`availability_promo`、派生规则状态和关键时间点。
+
+### 影响范围
+1. Search CPO 页面现在同时支持“按当前筛选结果手动报名”和“按固定规则手动/定时自动推进 Morkovsk 迁移”。
+2. 本批已具备端到端基础设施，但仍需结合真实 Seller 环境继续校准私有接口响应结构与第三步真实退出结果判定。
+
+### 验证
+1. 后端回归测试通过：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./...`。
+2. 插件脚本语法检查通过：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
+3. 前端构建通过：`cd frontend && cmd /c npm run build`。
 ## 2026-03-18
 ### 主题
 插件改为“自动连接管理端登录态”为主流程，普通用户无需再手动复制 token。
@@ -636,3 +664,5 @@
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
+
+

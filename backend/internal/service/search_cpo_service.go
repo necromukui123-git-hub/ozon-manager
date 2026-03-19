@@ -45,6 +45,7 @@ type searchCPOProductSnapshotItem struct {
 	Price             float64         `json:"price"`
 	IsInStock         bool            `json:"is_in_stock"`
 	SearchPromoStatus string          `json:"search_promo_status"`
+	CarrotsStatus     string          `json:"carrots_status"`
 	IsFavorite        bool            `json:"is_favorite"`
 	Orders            int64           `json:"orders"`
 	Spent             float64         `json:"spent"`
@@ -99,6 +100,9 @@ func (s *SearchCPOService) GetConfig(shopID uint) (*dto.SearchCPOConfigResponse,
 				ShopID:            shopID,
 				OfficialActionIDs: []uint{},
 				ShopActionIDs:     []uint{},
+				AutoEnabled:       false,
+				ScheduleTime:      searchCPODefaultScheduleTime,
+				EnableStep:        true,
 			}, nil
 		}
 		return nil, err
@@ -115,12 +119,42 @@ func (s *SearchCPOService) UpdateConfig(req *dto.SearchCPOConfigRequest) (*dto.S
 		}
 	}
 
+	existing, err := s.repo.FindConfigByShopID(req.ShopID)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	autoEnabled := false
+	enableStep := true
+	scheduleSeed := searchCPODefaultScheduleTime
+	if existing != nil {
+		autoEnabled = existing.AutoEnabled
+		enableStep = existing.EnableStep
+		scheduleSeed = firstNonEmptyServiceTrimmed(existing.ScheduleTime, searchCPODefaultScheduleTime)
+	}
+	if req.AutoEnabled != nil {
+		autoEnabled = *req.AutoEnabled
+	}
+	if req.EnableStep != nil {
+		enableStep = *req.EnableStep
+	}
+	scheduleInput := strings.TrimSpace(req.ScheduleTime)
+	if scheduleInput == "" {
+		scheduleInput = scheduleSeed
+	}
+	scheduleTime, err := normalizeScheduleTime(scheduleInput)
+	if err != nil {
+		return nil, err
+	}
+
 	officialBytes, _ := json.Marshal(officialIDs)
 	shopBytes, _ := json.Marshal(shopIDs)
 	config := &model.SearchCPOConfig{
 		ShopID:            req.ShopID,
 		OfficialActionIDs: officialBytes,
 		ShopActionIDs:     shopBytes,
+		AutoEnabled:       autoEnabled,
+		ScheduleTime:      scheduleTime,
+		EnableStep:        enableStep,
 	}
 	if err := s.repo.UpsertConfig(config); err != nil {
 		return nil, err
@@ -180,6 +214,7 @@ func (s *SearchCPOService) RefreshProducts(userID, shopID uint) (*dto.SearchCPOR
 			Price:             item.Price,
 			IsInStock:         item.IsInStock,
 			SearchPromoStatus: strings.TrimSpace(item.SearchPromoStatus),
+			CarrotsStatus:     strings.TrimSpace(item.CarrotsStatus),
 			IsFavorite:        item.IsFavorite,
 			Orders:            item.Orders,
 			Spent:             item.Spent,
@@ -215,22 +250,28 @@ func (s *SearchCPOService) ListProducts(shopID uint) (*dto.SearchCPOProductsResp
 	respItems := make([]dto.SearchCPOProductItem, 0, len(items))
 	for _, item := range items {
 		respItems = append(respItems, dto.SearchCPOProductItem{
-			ID:                item.ID,
-			SKU:               item.SKU,
-			SourceSKU:         item.SourceSKU,
-			ImageURL:          item.ImageURL,
-			Title:             item.Title,
-			CategoryName:      item.CategoryName,
-			Price:             item.Price,
-			IsInStock:         item.IsInStock,
-			SearchPromoStatus: item.SearchPromoStatus,
-			IsFavorite:        item.IsFavorite,
-			Orders:            item.Orders,
-			Spent:             item.Spent,
-			Clicks:            item.Clicks,
-			CTRPercent:        item.CTRPercent,
-			StockTotal:        item.StockTotal,
-			LastSyncedAt:      formatOptionalTime(item.LastSyncedAt),
+			ID:                    item.ID,
+			SKU:                   item.SKU,
+			SourceSKU:             item.SourceSKU,
+			ImageURL:              item.ImageURL,
+			Title:                 item.Title,
+			CategoryName:          item.CategoryName,
+			Price:                 item.Price,
+			IsInStock:             item.IsInStock,
+			SearchPromoStatus:     item.SearchPromoStatus,
+			CarrotsStatus:         item.CarrotsStatus,
+			AvailabilityPromo:     item.AvailabilityPromo,
+			RuleState:             item.RuleState,
+			IsFavorite:            item.IsFavorite,
+			Orders:                item.Orders,
+			Spent:                 item.Spent,
+			Clicks:                item.Clicks,
+			CTRPercent:            item.CTRPercent,
+			StockTotal:            item.StockTotal,
+			AvailabilityCheckedAt: formatOptionalTime(item.AvailabilityCheckedAt),
+			State2DetectedAt:      formatOptionalTime(item.State2DetectedAt),
+			MorkovskJoinedAt:      formatOptionalTime(item.MorkovskJoinedAt),
+			LastSyncedAt:          formatOptionalTime(item.LastSyncedAt),
 		})
 	}
 
@@ -778,6 +819,9 @@ func toSearchCPOConfigDTO(config *model.SearchCPOConfig) *dto.SearchCPOConfigRes
 		ShopID:            config.ShopID,
 		OfficialActionIDs: decodeUintSlice(config.OfficialActionIDs),
 		ShopActionIDs:     decodeUintSlice(config.ShopActionIDs),
+		AutoEnabled:       config.AutoEnabled,
+		ScheduleTime:      firstNonEmptyServiceTrimmed(config.ScheduleTime, searchCPODefaultScheduleTime),
+		EnableStep:        config.EnableStep,
 		UpdatedAt:         config.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

@@ -782,6 +782,33 @@ async function executeJob(job, state) {
   }
 }
 
+function isSearchCPOJobType(jobType) {
+  return [
+    'sync_search_cpo_products',
+    'sync_search_cpo_availability',
+    'search_cpo_enable_products',
+    'search_cpo_batch_enable_morkovsk',
+  ].includes(String(jobType || '').trim())
+}
+
+async function executeSearchCPOJob(job) {
+  switch (job?.job_type) {
+    case 'sync_search_cpo_products':
+      return await executeSyncSearchCPOProducts()
+    case 'sync_search_cpo_availability':
+      return await executeSyncSearchCPOAvailability(job)
+    case 'search_cpo_enable_products':
+      return await executeSearchCPOEnableProducts(job)
+    case 'search_cpo_batch_enable_morkovsk':
+      return await executeSearchCPOMorkovskBatchEnable(job)
+    default:
+      return {
+        status: 'failed',
+        results: buildJobFailureResults(job, `插件不支持该任务类型: ${job?.job_type || ''}`),
+        meta: {},
+      }
+  }
+}
 async function ensureSellerLoggedInTab() {
   const tab = await getOrCreateSellerTab(false)
   await ensureSellerPage(tab.id, `${SELLER_BASE_URL}/app/dashboard`)
@@ -1040,6 +1067,123 @@ async function executeSyncSearchCPOProducts() {
   }
 }
 
+async function prepareSearchCPOJobExecution() {
+  const selection = await findReusableSearchCPOTab()
+  const tab = selection?.tab
+  const context = selection?.context
+  const tabID = tab.id
+  if (context) {
+    await runScript(tabID, scriptPrimeSearchCPOContext, [context])
+  }
+  return { tabID, context }
+}
+
+async function executeSyncSearchCPOAvailability(job) {
+  const { tabID } = await prepareSearchCPOJobExecution()
+  const sourceSKUs = (job?.items || []).map((item) => normalizeSKU(item?.source_sku)).filter(Boolean)
+  const raw = await runScript(tabID, scriptFetchSearchCPOAvailability, [sourceSKUs])
+  const items = normalizeSearchCPOAvailabilityItems(raw, sourceSKUs)
+  const itemBySKU = Object.fromEntries(items.map((item) => [item.source_sku, item]))
+  const results = sourceSKUs.map((sku) => {
+    const row = itemBySKU[sku]
+    return makeSearchCPOStepJobResult(sku, !row?.error, row?.error || '')
+  })
+  return {
+    status: summarizeStatus(results),
+    results,
+    meta: { items },
+  }
+}
+
+async function executeSearchCPOEnableProducts(job) {
+  const { tabID } = await prepareSearchCPOJobExecution()
+  const sourceSKUs = (job?.items || []).map((item) => normalizeSKU(item?.source_sku)).filter(Boolean)
+  const raw = await runScript(tabID, scriptEnableSearchCPOProducts, [sourceSKUs])
+  const items = normalizeSearchCPOStepItems(raw, sourceSKUs)
+  const itemBySKU = Object.fromEntries(items.map((item) => [item.source_sku, item]))
+  const results = sourceSKUs.map((sku) => makeSearchCPOStepJobResult(sku, String(itemBySKU[sku]?.status || '') !== 'failed', itemBySKU[sku]?.error || ''))
+  return {
+    status: summarizeStatus(results),
+    results,
+    meta: { items },
+  }
+}
+
+async function executeSearchCPOMorkovskBatchEnable(job) {
+  const { tabID } = await prepareSearchCPOJobExecution()
+  const sourceSKUs = (job?.items || []).map((item) => normalizeSKU(item?.source_sku)).filter(Boolean)
+  const raw = await runScript(tabID, scriptBatchEnableSearchCPOMorkovsk, [sourceSKUs])
+  const items = normalizeSearchCPOStepItems(raw, sourceSKUs)
+  const itemBySKU = Object.fromEntries(items.map((item) => [item.source_sku, item]))
+  const results = sourceSKUs.map((sku) => makeSearchCPOStepJobResult(sku, String(itemBySKU[sku]?.status || '') !== 'failed', itemBySKU[sku]?.error || ''))
+  return {
+    status: summarizeStatus(results),
+    results,
+    meta: { items },
+  }
+}
+
+function normalizeSearchCPOAvailabilityItems(raw, sourceSKUs) {
+  const skuList = Array.isArray(sourceSKUs) ? sourceSKUs : []
+  const sourceMap = raw && typeof raw === 'object' ? raw : {}
+  const data = sourceMap?.data || sourceMap
+  const items = []
+
+  for (const sku of skuList) {
+    const exact = data?.[sku] || data?.result?.[sku] || null
+    const candidates = Array.isArray(data?.items) ? data.items : Array.isArray(data?.products) ? data.products : []
+    let matched = exact
+    if (!matched) {
+      matched = candidates.find((item) => normalizeSKU(item?.sku || item?.source_sku) === sku) || null
+    }
+    const availability = matched?.promo ?? matched?.isPromo ?? matched?.availabilityPromo ?? matched?.availability_promo ?? matched?.available ?? matched?.is_available ?? false
+    items.push({
+      source_sku: sku,
+      sku,
+      search_promo_status: String(matched?.searchPromoStatus || matched?.search_promo_status || '').trim(),
+      carrots_status: String(matched?.carrotsStatus || matched?.carrots_status || '').trim(),
+      availability_promo: Boolean(availability),
+      error: '',
+      payload: matched || { sku, availability_promo: Boolean(availability) },
+    })
+  }
+
+  return items
+}
+
+function normalizeSearchCPOStepItems(raw, sourceSKUs) {
+  const skuList = Array.isArray(sourceSKUs) ? sourceSKUs : []
+  const sourceMap = raw && typeof raw === 'object' ? raw : {}
+  const items = Array.isArray(sourceMap?.items) ? sourceMap.items : []
+  const itemBySKU = Object.fromEntries(
+    items
+      .map((item) => [normalizeSKU(item?.source_sku || item?.sku), item])
+      .filter(([sku]) => Boolean(sku)),
+  )
+  const fallbackMessage = String(sourceMap?.message || sourceMap?.data?.message || '').trim()
+  return skuList.map((sku) => {
+    const current = itemBySKU[sku]
+    return {
+      source_sku: sku,
+      status: String(current?.status || (current?.error ? 'failed' : 'success')).trim() || 'success',
+      error: String(current?.error || '').trim(),
+      message: String(current?.message || fallbackMessage || '').trim(),
+    }
+  })
+}
+
+function makeSearchCPOStepJobResult(sourceSKU, success, errorMessage) {
+  return {
+    source_sku: sourceSKU,
+    overall_status: success ? 'success' : 'failed',
+    step_exit_status: 'skipped',
+    step_reprice_status: 'skipped',
+    step_readd_status: success ? 'success' : 'failed',
+    step_exit_error: '',
+    step_reprice_error: '',
+    step_readd_error: success ? '' : errorMessage,
+  }
+}
 async function executeSingleShopAction(tabID, job, operation) {
   const sourceActionID = String(job?.meta?.source_action_id || '').trim()
   const sourceSKUs = (job?.items || []).map((item) => normalizeSKU(item?.source_sku)).filter(Boolean)
@@ -1052,7 +1196,7 @@ async function executeSingleShopAction(tabID, job, operation) {
   }
 
   const errorsBySKU = await executeActionOperation(tabID, sourceActionID, sourceSKUs, operation)
-  const results = sourceSKUs.map((sku) => makeActionResult(sku, operation, !errorsBySKU[sku], errorsBySKU[sku] || ''))
+  const results = sourceSKUs.map((sku) => makeActionResultByMessage(sku, operation, errorsBySKU[sku] || ''))
 
   return {
     status: summarizeStatus(results),
@@ -1091,7 +1235,7 @@ async function executeUnifiedShopActions(tabID, job, operation) {
     }
   }
 
-  const results = sourceSKUs.map((sku) => makeActionResult(sku, operation, !mergedErrors[sku], mergedErrors[sku] || ''))
+  const results = sourceSKUs.map((sku) => makeActionResultByMessage(sku, operation, mergedErrors[sku] || ''))
   return {
     status: summarizeStatus(results),
     results,
@@ -1191,17 +1335,36 @@ async function executeRemoveRepriceReadd(tabID, job, state) {
 }
 
 async function executeActionOperation(tabID, sourceActionID, sourceSKUs, operation) {
-  const candidates = await runScript(tabID, scriptFetchCandidates, [sourceActionID])
+  const candidates = operation === 'declare'
+    ? await runScript(tabID, scriptFetchCandidates, [sourceActionID])
+    : []
+  const activeItems = operation === 'remove'
+    ? uniqueBy(
+        ((await runScript(tabID, scriptFetchActionProductsPayloads, [sourceActionID])) || [])
+          .flatMap((packet) => extractActionProductsFromPayload(packet?.data || {}, packet?.endpoint || '')),
+        (item) => buildActionProductDedupKey(item),
+      )
+    : []
   const matched = []
   const errorsBySKU = {}
 
   for (const sku of sourceSKUs) {
-    const candidate = findCandidateBySKU(candidates || [], sku)
-    if (!candidate) {
-      errorsBySKU[sku] = '未找到活动候选商品'
+    if (operation === 'declare') {
+      const candidate = findCandidateBySKU(candidates || [], sku)
+      if (!candidate) {
+        errorsBySKU[sku] = '未找到活动候选商品'
+        continue
+      }
+      matched.push({ sourceSKU: sku, candidate })
       continue
     }
-    matched.push({ sourceSKU: sku, candidate })
+
+    const activeItem = findActionProductBySKU(activeItems || [], sku)
+    if (!activeItem) {
+      errorsBySKU[sku] = '__SKIPPED__:商品当前不在活动中'
+      continue
+    }
+    matched.push({ sourceSKU: sku, activeItem })
   }
 
   if (matched.length === 0) {
@@ -1212,12 +1375,7 @@ async function executeActionOperation(tabID, sourceActionID, sourceSKUs, operati
     if (operation === 'declare') {
       await runScript(tabID, scriptActivateProducts, [sourceActionID, matched.map((entry) => entry.candidate)])
     } else {
-      const skus = matched.map((entry) => {
-        if (Array.isArray(entry.candidate?.skus) && entry.candidate.skus.length > 0) {
-          return String(entry.candidate.skus[0] || '').trim()
-        }
-        return normalizeSKU(entry.sourceSKU)
-      })
+      const skus = matched.map((entry) => normalizeSKU(entry.sourceSKU)).filter(Boolean)
       await runScript(tabID, scriptDeactivateProducts, [sourceActionID, skus])
     }
   } catch (error) {
@@ -1249,6 +1407,10 @@ function buildJobFailureResults(job, message) {
   }
   if (job?.job_type === 'sync_search_cpo_products') {
     return [buildSyncResult('__sync_search_cpo_products__', false, message)]
+  }
+  if (job?.job_type === 'sync_search_cpo_availability' || job?.job_type === 'search_cpo_enable_products' || job?.job_type === 'search_cpo_batch_enable_morkovsk') {
+    const sourceSKUs = (job?.items || []).map((item) => normalizeSKU(item?.source_sku)).filter(Boolean)
+    return sourceSKUs.map((sku) => makeSearchCPOStepJobResult(sku, false, message))
   }
   if (job?.job_type === 'sync_action_products') {
     return [buildSyncResult('__sync_action_products__', false, message)]
@@ -1318,6 +1480,41 @@ function makeActionResult(sourceSKU, operation, success, errorMessage) {
   }
 }
 
+function makeSkippedActionResult(sourceSKU, operation, message) {
+  if (operation === 'declare') {
+    return {
+      source_sku: sourceSKU,
+      overall_status: 'skipped',
+      step_exit_status: 'skipped',
+      step_reprice_status: 'skipped',
+      step_readd_status: 'skipped',
+      step_exit_error: '',
+      step_reprice_error: '',
+      step_readd_error: String(message || '').trim(),
+    }
+  }
+  return {
+    source_sku: sourceSKU,
+    overall_status: 'skipped',
+    step_exit_status: 'skipped',
+    step_reprice_status: 'skipped',
+    step_readd_status: 'skipped',
+    step_exit_error: String(message || '').trim(),
+    step_reprice_error: '',
+    step_readd_error: '',
+  }
+}
+
+function makeActionResultByMessage(sourceSKU, operation, message) {
+  const text = String(message || '').trim()
+  if (!text) {
+    return makeActionResult(sourceSKU, operation, true, '')
+  }
+  if (text.startsWith('__SKIPPED__:')) {
+    return makeSkippedActionResult(sourceSKU, operation, text.replace('__SKIPPED__:', '').trim())
+  }
+  return makeActionResult(sourceSKU, operation, false, text)
+}
 function makeRemoveRepriceReaddResult(
   sourceSKU,
   exitSuccess,
@@ -1388,6 +1585,24 @@ function findCandidateBySKU(candidates, sourceSKU) {
   return null
 }
 
+function findActionProductBySKU(items, sourceSKU) {
+  const needle = normalizeSKU(sourceSKU)
+  if (!needle) return null
+
+  for (const item of items || []) {
+    const candidates = [
+      normalizeSKU(item?.source_sku),
+      normalizeSKU(item?.offer_id),
+      normalizeSKU(item?.platform_sku),
+      normalizeSKU(item?.ozon_product_id),
+      normalizeSKU(item?.sku),
+    ].filter(Boolean)
+    if (candidates.includes(needle)) {
+      return item
+    }
+  }
+  return null
+}
 function uniqueBy(items, keyGetter) {
   const seen = new Set()
   const output = []
@@ -2454,6 +2669,114 @@ async function scriptFetchSearchCPOProducts() {
   return allProducts
 }
 
+function buildSearchCPORequestHeadersInPage() {
+  const normalizeText = (value) => {
+    if (value === null || value === undefined) return ''
+    return String(value).trim()
+  }
+
+  const readCookie = (name) => {
+    const value = `; ${document.cookie}`
+    const parts = value.split(`; ${name}=`)
+    if (parts.length === 2) {
+      return parts.pop().split(';').shift() || ''
+    }
+    return ''
+  }
+
+  const normalizeOrganisation = (value) => {
+    const text = normalizeText(value)
+    if (!text) return ''
+    return text
+  }
+
+  const cachedContext = window.__ozonManagerSearchCPOContext && typeof window.__ozonManagerSearchCPOContext === 'object'
+    ? window.__ozonManagerSearchCPOContext
+    : {}
+
+  const companyId = normalizeOrganisation(cachedContext.companyId || readCookie('sc_company_id') || readCookie('x-o3-company-id'))
+  const language = normalizeText(cachedContext.language || readCookie('x-o3-language') || 'zh-Hans') || 'zh-Hans'
+  const advOrganisation = normalizeOrganisation(cachedContext.advOrganisation || readCookie('adv_current_organisation'))
+  const appName = normalizeText(cachedContext.appName || 'performance-sc') || 'performance-sc'
+
+  if (!companyId) {
+    throw new Error('未找到 x-o3-company-id（sc_company_id），请先确认 Seller 登录态有效')
+  }
+  if (!advOrganisation) {
+    throw new Error('未找到 x-adv-current-organisation，请先打开 Seller 推广按订单付费页面并完整加载后重试')
+  }
+
+  return {
+    accept: 'application/json, text/plain, */*',
+    'content-type': 'application/json',
+    'x-o3-app-name': String(appName),
+    'x-o3-company-id': String(companyId),
+    'x-o3-language': String(language),
+    'x-adv-current-organisation': String(advOrganisation),
+  }
+}
+
+async function scriptFetchSearchCPOAvailability(sourceSKUs) {
+  const skus = Array.isArray(sourceSKUs) ? sourceSKUs.map((item) => String(item || '').trim()).filter(Boolean) : []
+  if (skus.length === 0) return { items: [] }
+  const response = await fetch('/performance-api/seller-api/search-performance-cpo/mainpage/v1/product/list/search_promo_availability', {
+    method: 'POST',
+    credentials: 'include',
+    headers: buildSearchCPORequestHeadersInPage(),
+    body: JSON.stringify({ skus }),
+    referrer: 'https://seller.ozon.ru/app/advertisement/product/cpo/selected',
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`拉取 CPO 可推广状态失败: ${response.status} ${response.statusText} ${text}`)
+  }
+  const data = await response.json().catch(() => ({}))
+  return { data }
+}
+
+async function scriptEnableSearchCPOProducts(sourceSKUs) {
+  const skus = Array.isArray(sourceSKUs) ? sourceSKUs.map((item) => String(item || '').trim()).filter(Boolean) : []
+  if (skus.length === 0) return { items: [] }
+  const response = await fetch('/performance-api/seller-api/search-performance-cpo/mainpage/v1/product/enable', {
+    method: 'POST',
+    credentials: 'include',
+    headers: buildSearchCPORequestHeadersInPage(),
+    body: JSON.stringify({ productsSelectorSkus: { skus } }),
+    referrer: 'https://seller.ozon.ru/app/advertisement/product/cpo/selected',
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`开启 CPO 推广失败: ${response.status} ${response.statusText} ${text}`)
+  }
+  const data = await response.json().catch(() => ({}))
+  return {
+    message: String(data?.message || '').trim(),
+    items: skus.map((sku) => ({ source_sku: sku, status: 'success' })),
+    data,
+  }
+}
+
+async function scriptBatchEnableSearchCPOMorkovsk(sourceSKUs) {
+  const skus = Array.isArray(sourceSKUs) ? sourceSKUs.map((item) => String(item || '').trim()).filter(Boolean) : []
+  if (skus.length === 0) return { items: [] }
+  const response = await fetch('/performance-api/seller-api/search-performance-cpo/carrots/batch_enable', {
+    method: 'POST',
+    credentials: 'include',
+    headers: buildSearchCPORequestHeadersInPage(),
+    body: JSON.stringify({ productsSelectorSkus: { skus } }),
+    referrer: 'https://seller.ozon.ru/app/advertisement/product/cpo/selected',
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(`加入 Morkovsk 失败: ${response.status} ${response.statusText} ${text}`)
+  }
+  const data = await response.json().catch(() => ({}))
+  return {
+    message: String(data?.message || '').trim(),
+    items: skus.map((sku) => ({ source_sku: sku, status: 'success' })),
+    data,
+  }
+}
 async function scriptFetchShopActionsPayloads() {
   const readCookie = (name) => {
     const value = `; ${document.cookie}`
@@ -2755,3 +3078,13 @@ async function scriptDeactivateProducts(actionID, skus) {
   }
   return { success: true }
 }
+
+
+
+
+
+
+
+
+
+

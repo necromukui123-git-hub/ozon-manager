@@ -1,12 +1,34 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-18  
-状态：进行中（插件登录态自动接入主流程已收敛，待真实环境回归）
+最后更新时间：2026-03-19  
+状态：进行中（Search CPO Morkovsk 自动化第一批已落地并完成本地验证）
 
 ## 本次交付单元
-本次目标：把插件默认使用路径收敛为“自动连接当前管理端登录态”，避免普通用户再通过 F12 手动复制 token；同时保留高级设置作为排障兜底。
+本次目标：启动 Search CPO Morkovsk 三阶段自动化第一批实现，把 plan 正式落盘，并补齐“自动触发 + 手动触发”所需的后端、插件和页面入口基础设施。
 
 ## 已完成（含关键文件）
+0. Search CPO Morkovsk 自动化计划落盘：
+   - 新增 `dev-tracker/SEARCH_CPO_MORKOVSK_AUTOMATION_PLAN.md`，固化状态定义、后端/插件/前端分批实现方式、测试要求与交付顺序。
+   - `dev-tracker/OVERALL_TASKS.md` 已新增 T18，并将任务状态标记为 `in_progress`。
+   - `dev-tracker/CHANGELOG.md` 已记录 2026-03-19 首批实现启动。
+1. Search CPO 自动化后端基础设施启动：
+   - `search_cpo_configs` 扩展 `auto_enabled`、`schedule_time`、`enable_step`。
+   - `search_cpo_products` 扩展 `carrots_status`、`availability_promo`、`availability_payload`、`availability_checked_at`、`rule_state`、`state2_detected_at`、`morkovsk_joined_at`。
+   - 新增 `search_cpo_auto_runs`、`search_cpo_auto_run_items` 以及对应 DTO / repository / service / handler / 路由。
+   - 新增自动化入口：`POST /api/v1/promotions/search-cpo/automation/run`、`GET /api/v1/promotions/search-cpo/automation/runs`、`GET /api/v1/promotions/search-cpo/automation/runs/:id`。
+   - 现已落地第一版规则执行骨架：刷新隐藏商品、同步 availability、判定 state1/state2/state3_trigger、state1 报名 + enable、state3 退出其它活动后加入 Morkovsk。
+2. Search CPO 插件链路扩展：
+   - `background_search_cpo.js` 已新增 `sync_search_cpo_availability`、`search_cpo_enable_products`、`search_cpo_batch_enable_morkovsk` 三类 job 执行。
+   - 已新增 Seller 私有接口脚本：`search_promo_availability`、`product/enable`、`carrots/batch_enable`。
+   - 店铺活动 remove 场景已改为优先从 active 商品接口匹配；SKU 当前不在活动中时返回 `skipped`，为第三步“先退再进”铺路。
+3. Search CPO 前端与配置契约扩展：
+   - `Search CPO` 配置 DTO 已支持 `auto_enabled`、`schedule_time`、`enable_step`。
+   - `promotion.js` 已新增自动化 run 列表/详情/手动触发 API。
+   - `SearchCPO.vue` 已新增规则自动化配置区、手动执行一次按钮、自动化历史与逐商品详情展示。
+4. 本批验证结果：
+   - 后端回归测试通过：`cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./...`。
+   - 插件脚本语法检查通过：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
+   - 前端构建通过：`cd frontend && cmd /c npm run build`。
 0. 商品列表同步“成功但数据库无数据”修复（按 `/doc` 重构调用与失败语义）：
    - 根因：`/v3/product/info/list` 响应结构与文档存在差异（顶层 `items`），旧实现仅按 `result.items` 解析；且批次错误被 `continue` 吞掉，前端仍提示同步成功。
    - 处理：`ozon` 客户端改为兼容 `items`/`result.items` 双结构，`/v3/product/list` 请求体去除非标准 `current_page`，`product_id` 按文档改为字符串数组。
@@ -252,6 +274,10 @@
 47. 插件清单解析校验通过（含 `webRequest` 权限声明修正）：`Get-Content browser-extension/ozon-shop-bridge/manifest.json -Raw | ConvertFrom-Json | Out-Null`。
 48. 插件脚本语法检查通过（含管理端自动连接状态收敛）：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`、`node --check browser-extension/ozon-shop-bridge/popup.js`、`node --check browser-extension/ozon-shop-bridge/content-auth-sync.js`。
 ## 数据库执行记录
+0. 本次新增可执行升级脚本：`backend/migrations/upgrade_20260319_search_cpo_morkovsk_automation.sql`（Search CPO Morkovsk 自动化第一批）。
+1. 用途：扩展 `search_cpo_configs` 自动化配置字段、扩展 `search_cpo_products` 规则状态字段，并新增 `search_cpo_auto_runs`、`search_cpo_auto_run_items` 两张自动化运行表。
+2. 执行条件：目标库已存在 `search_cpo_configs`、`search_cpo_products`、`promotion_actions`、`shops` 等基础表；脚本支持幂等重复执行。
+3. 执行结果：脚本已编写，`init_database.sql` 已同步回写；本轮未在当前会话直接执行数据库升级。
 0. 本次（商品同步无数据修复）无新增迁移脚本：仅修正 Ozon API 请求/响应解析、同步失败语义与前端错误提示，不涉及数据库结构变更。
 1. 本轮新增可执行升级脚本：`backend/migrations/upgrade_legacy_to_current.sql`（历史总升级）。
 2. 本轮新增可执行升级脚本：`backend/migrations/upgrade_20260303_action_products_enrichment.sql`（活动商品详情增强字段）。
@@ -295,6 +321,6 @@
 3. 执行引擎路由监控指标尚未落地。
 
 ## 下一步（最多 3 项）
-1. 执行插件真实环境回归，重点核对同源 / 非 localhost 授权、管理端登录态切换、切店铺后 `currentShopId` 自动同步，以及“保存并立即同步一次”提示是否与真实状态一致。
-2. 产出 Chrome 商店上架清单、权限说明与隐私政策文案。
-3. 增加路由监控指标和告警（extension 在线率、fallback 次数、冲突阻断次数）。
+1. 在真实 Seller 环境联调 `search_promo_availability`、`product/enable`、`carrots/batch_enable` 的响应结构，必要时补充宽松解析与失败透传。
+2. 继续补强第三步退出链路的真实结果判定，重点核对官方/店铺活动 remove 的逐 SKU 明细与幂等表现。
+3. 结合真实联调结果补充 Search CPO 自动化逐步骤测试与交付口径，准备拆分下一批实现。

@@ -3,10 +3,19 @@ package repository
 import (
 	"time"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"ozon-manager/internal/model"
 )
+
+type SearchCPOProductAvailabilityUpdate struct {
+	SourceSKU             string
+	CarrotsStatus         string
+	AvailabilityPromo     *bool
+	AvailabilityPayload   datatypes.JSON
+	AvailabilityCheckedAt time.Time
+}
 
 type SearchCPORepository struct {
 	db *gorm.DB
@@ -31,9 +40,18 @@ func (r *SearchCPORepository) UpsertConfig(config *model.SearchCPOConfig) error 
 		DoUpdates: clause.AssignmentColumns([]string{
 			"official_action_ids",
 			"shop_action_ids",
+			"auto_enabled",
+			"schedule_time",
+			"enable_step",
 			"updated_at",
 		}),
 	}).Create(config).Error
+}
+
+func (r *SearchCPORepository) ListAutoEnabledConfigs() ([]model.SearchCPOConfig, error) {
+	configs := make([]model.SearchCPOConfig, 0)
+	err := r.db.Where("auto_enabled = ?", true).Order("shop_id ASC").Find(&configs).Error
+	return configs, err
 }
 
 func (r *SearchCPORepository) ReplaceProducts(shopID uint, products []model.SearchCPOProduct) error {
@@ -49,10 +67,7 @@ func (r *SearchCPORepository) ReplaceProducts(shopID uint, products []model.Sear
 			product := products[i]
 			sourceSKUs = append(sourceSKUs, product.SourceSKU)
 			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{
-					{Name: "shop_id"},
-					{Name: "source_sku"},
-				},
+				Columns: []clause.Column{{Name: "shop_id"}, {Name: "source_sku"}},
 				DoUpdates: clause.AssignmentColumns([]string{
 					"sku",
 					"image_url",
@@ -61,6 +76,7 @@ func (r *SearchCPORepository) ReplaceProducts(shopID uint, products []model.Sear
 					"price",
 					"is_in_stock",
 					"search_promo_status",
+					"carrots_status",
 					"is_favorite",
 					"orders",
 					"spent",
@@ -82,6 +98,39 @@ func (r *SearchCPORepository) ReplaceProducts(shopID uint, products []model.Sear
 
 		return tx.Where("shop_id = ? AND source_sku NOT IN ?", shopID, sourceSKUs).Delete(&model.SearchCPOProduct{}).Error
 	})
+}
+
+func (r *SearchCPORepository) ApplyAvailabilityUpdates(shopID uint, updates []SearchCPOProductAvailabilityUpdate) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, item := range updates {
+			fields := map[string]interface{}{
+				"carrots_status":          item.CarrotsStatus,
+				"availability_promo":      item.AvailabilityPromo,
+				"availability_payload":    item.AvailabilityPayload,
+				"availability_checked_at": item.AvailabilityCheckedAt,
+				"updated_at":              time.Now(),
+			}
+			if err := tx.Model(&model.SearchCPOProduct{}).
+				Where("shop_id = ? AND source_sku = ?", shopID, item.SourceSKU).
+				Updates(fields).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *SearchCPORepository) UpdateProductFields(shopID uint, sourceSKU string, fields map[string]interface{}) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	fields["updated_at"] = time.Now()
+	return r.db.Model(&model.SearchCPOProduct{}).
+		Where("shop_id = ? AND source_sku = ?", shopID, sourceSKU).
+		Updates(fields).Error
 }
 
 func (r *SearchCPORepository) ListProducts(shopID uint) ([]model.SearchCPOProduct, error) {
@@ -164,4 +213,94 @@ func (r *SearchCPORepository) FindActiveRunByShop(shopID uint) (*model.SearchCPO
 		return nil, err
 	}
 	return &run, nil
+}
+
+func (r *SearchCPORepository) CreateAutoRun(run *model.SearchCPOAutoRun) error {
+	return r.db.Create(run).Error
+}
+
+func (r *SearchCPORepository) UpdateAutoRun(run *model.SearchCPOAutoRun) error {
+	return r.db.Save(run).Error
+}
+
+func (r *SearchCPORepository) ReplaceAutoRunItems(runID uint, items []model.SearchCPOAutoRunItem) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("run_id = ?", runID).Delete(&model.SearchCPOAutoRunItem{}).Error; err != nil {
+			return err
+		}
+		if len(items) == 0 {
+			return nil
+		}
+		for i := range items {
+			items[i].RunID = runID
+		}
+		return tx.CreateInBatches(items, 200).Error
+	})
+}
+
+func (r *SearchCPORepository) ListAutoRunsByShop(shopID uint, page, pageSize int) ([]model.SearchCPOAutoRun, int64, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 20
+	}
+
+	var runs []model.SearchCPOAutoRun
+	var total int64
+	query := r.db.Model(&model.SearchCPOAutoRun{}).Where("shop_id = ?", shopID)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	offset := (page - 1) * pageSize
+	err := query.Order("id DESC").Offset(offset).Limit(pageSize).Find(&runs).Error
+	return runs, total, err
+}
+
+func (r *SearchCPORepository) FindAutoRunByIDAndShop(runID, shopID uint) (*model.SearchCPOAutoRun, error) {
+	var run model.SearchCPOAutoRun
+	err := r.db.Where("id = ? AND shop_id = ?", runID, shopID).
+		Preload("RunItems", func(db *gorm.DB) *gorm.DB {
+			return db.Order("id ASC")
+		}).
+		First(&run).Error
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func (r *SearchCPORepository) FindActiveAutoRunByShop(shopID uint) (*model.SearchCPOAutoRun, error) {
+	var run model.SearchCPOAutoRun
+	err := r.db.Where("shop_id = ? AND status IN ?", shopID, []string{
+		model.SearchCPORunStatusPending,
+		model.SearchCPORunStatusRunning,
+	}).Order("id DESC").First(&run).Error
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func (r *SearchCPORepository) FindScheduledAutoRunByConfigAndDate(configID uint, triggerDate time.Time) (*model.SearchCPOAutoRun, error) {
+	var run model.SearchCPOAutoRun
+	err := r.db.Where("config_id = ? AND trigger_mode = ? AND trigger_date = ?", configID, model.SearchCPOAutoTriggerModeScheduled, triggerDate).
+		Order("id DESC").
+		First(&run).Error
+	if err != nil {
+		return nil, err
+	}
+	return &run, nil
+}
+
+func (r *SearchCPORepository) MarkStaleRunningAutoRunsFailed(staleBefore time.Time) error {
+	now := time.Now()
+	return r.db.Model(&model.SearchCPOAutoRun{}).
+		Where("status = ? AND updated_at < ?", model.SearchCPORunStatusRunning, staleBefore).
+		Updates(map[string]interface{}{
+			"status":        model.SearchCPORunStatusFailed,
+			"error_message": "后台重启后将超时运行标记为失败",
+			"completed_at":  &now,
+			"updated_at":    &now,
+		}).Error
 }

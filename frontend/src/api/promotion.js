@@ -168,6 +168,20 @@ export function getSearchCPORunDetail(runId, shopId) {
   })
 }
 
+export function startSearchCPOAutomationRun(data) {
+  return request.post('/promotions/search-cpo/automation/run', data)
+}
+
+export function listSearchCPOAutomationRuns(params) {
+  return request.get('/promotions/search-cpo/automation/runs', { params })
+}
+
+export function getSearchCPOAutomationRunDetail(runId, shopId) {
+  return request.get(`/promotions/search-cpo/automation/runs/${runId}`, {
+    params: { shop_id: shopId }
+  })
+}
+
 // ========== Excel 相关 ==============
 
 // 导入亏损商品
@@ -198,3 +212,5 @@ export function downloadTemplate() {
     responseType: 'blob'
   })
 }
+
+

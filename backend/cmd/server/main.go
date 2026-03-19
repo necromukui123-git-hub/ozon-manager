@@ -55,6 +55,7 @@ func main() {
 	autoPromotionService := service.NewAutoPromotionService(autoPromotionRepo, productRepo, promotionRepo, shopRepo, ozonCatalogRepo, ozonCatalogService, automationService, promotionService)
 	searchCPOService := service.NewSearchCPOService(searchCPORepo, productRepo, promotionRepo, shopRepo, ozonCatalogRepo, automationService, promotionService)
 	autoPromotionService.StartScheduler()
+	searchCPOService.StartAutomationScheduler()
 
 	// 初始化Handler
 	authHandler := handler.NewAuthHandler(authService)
@@ -226,6 +227,9 @@ func main() {
 					promotions.POST("/search-cpo/runs", searchCPOHandler.StartRun)
 					promotions.GET("/search-cpo/runs", searchCPOHandler.ListRuns)
 					promotions.GET("/search-cpo/runs/:id", searchCPOHandler.GetRunDetail)
+					promotions.POST("/search-cpo/automation/run", searchCPOHandler.StartAutomationRun)
+					promotions.GET("/search-cpo/automation/runs", searchCPOHandler.ListAutomationRuns)
+					promotions.GET("/search-cpo/automation/runs/:id", searchCPOHandler.GetAutomationRunDetail)
 				}
 
 				automation := business.Group("/automation")
