@@ -121,7 +121,7 @@ func (s *SearchCPOService) StartAutomationRun(userID uint, req *dto.SearchCPOAut
 		TriggerMode:       model.SearchCPOAutoTriggerModeManual,
 		TriggerDate:       dateOnlyValue(now),
 		ScheduleTime:      cfg.ScheduleTime,
-		EnableStep:        cfg.EnableStep,
+		EnableStep:        true,
 		OfficialActionIDs: uniqueUints(cfg.OfficialActionIDs),
 		ShopActionIDs:     uniqueUints(cfg.ShopActionIDs),
 	}
@@ -224,7 +224,7 @@ func (s *SearchCPOService) scanDueAutomationConfigs(now time.Time) {
 			TriggerMode:       model.SearchCPOAutoTriggerModeScheduled,
 			TriggerDate:       dateOnlyValue(now),
 			ScheduleTime:      scheduleTime,
-			EnableStep:        config.EnableStep,
+			EnableStep:        true,
 			OfficialActionIDs: decodeUintSlice(config.OfficialActionIDs),
 			ShopActionIDs:     decodeUintSlice(config.ShopActionIDs),
 		}
@@ -318,8 +318,8 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 
 	itemStates := make(map[string]*searchCPOAutomationItemState)
 	state1SKUs := make([]string, 0)
+	state2SKUs := make([]string, 0)
 	state3SKUs := make([]string, 0)
-	state2Count := 0
 	now := time.Now()
 	for _, product := range products {
 		before := strings.TrimSpace(product.RuleState)
@@ -343,16 +343,25 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 			MorkovskResult:  dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped},
 		}
 		if latest, ok := availabilityMap[product.SourceSKU]; ok {
-			state.Product.CarrotsStatus = latest.CarrotsStatus
-			state.Product.SearchPromoStatus = firstNonEmptyServiceTrimmed(latest.SearchPromoStatus, state.Product.SearchPromoStatus)
-			state.Product.AvailabilityPromo = latest.AvailabilityPromo
+			if trimmed := strings.TrimSpace(latest.CarrotsStatus); trimmed != "" {
+				state.Product.CarrotsStatus = trimmed
+			}
+			if trimmed := firstNonEmptyServiceTrimmed(latest.SearchPromoStatus, state.Product.SearchPromoStatus); trimmed != "" {
+				state.Product.SearchPromoStatus = trimmed
+			}
+			if latest.AvailabilityPromo != nil {
+				state.Product.AvailabilityPromo = latest.AvailabilityPromo
+			}
+			if strings.TrimSpace(latest.Error) != "" && strings.TrimSpace(state.Message) == "" {
+				state.Message = strings.TrimSpace(latest.Error)
+			}
 		}
 		itemStates[product.SourceSKU] = state
 		switch after {
 		case model.SearchCPORuleStateState1:
 			state1SKUs = append(state1SKUs, product.SourceSKU)
 		case model.SearchCPORuleStateState2:
-			state2Count++
+			state2SKUs = append(state2SKUs, product.SourceSKU)
 		case model.SearchCPORuleStateState3Trigger:
 			state3SKUs = append(state3SKUs, product.SourceSKU)
 		}
@@ -360,9 +369,9 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 
 	run.TotalFetched = len(products)
 	run.TotalState1 = len(state1SKUs)
-	run.TotalState2 = state2Count
+	run.TotalState2 = len(state2SKUs)
 	run.TotalState3Trigger = len(state3SKUs)
-	run.TotalProcessed = len(state1SKUs) + len(state3SKUs)
+	run.TotalProcessed = len(state1SKUs) + len(state2SKUs) + len(state3SKUs)
 	if err := s.repo.UpdateAutoRun(run); err != nil {
 		return err
 	}
@@ -372,8 +381,9 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 			return err
 		}
 	}
-	if len(state3SKUs) > 0 {
-		if err := s.processState3Items(input, triggerUserID, state3SKUs, itemStates); err != nil {
+	migrationSKUs := uniqueSourceSKUs(append(append([]string{}, state2SKUs...), state3SKUs...))
+	if len(migrationSKUs) > 0 {
+		if err := s.processMigrationItems(input, triggerUserID, migrationSKUs, itemStates); err != nil {
 			return err
 		}
 	}
@@ -445,7 +455,8 @@ func (s *SearchCPOService) syncAvailability(userID, shopID uint, products []mode
 	if len(sourceSKUs) == 0 {
 		return result, nil
 	}
-	job, err := s.automationService.CreateSyncSearchCPOAvailabilityJob(userID, shopID, sourceSKUs)
+	jobMeta := buildSearchCPOSKUMeta(products)
+	job, err := s.automationService.CreateSyncSearchCPOAvailabilityJob(userID, shopID, sourceSKUs, jobMeta)
 	if err != nil {
 		return nil, err
 	}
@@ -477,7 +488,8 @@ func (s *SearchCPOService) syncAvailability(userID, shopID uint, products []mode
 		}
 		updates = append(updates, repository.SearchCPOProductAvailabilityUpdate{
 			SourceSKU:             sku,
-			CarrotsStatus:         strings.TrimSpace(item.CarrotsStatus),
+			SearchPromoStatus:     trimmedSearchCPOStringPtr(item.SearchPromoStatus),
+			CarrotsStatus:         trimmedSearchCPOStringPtr(item.CarrotsStatus),
 			AvailabilityPromo:     item.AvailabilityPromo,
 			AvailabilityPayload:   datatypes.JSON(payload),
 			AvailabilityCheckedAt: checkedAt,
@@ -515,7 +527,6 @@ func (s *SearchCPOService) processState1Items(input searchCPOAutomationRunInput,
 		return err
 	}
 
-	enableSKUs := make([]string, 0)
 	for _, sku := range sourceSKUs {
 		state := itemStates[sku]
 		runState := states[sku]
@@ -527,92 +538,32 @@ func (s *SearchCPOService) processState1Items(input searchCPOAutomationRunInput,
 		state.InitialResults = combined
 		overall, _, _ := summarizeSearchCPORowStatus(runState)
 		state.InitialStatus = overall
-		if overall == model.SearchCPOItemStatusSuccess || overall == model.SearchCPOItemStatusPartialSuccess {
-			enableSKUs = append(enableSKUs, sku)
-		}
-	}
-
-	if !input.EnableStep || len(enableSKUs) == 0 {
-		for _, sku := range sourceSKUs {
-			if state := itemStates[sku]; state != nil && state.EnableStatus == "" {
-				state.EnableStatus = model.SearchCPOItemStatusSkipped
-				state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped}
-			}
-		}
-		return nil
-	}
-
-	stepMap, err := s.executeEnableStep(triggerUserID, input.ShopID, enableSKUs)
-	if err != nil {
-		for _, sku := range enableSKUs {
-			if state := itemStates[sku]; state != nil {
-				state.EnableStatus = model.SearchCPOItemStatusFailed
-				state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusFailed, Error: err.Error()}
-			}
-		}
-		return nil
-	}
-	for _, sku := range sourceSKUs {
-		state := itemStates[sku]
-		if state == nil {
-			continue
-		}
-		if state.InitialStatus != model.SearchCPOItemStatusSuccess && state.InitialStatus != model.SearchCPOItemStatusPartialSuccess {
-			state.EnableStatus = model.SearchCPOItemStatusSkipped
-			state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped}
-			continue
-		}
-		if step, ok := stepMap[sku]; ok {
-			state.EnableStatus = step.Status
-			state.EnableResult = step
-			continue
-		}
-		state.EnableStatus = model.SearchCPOItemStatusFailed
-		state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusFailed, Error: "未返回 enable 结果"}
+		state.EnableStatus = model.SearchCPOItemStatusSkipped
+		state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped}
 	}
 	return nil
 }
 
-func (s *SearchCPOService) processState3Items(input searchCPOAutomationRunInput, triggerUserID uint, sourceSKUs []string, itemStates map[string]*searchCPOAutomationItemState) error {
-	actions, err := s.promotionRepo.FindPromotionActionsByShopID(input.ShopID)
-	if err != nil {
-		return err
+func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInput, triggerUserID uint, sourceSKUs []string, itemStates map[string]*searchCPOAutomationItemState) error {
+	if len(sourceSKUs) == 0 {
+		return nil
 	}
 	if triggerUserID == 0 {
 		triggerUserID = resolveSearchCPOTriggerUserID(input.TriggeredBy)
 	}
-	for i := range actions {
-		action := actions[i]
-		if action.Source == "shop" {
-			if err := s.promotionService.refreshShopActionProducts(&action, triggerUserID); err != nil {
-				return err
-			}
-			continue
-		}
-		if err := s.promotionService.refreshOfficialActionProducts(&action); err != nil {
-			return err
-		}
-	}
 
-	actionIDs := actionIDsForActions(actions)
-	activeProducts, err := s.promotionRepo.ListActionProductsByActionIDsAndSourceSKUs(input.ShopID, actionIDs, sourceSKUs)
+	actions, err := s.syncActionsForMigration(input.ShopID, triggerUserID)
 	if err != nil {
-		return err
+		markSearchCPOMigrationSetupFailed(sourceSKUs, itemStates, err.Error())
+		return nil
 	}
-	grouped := make(map[string][]model.PromotionAction)
-	actionByID := make(map[uint]model.PromotionAction, len(actions))
-	for _, action := range actions {
-		actionByID[action.ID] = action
-	}
-	for _, item := range activeProducts {
-		action, ok := actionByID[item.PromotionActionID]
-		if !ok {
-			continue
-		}
-		grouped[item.SourceSKU] = append(grouped[item.SourceSKU], action)
+	grouped, err := s.loadActiveMigrationActions(input.ShopID, triggerUserID, sourceSKUs, actions)
+	if err != nil {
+		markSearchCPOMigrationSetupFailed(sourceSKUs, itemStates, err.Error())
+		return nil
 	}
 
-	eligibleForMorkovsk := make([]string, 0)
+	eligibleForEnable := make([]string, 0, len(sourceSKUs))
 	for _, sku := range sourceSKUs {
 		state := itemStates[sku]
 		if state == nil {
@@ -621,12 +572,11 @@ func (s *SearchCPOService) processState3Items(input searchCPOAutomationRunInput,
 		matchedActions := grouped[sku]
 		if len(matchedActions) == 0 {
 			state.ExitStatus = model.SearchCPOItemStatusSkipped
-			state.MorkovskStatus = model.SearchCPOItemStatusPending
-			eligibleForMorkovsk = append(eligibleForMorkovsk, sku)
+			eligibleForEnable = append(eligibleForEnable, sku)
 			continue
 		}
 		officialActions, shopActions := splitActionsBySource(matchedActions)
-		exitResults := make([]dto.SearchCPORunActionResult, 0)
+		exitResults := make([]dto.SearchCPORunActionResult, 0, len(matchedActions))
 		exitFailed := false
 
 		if len(officialActions) > 0 {
@@ -664,7 +614,7 @@ func (s *SearchCPOService) processState3Items(input searchCPOAutomationRunInput,
 				}
 			} else {
 				waitedJob, waitErr := s.automationService.WaitForJobCompletion(job.ID, searchCPOShopWaitTimeout)
-				itemBySKU := make(map[string]model.AutomationJobItem)
+				itemBySKU := make(map[string]model.AutomationJobItem, len(waitedJob.Items))
 				for _, jobItem := range waitedJob.Items {
 					itemBySKU[jobItem.SourceSKU] = jobItem
 				}
@@ -699,11 +649,64 @@ func (s *SearchCPOService) processState3Items(input searchCPOAutomationRunInput,
 		state.ExitResults = exitResults
 		if exitFailed {
 			state.ExitStatus = model.SearchCPOItemStatusFailed
+			state.EnableStatus = model.SearchCPOItemStatusSkipped
+			state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未执行 enable"}
 			state.MorkovskStatus = model.SearchCPOItemStatusSkipped
 			state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未加入 Morkovsk"}
 			continue
 		}
 		state.ExitStatus = model.SearchCPOItemStatusSuccess
+		eligibleForEnable = append(eligibleForEnable, sku)
+	}
+
+	if len(eligibleForEnable) == 0 {
+		return nil
+	}
+	enableMeta := buildSearchCPOSKUMetaFromStates(eligibleForEnable, itemStates)
+	enableMap, err := s.executeEnableStep(triggerUserID, input.ShopID, eligibleForEnable, enableMeta)
+	if err != nil {
+		for _, sku := range eligibleForEnable {
+			if state := itemStates[sku]; state != nil {
+				state.EnableStatus = model.SearchCPOItemStatusFailed
+				state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusFailed, Error: err.Error()}
+				state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+				state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
+			}
+		}
+		return nil
+	}
+
+	eligibleForMorkovsk := make([]string, 0, len(eligibleForEnable))
+	for _, sku := range eligibleForEnable {
+		state := itemStates[sku]
+		if state == nil {
+			continue
+		}
+		step, ok := enableMap[sku]
+		if !ok {
+			state.EnableStatus = model.SearchCPOItemStatusFailed
+			state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusFailed, Error: "未返回 enable 结果"}
+			state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+			state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
+			continue
+		}
+		state.EnableStatus = step.Status
+		state.EnableResult = step
+		if step.Status != model.SearchCPOItemStatusSuccess {
+			state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+			state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
+			continue
+		}
+		state.Product.SearchPromoStatus = "SEARCH_PROMO_STATUS_ENABLED"
+		if state.RuleStateAfter == model.SearchCPORuleStateState2 {
+			state.RuleStateAfter = model.SearchCPORuleStateState3Trigger
+		}
+		if err := s.repo.UpdateProductFields(input.ShopID, sku, map[string]interface{}{
+			"search_promo_status": "SEARCH_PROMO_STATUS_ENABLED",
+			"rule_state":          state.RuleStateAfter,
+		}); err != nil {
+			return err
+		}
 		state.MorkovskStatus = model.SearchCPOItemStatusPending
 		eligibleForMorkovsk = append(eligibleForMorkovsk, sku)
 	}
@@ -711,7 +714,8 @@ func (s *SearchCPOService) processState3Items(input searchCPOAutomationRunInput,
 	if len(eligibleForMorkovsk) == 0 {
 		return nil
 	}
-	morkovskMap, err := s.executeMorkovskBatchEnable(triggerUserID, input.ShopID, eligibleForMorkovsk)
+	morkovskMeta := buildSearchCPOSKUMetaFromStates(eligibleForMorkovsk, itemStates)
+	morkovskMap, err := s.executeMorkovskBatchEnable(triggerUserID, input.ShopID, eligibleForMorkovsk, morkovskMeta)
 	if err != nil {
 		for _, sku := range eligibleForMorkovsk {
 			if state := itemStates[sku]; state != nil {
@@ -732,10 +736,14 @@ func (s *SearchCPOService) processState3Items(input searchCPOAutomationRunInput,
 			if step.Status == model.SearchCPOItemStatusSuccess {
 				now := time.Now()
 				state.RuleStateAfter = model.SearchCPORuleStateJoined
+				state.Product.SearchPromoStatus = "SEARCH_PROMO_STATUS_ENABLED"
+				state.Product.CarrotsStatus = "CARROTS_STATUS_ENABLED"
 				state.Product.MorkovskJoinedAt = &now
 				if err := s.repo.UpdateProductFields(input.ShopID, sku, map[string]interface{}{
-					"morkovsk_joined_at": &now,
-					"rule_state":         model.SearchCPORuleStateJoined,
+					"search_promo_status": "SEARCH_PROMO_STATUS_ENABLED",
+					"carrots_status":      "CARROTS_STATUS_ENABLED",
+					"morkovsk_joined_at":  &now,
+					"rule_state":          model.SearchCPORuleStateJoined,
 				}); err != nil {
 					return err
 				}
@@ -748,9 +756,108 @@ func (s *SearchCPOService) processState3Items(input searchCPOAutomationRunInput,
 	return nil
 }
 
-func (s *SearchCPOService) executeEnableStep(userID, shopID uint, sourceSKUs []string) (map[string]dto.SearchCPOAutomationStepResult, error) {
+func (s *SearchCPOService) syncActionsForMigration(shopID, triggerUserID uint) ([]model.PromotionAction, error) {
+	if triggerUserID == 0 {
+		return nil, fmt.Errorf("同步活动清单失败: 缺少可用的触发用户")
+	}
+	result, err := s.promotionService.SyncPromotionActionsV2(shopID, triggerUserID)
+	if err != nil {
+		return nil, fmt.Errorf("同步活动清单失败: %w", err)
+	}
+	if msg := buildSearchCPOActionSyncFailureMessage(result); msg != "" {
+		return nil, fmt.Errorf("同步活动清单失败: %s", msg)
+	}
+	actions, err := s.promotionRepo.FindPromotionActionsByShopID(shopID)
+	if err != nil {
+		return nil, err
+	}
+	return actions, nil
+}
+
+func (s *SearchCPOService) loadActiveMigrationActions(shopID, triggerUserID uint, sourceSKUs []string, actions []model.PromotionAction) (map[string][]model.PromotionAction, error) {
+	grouped := make(map[string][]model.PromotionAction)
+	if len(actions) == 0 || len(sourceSKUs) == 0 {
+		return grouped, nil
+	}
+	for i := range actions {
+		action := actions[i]
+		if action.Source == "shop" {
+			if err := s.promotionService.refreshShopActionProducts(&action, triggerUserID); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if err := s.promotionService.refreshOfficialActionProducts(&action); err != nil {
+			return nil, err
+		}
+	}
+
+	actionIDs := actionIDsForActions(actions)
+	if len(actionIDs) == 0 {
+		return grouped, nil
+	}
+	activeProducts, err := s.promotionRepo.ListActionProductsByActionIDsAndSourceSKUs(shopID, actionIDs, sourceSKUs)
+	if err != nil {
+		return nil, err
+	}
+	actionByID := make(map[uint]model.PromotionAction, len(actions))
+	for _, action := range actions {
+		actionByID[action.ID] = action
+	}
+	for _, item := range activeProducts {
+		action, ok := actionByID[item.PromotionActionID]
+		if !ok {
+			continue
+		}
+		grouped[item.SourceSKU] = append(grouped[item.SourceSKU], action)
+	}
+	return grouped, nil
+}
+
+func markSearchCPOMigrationSetupFailed(sourceSKUs []string, itemStates map[string]*searchCPOAutomationItemState, message string) {
+	message = strings.TrimSpace(message)
+	for _, sku := range sourceSKUs {
+		state := itemStates[sku]
+		if state == nil {
+			continue
+		}
+		state.ExitStatus = model.SearchCPOItemStatusFailed
+		state.EnableStatus = model.SearchCPOItemStatusSkipped
+		state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "迁移前置失败，未执行 enable"}
+		state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+		state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "迁移前置失败，未加入 Morkovsk"}
+		state.Message = message
+	}
+}
+
+func buildSearchCPOActionSyncFailureMessage(result *dto.SyncActionsResult) string {
+	if result == nil {
+		return "未返回活动同步结果"
+	}
+	problems := make([]string, 0)
+	if result.ShopSyncPending {
+		problems = append(problems, "店铺活动同步仍在后台进行")
+	}
+	if len(result.PartialErrors) > 0 {
+		keys := make([]string, 0, len(result.PartialErrors))
+		for key := range result.PartialErrors {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			message := strings.TrimSpace(result.PartialErrors[key])
+			if message == "" {
+				continue
+			}
+			problems = append(problems, fmt.Sprintf("%s: %s", key, message))
+		}
+	}
+	return strings.Join(problems, "; ")
+}
+
+func (s *SearchCPOService) executeEnableStep(userID, shopID uint, sourceSKUs []string, meta map[string]interface{}) (map[string]dto.SearchCPOAutomationStepResult, error) {
 	results := make(map[string]dto.SearchCPOAutomationStepResult)
-	job, err := s.automationService.CreateSearchCPOEnableProductsJob(userID, shopID, sourceSKUs)
+	job, err := s.automationService.CreateSearchCPOEnableProductsJob(userID, shopID, sourceSKUs, meta)
 	if err != nil {
 		return nil, err
 	}
@@ -779,9 +886,9 @@ func (s *SearchCPOService) executeEnableStep(userID, shopID uint, sourceSKUs []s
 	return results, nil
 }
 
-func (s *SearchCPOService) executeMorkovskBatchEnable(userID, shopID uint, sourceSKUs []string) (map[string]dto.SearchCPOAutomationStepResult, error) {
+func (s *SearchCPOService) executeMorkovskBatchEnable(userID, shopID uint, sourceSKUs []string, meta map[string]interface{}) (map[string]dto.SearchCPOAutomationStepResult, error) {
 	results := make(map[string]dto.SearchCPOAutomationStepResult)
-	job, err := s.automationService.CreateSearchCPOBatchEnableMorkovskJob(userID, shopID, sourceSKUs)
+	job, err := s.automationService.CreateSearchCPOBatchEnableMorkovskJob(userID, shopID, sourceSKUs, meta)
 	if err != nil {
 		return nil, err
 	}
@@ -872,6 +979,67 @@ func sortedSearchCPOAutomationKeys(states map[string]*searchCPOAutomationItemSta
 	return keys
 }
 
+func buildSearchCPOSKUMeta(products []model.SearchCPOProduct) map[string]interface{} {
+	if len(products) == 0 {
+		return nil
+	}
+	skuMap := make(map[string]string)
+	for _, product := range products {
+		sourceSKU := strings.TrimSpace(product.SourceSKU)
+		targetSKU := normalizeSearchCPOTargetSKU(sourceSKU, product.SKU)
+		if sourceSKU == "" || targetSKU == "" {
+			continue
+		}
+		skuMap[sourceSKU] = targetSKU
+	}
+	if len(skuMap) == 0 {
+		return nil
+	}
+	return map[string]interface{}{"sku_map": skuMap}
+}
+
+func buildSearchCPOSKUMetaFromStates(sourceSKUs []string, itemStates map[string]*searchCPOAutomationItemState) map[string]interface{} {
+	if len(sourceSKUs) == 0 || len(itemStates) == 0 {
+		return nil
+	}
+	skuMap := make(map[string]string)
+	for _, sourceSKU := range sourceSKUs {
+		normalizedSource := strings.TrimSpace(sourceSKU)
+		state := itemStates[normalizedSource]
+		if normalizedSource == "" || state == nil {
+			continue
+		}
+		targetSKU := normalizeSearchCPOTargetSKU(normalizedSource, state.Product.SKU)
+		if targetSKU == "" {
+			continue
+		}
+		skuMap[normalizedSource] = targetSKU
+	}
+	if len(skuMap) == 0 {
+		return nil
+	}
+	return map[string]interface{}{"sku_map": skuMap}
+}
+
+func normalizeSearchCPOTargetSKU(sourceSKU, sku string) string {
+	if trimmed := strings.TrimSpace(sku); trimmed != "" {
+		return trimmed
+	}
+	trimmedSource := strings.TrimSpace(sourceSKU)
+	if trimmedSource != "" && strings.IndexFunc(trimmedSource, func(r rune) bool { return r < '0' || r > '9' }) == -1 {
+		return trimmedSource
+	}
+	return ""
+}
+
+func trimmedSearchCPOStringPtr(value string) *string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	return &trimmed
+}
+
 func toSearchCPOAutomationRunSummaryDTO(run *model.SearchCPOAutoRun) *dto.SearchCPOAutomationRunSummaryResponse {
 	if run == nil {
 		return nil
@@ -897,7 +1065,7 @@ func toSearchCPOAutomationRunSummaryDTO(run *model.SearchCPOAutoRun) *dto.Search
 }
 
 func decodeSearchCPOAutomationConfigSnapshot(raw datatypes.JSON) searchCPOAutomationConfigSnapshot {
-	snapshot := searchCPOAutomationConfigSnapshot{OfficialActionIDs: []uint{}, ShopActionIDs: []uint{}}
+	snapshot := searchCPOAutomationConfigSnapshot{EnableStep: true, OfficialActionIDs: []uint{}, ShopActionIDs: []uint{}}
 	if len(raw) == 0 {
 		return snapshot
 	}

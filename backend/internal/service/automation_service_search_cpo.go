@@ -6,17 +6,21 @@ import (
 	"ozon-manager/internal/model"
 )
 
-func (s *AutomationService) CreateSyncSearchCPOAvailabilityJob(userID uint, shopID uint, sourceSKUs []string) (*model.AutomationJob, error) {
-	return s.createSearchCPOBulkJob(userID, shopID, model.AutomationJobTypeSyncSearchCPOAvailability, sourceSKUs, nil)
+func (s *AutomationService) CreateSyncSearchCPOAvailabilityJob(userID uint, shopID uint, sourceSKUs []string, meta map[string]interface{}) (*model.AutomationJob, error) {
+	return s.createSearchCPOBulkJob(userID, shopID, model.AutomationJobTypeSyncSearchCPOAvailability, sourceSKUs, cloneSearchCPOJobMeta(meta))
 }
 
-func (s *AutomationService) CreateSearchCPOEnableProductsJob(userID uint, shopID uint, sourceSKUs []string) (*model.AutomationJob, error) {
-	return s.createSearchCPOBulkJob(userID, shopID, model.AutomationJobTypeSearchCPOEnableProducts, sourceSKUs, nil)
+func (s *AutomationService) CreateSearchCPOEnableProductsJob(userID uint, shopID uint, sourceSKUs []string, meta map[string]interface{}) (*model.AutomationJob, error) {
+	return s.createSearchCPOBulkJob(userID, shopID, model.AutomationJobTypeSearchCPOEnableProducts, sourceSKUs, cloneSearchCPOJobMeta(meta))
 }
 
-func (s *AutomationService) CreateSearchCPOBatchEnableMorkovskJob(userID uint, shopID uint, sourceSKUs []string) (*model.AutomationJob, error) {
-	meta := map[string]interface{}{"target": "morkovsk"}
-	return s.createSearchCPOBulkJob(userID, shopID, model.AutomationJobTypeSearchCPOBatchEnableMorkovsk, sourceSKUs, meta)
+func (s *AutomationService) CreateSearchCPOBatchEnableMorkovskJob(userID uint, shopID uint, sourceSKUs []string, meta map[string]interface{}) (*model.AutomationJob, error) {
+	merged := cloneSearchCPOJobMeta(meta)
+	if merged == nil {
+		merged = map[string]interface{}{}
+	}
+	merged["target"] = "morkovsk"
+	return s.createSearchCPOBulkJob(userID, shopID, model.AutomationJobTypeSearchCPOBatchEnableMorkovsk, sourceSKUs, merged)
 }
 
 func (s *AutomationService) createSearchCPOBulkJob(userID uint, shopID uint, jobType string, sourceSKUs []string, meta map[string]interface{}) (*model.AutomationJob, error) {
@@ -61,4 +65,15 @@ func searchCPOJobMetaArtifact(jobType string) string {
 	default:
 		return "search_cpo_meta"
 	}
+}
+
+func cloneSearchCPOJobMeta(meta map[string]interface{}) map[string]interface{} {
+	if len(meta) == 0 {
+		return nil
+	}
+	cloned := make(map[string]interface{}, len(meta))
+	for key, value := range meta {
+		cloned[key] = value
+	}
+	return cloned
 }

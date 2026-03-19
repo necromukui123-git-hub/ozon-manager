@@ -132,7 +132,7 @@ export function getAutoPromotionRunDetail(runId, shopId) {
   })
 }
 
-// ========== CPO 隐藏商品批量报名 ==========
+// ========== CPO 商品批量报名 ==========
 
 export function getSearchCPOConfig(shopId) {
   return request.get('/promotions/search-cpo/config', {

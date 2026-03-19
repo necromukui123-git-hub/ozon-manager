@@ -124,18 +124,13 @@ func (s *SearchCPOService) UpdateConfig(req *dto.SearchCPOConfigRequest) (*dto.S
 		return nil, err
 	}
 	autoEnabled := false
-	enableStep := true
 	scheduleSeed := searchCPODefaultScheduleTime
 	if existing != nil {
 		autoEnabled = existing.AutoEnabled
-		enableStep = existing.EnableStep
 		scheduleSeed = firstNonEmptyServiceTrimmed(existing.ScheduleTime, searchCPODefaultScheduleTime)
 	}
 	if req.AutoEnabled != nil {
 		autoEnabled = *req.AutoEnabled
-	}
-	if req.EnableStep != nil {
-		enableStep = *req.EnableStep
 	}
 	scheduleInput := strings.TrimSpace(req.ScheduleTime)
 	if scheduleInput == "" {
@@ -154,7 +149,7 @@ func (s *SearchCPOService) UpdateConfig(req *dto.SearchCPOConfigRequest) (*dto.S
 		ShopActionIDs:     shopBytes,
 		AutoEnabled:       autoEnabled,
 		ScheduleTime:      scheduleTime,
-		EnableStep:        enableStep,
+		EnableStep:        true,
 	}
 	if err := s.repo.UpsertConfig(config); err != nil {
 		return nil, err
@@ -821,7 +816,7 @@ func toSearchCPOConfigDTO(config *model.SearchCPOConfig) *dto.SearchCPOConfigRes
 		ShopActionIDs:     decodeUintSlice(config.ShopActionIDs),
 		AutoEnabled:       config.AutoEnabled,
 		ScheduleTime:      firstNonEmptyServiceTrimmed(config.ScheduleTime, searchCPODefaultScheduleTime),
-		EnableStep:        config.EnableStep,
+		EnableStep:        true,
 		UpdatedAt:         config.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 }

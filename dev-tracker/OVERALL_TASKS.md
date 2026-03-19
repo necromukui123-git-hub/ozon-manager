@@ -38,9 +38,9 @@
 | T13 | `/v3/product/list` 响应字段对齐与目录可见性推导修复 | done | 客户端可解析 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`；目录刷新不再依赖 list 响应 `visibility`，改为优先 `info.visible`，其次 `archived`，最后 `ALL` | 依赖 Seller v3 列表/详情字段稳定 |
 | T14 | 官方促销接口标准说明文档沉淀（`/v1/actions/candidates` + `/v1/actions/products/activate`） | done | 在 `doc/` 产出一份人读版 Markdown 与一份机读版 YAML，覆盖鉴权、分页、请求/响应结构、示例与弃用说明 | 依赖 Ozon 官方文档持续更新，需定期回看 |
 | T15 | 自动添加商品至促销活动（配置 + 调度 + 执行历史） | done | 新增“自动加促销”页面；支持保存绝对日期配置、手动执行、官方/店铺活动候选刷新、按上架日期筛商品、执行历史与逐商品失败明细 | 依赖 Ozon 目录刷新、官方候选接口与浏览器插件执行链稳定 |
-| T16 | Search CPO 隐藏商品批量报名页面（含执行历史） | done | 新增 `/promotions/search-cpo` 页面，支持隐藏 CPO 商品刷新、本地筛选、按当前筛选结果执行官方/店铺活动报名；页面明确“已关闭”语义，官方报名支持目录缓存兜底，且官方失败不再阻断店铺活动；刷新时优先复用已打开的 CPO 页签，未找到页签时明确提示，不再默认新开 Ozon 页面 | 依赖插件执行 `sync_search_cpo_products` 任务并使用 Seller 登录态 |
+| T16 | Search CPO 商品批量报名页面（含执行历史） | done | 新增 `/promotions/search-cpo` 页面，支持 CPO 商品刷新、本地筛选、按当前筛选结果执行官方/店铺活动报名；页面明确“已关闭”语义，官方报名支持目录缓存兜底，且官方失败不再阻断店铺活动；刷新时优先复用已打开的 CPO 页签，未找到页签时明确提示，不再默认新开 Ozon 页面 | 依赖插件执行 `sync_search_cpo_products` 任务并使用 Seller 登录态 |
 | T17 | 插件登录态自动连接主流程收敛 | done | popup 默认展示管理端连接状态，普通用户无需手填 token；非 localhost 首次可按提示授权，手填配置仅保留高级设置兜底 | 依赖管理端 `localStorage.token/currentShopId` 继续稳定 |
-| T18 | Search CPO Morkovsk 三阶段自动化规则 | in_progress | 支持手动触发 + 定时调度；对状态1商品执行“初始活动报名 + enable”，对状态2商品持续跟踪，对状态3触发商品执行“退出其它促销活动 + carrots/batch_enable”；提供运行历史与逐商品步骤结果 | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` 接口结构稳定，且店铺活动 remove 逻辑需改为 active 命中匹配 |
+| T18 | Search CPO 状态迁移自动化规则 | in_progress | 支持手动触发 + 定时调度；对状态1商品执行“初始活动报名”，对状态2商品执行“全量同步活动 -> 退出命中活动 -> enable -> carrots/batch_enable”，对状态3触发商品作为历史兜底继续收敛；`list` 返回的 `searchPromoStatus/carrotsStatus` 可真实落库展示，且 availability / enable / Morkovsk 三类 Seller job 已改为使用数值 `sku` 执行、按 `source_sku` 汇总历史 | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` 接口结构稳定；本地样本文档已对齐 `search_promo_availability -> skuToIsSearchPromoAvailable/WithReason`、`product/enable -> bids[]`、`carrots/batch_enable -> skuToInfo{}`，仍需继续验证真实 Seller 页面执行表现与“先全量同步活动再退出”的结果 |
 
 ## 近期完成里程碑（已完成）
 1. 按店铺执行引擎模式（`auto`/`extension`/`agent`）已落地。
@@ -62,11 +62,14 @@
 17. `/v3/product/list` 客户端响应结构已对齐实测字段（含 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`），目录缓存可见性改为“优先 `info.visible`，其次 `archived`，最后 `ALL`”。
 18. 已新增 `doc/ozon-promos-candidates-activate-standard.md` 与 `doc/ozon-promos-candidates-activate.openapi.yaml`，沉淀官方促销候选商品查询与商品加入促销两个接口的标准说明，明确 `last_id` 分页替代 `offset`，并补齐 `result.rejected` 结构。
 19. 已新增“自动加促销”完整链路：后端新增配置/运行历史/候选缓存表与调度器，插件支持 `sync_action_candidates` 任务，前端新增 `/promotions/auto-add` 页面，支持保存配置、手动执行和逐商品历史查看。
-20. 已新增 “CPO 商品报名”页面与后端链路：支持通过 Seller 隐藏 CPO 接口同步商品、在本地筛选后按“当前筛选结果”执行报名、并查看运行历史与逐商品详情。
+20. 已新增 “CPO 商品报名”页面与后端链路：支持通过 Seller CPO 接口同步商品、在本地筛选后按“当前筛选结果”执行报名、并查看运行历史与逐商品详情。
 21. Search CPO 报名链路已补强：页面将 `SEARCH_PROMO_STATUS_DISABLED` 明确展示为“已关闭”；官方活动报名新增 Ozon 目录缓存兜底（`offer_id/sku -> ozon_product_id`），且官方失败不再自动跳过同商品的店铺活动。
 
 22. Search CPO 商品刷新已改为优先复用用户当前打开的 Seller CPO 页签；缺少页签或缺少组织上下文时直接提示重试，不再默认新开 Ozon 页面。
 23. 插件 popup 已切换为“自动连接管理端”为主流程，`token/shop_id` 手填收敛到高级设置，普通用户无需再通过 F12 复制 token。
+24. Search CPO 自动化在 extension 侧的 Search CPO job 分发缺口已修复；`sync_search_cpo_availability`、`search_cpo_enable_products`、`search_cpo_batch_enable_morkovsk` 现已统一走专用 CPO 执行入口。
+25. Search CPO 自动化规则已按当前产品口径收口：页面明确拆分“人工批量报名”和“状态迁移自动化”，后端调整为 `state1` 初始报名、`state2` 主触发迁移、`state3_trigger` 历史兜底，且自动化迁移前会先全量同步活动清单。
+26. Search CPO 刷新与状态迁移链路已补齐状态可见性和 SKU 语义：`list` 返回的 `carrotsStatus` 不再丢失，列表页空 `search_promo_status` 会显示“状态未知”；availability / enable / Morkovsk 三类 Seller job 改为请求数值 `sku`，未匹配响应时显式失败，不再静默写成 `availability=false` 或 `success`。
 ## 阶段完成标准
 1. 官方与店铺促销在统一 UX 下稳定可用。
 2. 常规场景店铺任务静默执行，不打断用户主流程。

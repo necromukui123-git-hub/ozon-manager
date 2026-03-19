@@ -2,6 +2,131 @@
 
 ## 2026-03-19
 ### 主题
+修复 Search CPO 自动化三接口响应解析漂移，避免 availability 误报“未匹配响应”，并补齐 enable / Morkovsk 的逐 SKU 业务失败判定。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo_bootstrap.js`、`manifest.json`：
+   - 插件 service worker 改为先加载原 `background_search_cpo.js`，再加载 `background_search_cpo_response_patch.js`，避免在 Windows 环境下直接重写大脚本时补丁工具不稳定。
+   - 不改现有 Search CPO 页签复用、请求头捕获和任务分发主链路，只覆盖本次有问题的响应解析与执行结果判定函数。
+2. `browser-extension/ozon-shop-bridge/background_search_cpo_response_patch.js`：
+   - `search_promo_availability` 改为支持 `skuToIsSearchPromoAvailable` 与 `skuToIsSearchPromoAvailabilityWithReason` 双 map 返回，并补齐 `isAvailable` 字段解析。
+   - `product/enable` 改为按 `bids[]` 逐 SKU 判定成功/失败；`carrots/batch_enable` 改为按 `skuToInfo{}` 逐 SKU 判定成功/失败。
+   - enable / Morkovsk 两步不再只凭 HTTP 200 直接回报成功，缺 SKU 或业务错误会在运行历史中显式失败。
+3. `browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`：
+   - 新增基于本地抓包文档的回归脚本，直接用 `search_promo_availability.txt`、`enable.txt`、`batch_enable.txt` 样本验证 parser 行为，并覆盖业务失败场景。
+
+### 影响范围
+1. 点击 `CPO 商品报名 -> 手动执行一次` 时，availability 步骤不再把真实 map 响应误判为“未匹配到 search_promo_availability 响应”。
+2. 即使 Seller 对单个 SKU 返回 enable / Morkovsk 业务失败，系统也会按逐 SKU 明细回报 `failed` 或 `partial_success`，不再静默写成全成功。
+3. 无数据库结构变更，无新增 migration 脚本；本次变更仅涉及插件 service worker 加载方式与 Search CPO 解析层。
+
+### 验证
+1. `node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`
+2. `node --check browser-extension/ozon-shop-bridge/background_search_cpo_response_patch.js`
+3. `node --check browser-extension/ozon-shop-bridge/background_search_cpo_bootstrap.js`
+4. `node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`
+5. `Get-Content browser-extension/ozon-shop-bridge/manifest.json -Raw | ConvertFrom-Json | Out-Null`
+
+## 2026-03-19
+### 主题
+修复 Search CPO 刷新状态缺失与自动化全跳过问题，补齐状态可见性、SKU 映射和失败语义。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo.js`：
+   - `normalizeSearchCPOProduct` 补齐 `carrots_status` 映射，`list` 返回的 `carrotsStatus` 会随刷新一起落库。
+   - `sync_search_cpo_availability`、`search_cpo_enable_products`、`search_cpo_batch_enable_morkovsk` 改为读取后端下发的 `source_sku -> sku` 映射，对 Seller 私有接口统一发送数值 `sku`。
+   - `normalizeSearchCPOAvailabilityItems` / `normalizeSearchCPOStepItems` 改为“未匹配到响应即显式失败”，不再静默写成 `availability_promo=false` 或默认 `success`。
+2. `backend/internal/service/search_cpo_automation.go`、`automation_service_search_cpo.go`、`search_cpo_repo.go`：
+   - Search CPO 三类自动化 job 新增并透传 `search_cpo_meta/search_cpo_morkovsk_meta`，供 extension 执行时恢复真实数值 `sku`。
+   - availability 回写改为仅更新真实返回的 `search_promo_status/carrots_status/availability_promo`，避免缺响应时覆盖掉历史正确状态。
+   - `enable` / `Morkovsk` 成功后同步推进本地 `search_promo_status`、`carrots_status`、`rule_state` 与 `morkovsk_joined_at`，避免 run 成功后列表仍停留在旧状态。
+3. `frontend/src/views/promotions/SearchCPO.vue`：
+   - 列表页空 `search_promo_status` 改为显示“状态未知”，不再把缺失值直接渲染成“已关闭”。
+4. `dev-tracker/*`：
+   - `OVERALL_TASKS.md`、`CURRENT_PROGRESS.md` 与本日志已同步补充本次 Search CPO 状态修复口径。
+
+### 影响范围
+1. 点击“刷新 CPO 商品”后，Seller `list` 已返回的 `searchPromoStatus/carrotsStatus` 现在会真实落到本地并展示。
+2. 点击“手动执行一次”时，availability / enable / Morkovsk 三类 Seller job 不再把 `source_sku` 误当成请求 `sku`，不会再因为响应未命中而大面积静默 `skipped`。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端回归测试通过：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./...`。
+2. 前端构建通过：`cd frontend && cmd /c npm run build`。
+3. 插件脚本语法检查通过：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
+## 2026-03-19
+### 主题
+收口 Search CPO 状态迁移规则，按 state2 主触发改造自动化执行，并拆清人工批量报名与自动迁移文档边界。
+
+### 关键变更
+1. `backend/internal/service/search_cpo_automation.go`：
+   - 自动化规则改为：`state1` 只做初始活动报名；`state2` 直接执行“全量同步活动 -> 退出命中活动 -> enable -> Morkovsk”；`state3_trigger` 只作为历史漏跑兜底。
+   - 迁移前会先调用活动清单全量同步，再刷新活动商品成员关系；前置失败改为逐商品写失败详情，不再直接丢失 run 明细。
+2. `backend/internal/service/search_cpo_service.go`：
+   - 自动化 `enable_step` 收口为兼容字段，服务端固定按 `true` 处理并返回 `true`。
+3. `frontend/src/views/promotions/SearchCPO.vue`：
+   - 页面明确拆分“人工批量报名”和“状态迁移自动化”两条链路。
+   - 移除自动化 `Enable 步骤` 开关，并同步调整自动化说明、筛选标签、历史统计和详情步骤顺序。
+4. 文档同步：
+   - `doc/按订单付费推广商品操作/推广商品添加活动规则.md` 改为只描述状态迁移自动化。
+   - 新增 `doc/按订单付费推广商品操作/CPO商品批量报名.md`，单独说明人工批量报名。
+   - `dev-tracker/OVERALL_TASKS.md`、`CURRENT_PROGRESS.md` 已同步更新当前任务口径。
+
+### 影响范围
+1. Search CPO 自动化现在不再在 `state1` 阶段提前执行 `enable`。
+2. 检测到 `state2` 后，系统会立即尝试退出已命中的官方/店铺活动、执行 `enable` 并加入 `Morkovsk`。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端回归测试：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./...`。
+2. 前端构建：`cd frontend && cmd /c npm run build`。
+3. 插件脚本语法检查：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
+## 2026-03-19
+### 主题
+修复 Search CPO 自动化在 extension 侧的任务分发缺口，并同步补齐支持任务说明。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo.js`：
+   - `executeJob()` 不再只特判 `sync_search_cpo_products`；所有 Search CPO 专用任务统一先走 `executeSearchCPOJob()`。
+   - 修复 `sync_search_cpo_availability`、`search_cpo_enable_products`、`search_cpo_batch_enable_morkovsk` 落入默认 unsupported 分支的问题。
+2. 说明文档同步：
+   - `browser-extension/ozon-shop-bridge/README.md` 与根目录 `AGENTS.md` 的“当前支持任务类型”补齐三类 Search CPO 自动化 job。
+   - `dev-tracker/*` 与 `SEARCH_CPO_MORKOVSK_AUTOMATION_PLAN.md` 同步收敛为当前真实实现状态，避免继续把已接入接口写成“未实现”。
+
+### 影响范围
+1. `CPO 商品报名 -> 手动执行一次` 不再因为 extension 报“插件不支持该任务类型: sync_search_cpo_availability”而在 availability 同步阶段提前失败。
+2. Search CPO 自动化链路中的 availability / enable / Morkovsk 三类 job 现在都会复用专用 CPO 页签上下文，不会误走通用 Seller 工作页。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 插件脚本语法检查：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
+2. 后端回归测试：`cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./...`。
+3. 前端构建：`cd frontend && cmd /c npm run build`。
+## 2026-03-19
+### 主题
+Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页面语义。
+
+### 关键变更
+1. `browser-extension/ozon-shop-bridge/background_search_cpo.js`：
+   - `scriptFetchSearchCPOProducts` 的请求体删除 `notAvailableOnly: true`，保留现有 `searchPromoStatus`、分页、页签复用与请求头逻辑不变。
+   - 由于 `sync_search_cpo_products` 为共享抓取入口，本次同时影响手动刷新与自动化执行前预刷新。
+2. `frontend/src/views/promotions/SearchCPO.vue`：
+   - 按当前能力把“刷新隐藏商品”“隐藏 CPO 商品”等提示改为“刷新 CPO 商品”“CPO 商品”，避免继续暗示只抓隐藏集合。
+   - 自动化确认文案同步更新，和新的抓取范围保持一致。
+3. `dev-tracker/*`：
+   - `OVERALL_TASKS.md`、`CURRENT_PROGRESS.md` 与本日志已同步更新当前能力描述，明确 Search CPO 刷新不再额外带 `notAvailableOnly` 条件。
+
+### 影响范围
+1. Search CPO 页面与自动化预刷新都会按 Seller 当前 CPO 列表返回的完整商品集合同步，不再额外限定“仅不可用商品”。
+2. 当前仍保留按 `source_sku` 去重与落库的既有契约；若刷新数量仍与 Ozon 页面不同，应继续按去重逻辑排查。
+3. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 插件脚本语法检查：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
+2. 前端构建：`cd frontend && cmd /c npm run build`。
+
+## 2026-03-19（自动化首批）
+### 主题
 落地 Search CPO Morkovsk 三阶段自动化第一批实现，补齐计划文件、后端自动化骨架、插件私有接口执行链路，以及现有 Search CPO 页面的自动化入口。
 
 ### 关键变更
@@ -98,7 +223,7 @@
 
 ## 2026-03-17（补充）
 ### 主题
-修复 Search CPO 刷新隐藏商品时默认新开 Ozon 页签的问题，改为优先复用已打开的 Seller CPO 页面。
+修复 Search CPO 刷新时默认新开 Ozon 页签的问题，改为优先复用已打开的 Seller CPO 页面。
 
 ### 关键变更
 1. `browser-extension/ozon-shop-bridge/background_search_cpo.js`：
@@ -113,7 +238,7 @@
    - 其它店铺活动同步、候选同步、统一报名/移除等任务继续沿用当前静默工作页机制。
 
 ### 影响范围
-1. 点击“刷新隐藏商品”时，插件会优先复用用户当前已经打开的 CPO 页面，不再默认新开 Ozon 页面打断操作。
+1. 点击“刷新 CPO 商品”时，插件会优先复用用户当前已经打开的 CPO 页面，不再默认新开 Ozon 页面打断操作。
 2. Search CPO 刷新仍然通过 Seller 页面上下文直接调用 `performance-api`，不是回退成页面点击式自动化。
 3. 无数据库结构变更，无新增迁移脚本。
 
@@ -148,7 +273,7 @@
 2. 前端：`cd frontend && cmd /c npm run build` 通过。
 ## 2026-03-14
 ### 主题
-新增 Search CPO 隐藏商品批量报名能力（页面 + 后端 + 插件任务扩展）。
+新增 Search CPO 商品批量报名能力（页面 + 后端 + 插件任务扩展）。
 
 ### 关键变更
 1. 后端新增 Search CPO 模块：
@@ -161,7 +286,7 @@
    - 新增增量脚本 `backend/migrations/upgrade_20260313_search_cpo_bulk_enroll.sql`。
    - `backend/migrations/init_database.sql` 已同步回写到最新结构。
 4. 插件侧：
-   - 插件主入口改为 `browser-extension/ozon-shop-bridge/manifest.json -> background_search_cpo.js`，支持隐藏 CPO 商品抓取任务。
+   - 插件主入口改为 `browser-extension/ozon-shop-bridge/manifest.json -> background_search_cpo.js`，支持 CPO 商品抓取任务。
 
 ### 影响范围
 1. 运营可在单页完成 Search CPO 商品刷新、筛选、批量报名和历史追踪。

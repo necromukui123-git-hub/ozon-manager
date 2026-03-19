@@ -28,6 +28,10 @@ Thumbs.db
 doc/*
 !doc/ozon-promos-candidates-activate-standard.md
 !doc/ozon-promos-candidates-activate.openapi.yaml
+!doc/按订单付费推广商品操作/
+doc/按订单付费推广商品操作/*
+!doc/按订单付费推广商品操作/推广商品添加活动规则.md
+!doc/按订单付费推广商品操作/CPO商品批量报名.md
 snipaste/
 err/
 

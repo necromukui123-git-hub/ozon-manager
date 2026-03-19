@@ -81,5 +81,6 @@
 
 ## 阶段状态（截至当前）
 - 后端 extension 接口已具备：`/api/v1/extension/register`、`/api/v1/extension/poll`、`/api/v1/extension/report`、`/api/v1/extension/reprice`。
-- 插件当前支持任务：`sync_shop_actions`、`sync_action_candidates`、`sync_search_cpo_products`、`sync_action_products`、`shop_action_declare`、`shop_action_remove`、`promo_unified_enroll`、`promo_unified_remove`、`remove_reprice_readd`。
+- 插件当前支持任务：`sync_shop_actions`、`sync_action_candidates`、`sync_search_cpo_products`、`sync_search_cpo_availability`、`search_cpo_enable_products`、`search_cpo_batch_enable_morkovsk`、`sync_action_products`、`shop_action_declare`、`shop_action_remove`、`promo_unified_enroll`、`promo_unified_remove`、`remove_reprice_readd`。
 - 当前后续重点：执行引擎路由开关、前端插件状态面板、非 localhost 自动同步完善、后端测试补充、Chrome 商店上架准备。
+

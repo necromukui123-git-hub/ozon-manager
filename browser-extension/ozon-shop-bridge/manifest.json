@@ -21,8 +21,7 @@
     "https://*/*"
   ],
   "background": {
-    "service_worker": "background_search_cpo.js",
-    "type": "module"
+    "service_worker": "background_search_cpo_bootstrap.js"
   },
   "action": {
     "default_title": "Ozon Manager Bridge",
@@ -42,4 +41,5 @@
     }
   ]
 }
+
 

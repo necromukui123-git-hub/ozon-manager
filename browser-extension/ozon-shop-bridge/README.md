@@ -54,6 +54,9 @@
 - `sync_action_candidates`
 - `sync_action_products`
 - `sync_search_cpo_products`
+- `sync_search_cpo_availability`
+- `search_cpo_enable_products`
+- `search_cpo_batch_enable_morkovsk`
 - `shop_action_declare`
 - `shop_action_remove`
 - `promo_unified_enroll`
@@ -72,3 +75,4 @@ cd browser-extension/ozon-shop-bridge/scripts
 ```
 
 默认输出到 `browser-extension/ozon-shop-bridge/dist/ozon-shop-bridge-v<version>.zip`。
+

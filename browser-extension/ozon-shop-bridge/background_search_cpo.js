@@ -744,8 +744,9 @@ async function ensureAuthSyncContentScript(state, requestPermission) {
 
 async function executeJob(job, state) {
   try {
-    if (job.job_type === 'sync_search_cpo_products') {
-      return await executeSyncSearchCPOProducts()
+    // Search CPO jobs must stay on the current CPO page/context instead of the generic seller worker tab.
+    if (isSearchCPOJobType(job?.job_type)) {
+      return await executeSearchCPOJob(job)
     }
 
     const tab = await ensureSellerLoggedInTab()
@@ -1080,13 +1081,14 @@ async function prepareSearchCPOJobExecution() {
 
 async function executeSyncSearchCPOAvailability(job) {
   const { tabID } = await prepareSearchCPOJobExecution()
-  const sourceSKUs = (job?.items || []).map((item) => normalizeSKU(item?.source_sku)).filter(Boolean)
-  const raw = await runScript(tabID, scriptFetchSearchCPOAvailability, [sourceSKUs])
-  const items = normalizeSearchCPOAvailabilityItems(raw, sourceSKUs)
+  const skuPairs = buildSearchCPOSkuPairs(job)
+  const requestSKUs = skuPairs.map((pair) => pair.targetSKU)
+  const raw = await runScript(tabID, scriptFetchSearchCPOAvailability, [requestSKUs])
+  const items = normalizeSearchCPOAvailabilityItems(raw, skuPairs)
   const itemBySKU = Object.fromEntries(items.map((item) => [item.source_sku, item]))
-  const results = sourceSKUs.map((sku) => {
-    const row = itemBySKU[sku]
-    return makeSearchCPOStepJobResult(sku, !row?.error, row?.error || '')
+  const results = skuPairs.map(({ sourceSKU }) => {
+    const row = itemBySKU[sourceSKU]
+    return makeSearchCPOStepJobResult(sourceSKU, !row?.error, row?.error || '')
   })
   return {
     status: summarizeStatus(results),
@@ -1097,11 +1099,15 @@ async function executeSyncSearchCPOAvailability(job) {
 
 async function executeSearchCPOEnableProducts(job) {
   const { tabID } = await prepareSearchCPOJobExecution()
-  const sourceSKUs = (job?.items || []).map((item) => normalizeSKU(item?.source_sku)).filter(Boolean)
-  const raw = await runScript(tabID, scriptEnableSearchCPOProducts, [sourceSKUs])
-  const items = normalizeSearchCPOStepItems(raw, sourceSKUs)
+  const skuPairs = buildSearchCPOSkuPairs(job)
+  const requestSKUs = skuPairs.map((pair) => pair.targetSKU)
+  const raw = await runScript(tabID, scriptEnableSearchCPOProducts, [requestSKUs])
+  const items = normalizeSearchCPOStepItems(raw, skuPairs)
   const itemBySKU = Object.fromEntries(items.map((item) => [item.source_sku, item]))
-  const results = sourceSKUs.map((sku) => makeSearchCPOStepJobResult(sku, String(itemBySKU[sku]?.status || '') !== 'failed', itemBySKU[sku]?.error || ''))
+  const results = skuPairs.map(({ sourceSKU }) => {
+    const row = itemBySKU[sourceSKU]
+    return makeSearchCPOStepJobResult(sourceSKU, String(row?.status || '') !== 'failed', row?.error || '')
+  })
   return {
     status: summarizeStatus(results),
     results,
@@ -1111,11 +1117,15 @@ async function executeSearchCPOEnableProducts(job) {
 
 async function executeSearchCPOMorkovskBatchEnable(job) {
   const { tabID } = await prepareSearchCPOJobExecution()
-  const sourceSKUs = (job?.items || []).map((item) => normalizeSKU(item?.source_sku)).filter(Boolean)
-  const raw = await runScript(tabID, scriptBatchEnableSearchCPOMorkovsk, [sourceSKUs])
-  const items = normalizeSearchCPOStepItems(raw, sourceSKUs)
+  const skuPairs = buildSearchCPOSkuPairs(job)
+  const requestSKUs = skuPairs.map((pair) => pair.targetSKU)
+  const raw = await runScript(tabID, scriptBatchEnableSearchCPOMorkovsk, [requestSKUs])
+  const items = normalizeSearchCPOStepItems(raw, skuPairs)
   const itemBySKU = Object.fromEntries(items.map((item) => [item.source_sku, item]))
-  const results = sourceSKUs.map((sku) => makeSearchCPOStepJobResult(sku, String(itemBySKU[sku]?.status || '') !== 'failed', itemBySKU[sku]?.error || ''))
+  const results = skuPairs.map(({ sourceSKU }) => {
+    const row = itemBySKU[sourceSKU]
+    return makeSearchCPOStepJobResult(sourceSKU, String(row?.status || '') !== 'failed', row?.error || '')
+  })
   return {
     status: summarizeStatus(results),
     results,
@@ -1123,51 +1133,69 @@ async function executeSearchCPOMorkovskBatchEnable(job) {
   }
 }
 
-function normalizeSearchCPOAvailabilityItems(raw, sourceSKUs) {
-  const skuList = Array.isArray(sourceSKUs) ? sourceSKUs : []
+function normalizeSearchCPOAvailabilityItems(raw, skuPairs) {
+  const pairs = Array.isArray(skuPairs) ? skuPairs : []
   const sourceMap = raw && typeof raw === 'object' ? raw : {}
   const data = sourceMap?.data || sourceMap
-  const items = []
+  const candidates = Array.isArray(data?.items) ? data.items : Array.isArray(data?.products) ? data.products : []
 
-  for (const sku of skuList) {
-    const exact = data?.[sku] || data?.result?.[sku] || null
-    const candidates = Array.isArray(data?.items) ? data.items : Array.isArray(data?.products) ? data.products : []
-    let matched = exact
+  return pairs.map(({ sourceSKU, targetSKU }) => {
+    let matched = data?.[targetSKU] || data?.result?.[targetSKU] || data?.[sourceSKU] || data?.result?.[sourceSKU] || null
     if (!matched) {
-      matched = candidates.find((item) => normalizeSKU(item?.sku || item?.source_sku) === sku) || null
+      matched = candidates.find((item) => {
+        const keys = [item?.sku, item?.source_sku, item?.sourceSku, item?.offer_id, item?.product_id, item?.id]
+          .map((value) => normalizeSKU(value))
+          .filter(Boolean)
+        return keys.includes(targetSKU) || keys.includes(sourceSKU)
+      }) || null
     }
-    const availability = matched?.promo ?? matched?.isPromo ?? matched?.availabilityPromo ?? matched?.availability_promo ?? matched?.available ?? matched?.is_available ?? false
-    items.push({
-      source_sku: sku,
-      sku,
-      search_promo_status: String(matched?.searchPromoStatus || matched?.search_promo_status || '').trim(),
-      carrots_status: String(matched?.carrotsStatus || matched?.carrots_status || '').trim(),
-      availability_promo: Boolean(availability),
-      error: '',
-      payload: matched || { sku, availability_promo: Boolean(availability) },
-    })
-  }
-
-  return items
+    const availability = readSearchCPOAvailabilityValue(matched)
+    const error = matched
+      ? availability === null
+        ? 'search_promo_availability 响应缺少 availability 字段'
+        : ''
+      : '未匹配到 search_promo_availability 响应'
+    return {
+      source_sku: sourceSKU,
+      sku: firstNonEmptySearchCPOText(matched?.sku, targetSKU, sourceSKU),
+      search_promo_status: firstNonEmptySearchCPOText(matched?.searchPromoStatus, matched?.search_promo_status),
+      carrots_status: firstNonEmptySearchCPOText(matched?.carrotsStatus, matched?.carrots_status),
+      availability_promo: availability,
+      error,
+      payload: matched || { requested_sku: targetSKU, source_sku: sourceSKU, error },
+    }
+  })
 }
 
-function normalizeSearchCPOStepItems(raw, sourceSKUs) {
-  const skuList = Array.isArray(sourceSKUs) ? sourceSKUs : []
+function normalizeSearchCPOStepItems(raw, skuPairs) {
+  const pairs = Array.isArray(skuPairs) ? skuPairs : []
   const sourceMap = raw && typeof raw === 'object' ? raw : {}
-  const items = Array.isArray(sourceMap?.items) ? sourceMap.items : []
-  const itemBySKU = Object.fromEntries(
-    items
-      .map((item) => [normalizeSKU(item?.source_sku || item?.sku), item])
-      .filter(([sku]) => Boolean(sku)),
-  )
-  const fallbackMessage = String(sourceMap?.message || sourceMap?.data?.message || '').trim()
-  return skuList.map((sku) => {
-    const current = itemBySKU[sku]
+  const items = Array.isArray(sourceMap?.items)
+    ? sourceMap.items
+    : Array.isArray(sourceMap?.data?.items)
+      ? sourceMap.data.items
+      : []
+  const itemBySKU = {}
+  for (const item of items) {
+    const keys = [item?.source_sku, item?.sourceSku, item?.sku, item?.offer_id, item?.product_id, item?.id]
+      .map((value) => normalizeSKU(value))
+      .filter(Boolean)
+    for (const key of keys) {
+      if (!itemBySKU[key]) {
+        itemBySKU[key] = item
+      }
+    }
+  }
+  const fallbackMessage = firstNonEmptySearchCPOText(sourceMap?.message, sourceMap?.data?.message)
+  return pairs.map(({ sourceSKU, targetSKU }) => {
+    const current = itemBySKU[targetSKU] || itemBySKU[sourceSKU] || null
+    const error = firstNonEmptySearchCPOText(current?.error, current ? "" : `未匹配到 Search CPO 执行响应: ${targetSKU}`)
     return {
-      source_sku: sku,
-      status: String(current?.status || (current?.error ? 'failed' : 'success')).trim() || 'success',
-      error: String(current?.error || '').trim(),
-      message: String(current?.message || fallbackMessage || '').trim(),
+      source_sku: sourceSKU,
+      sku: targetSKU,
+      status: firstNonEmptySearchCPOText(current?.status, error ? 'failed' : current ? 'success' : 'failed') || 'failed',
+      error,
+      message: firstNonEmptySearchCPOText(current?.message, fallbackMessage, error),
     }
   })
 }
@@ -1568,6 +1596,60 @@ function mergeError(existing, next) {
 
 function normalizeSKU(value) {
   return String(value || '').trim()
+}
+
+function firstNonEmptySearchCPOText(...values) {
+  for (const value of values) {
+    const text = normalizeSKU(value)
+    if (text) return text
+  }
+  return ''
+}
+
+function normalizeSearchCPOSkuMap(meta) {
+  const rawMap = meta && typeof meta === 'object' && meta.sku_map && typeof meta.sku_map === 'object'
+    ? meta.sku_map
+    : {}
+  const normalized = {}
+  for (const [sourceSKU, targetSKU] of Object.entries(rawMap)) {
+    const normalizedSource = normalizeSKU(sourceSKU)
+    const normalizedTarget = normalizeSKU(targetSKU)
+    if (!normalizedSource || !normalizedTarget) continue
+    normalized[normalizedSource] = normalizedTarget
+  }
+  return normalized
+}
+
+function buildSearchCPOSkuPairs(job) {
+  const skuMap = normalizeSearchCPOSkuMap(job?.meta)
+  const pairs = []
+  const seen = new Set()
+  for (const item of job?.items || []) {
+    const sourceSKU = normalizeSKU(item?.source_sku)
+    if (!sourceSKU || seen.has(sourceSKU)) continue
+    seen.add(sourceSKU)
+    const targetSKU = normalizeSKU(skuMap[sourceSKU] || sourceSKU)
+    if (!targetSKU) continue
+    pairs.push({ sourceSKU, targetSKU })
+  }
+  return pairs
+}
+
+function readSearchCPOAvailabilityValue(item) {
+  const candidates = [
+    item?.promo,
+    item?.isPromo,
+    item?.availabilityPromo,
+    item?.availability_promo,
+    item?.available,
+    item?.is_available,
+  ]
+  for (const value of candidates) {
+    if (typeof value === 'boolean') return value
+    if (value === 1 || value === '1') return true
+    if (value === 0 || value === '0') return false
+  }
+  return null
 }
 
 function findCandidateBySKU(candidates, sourceSKU) {
@@ -2188,6 +2270,7 @@ function normalizeSearchCPOProduct(raw) {
     price: toNumber(raw?.price, 0),
     is_in_stock: Boolean(raw?.isInStock),
     search_promo_status: String(raw?.searchPromoStatus || raw?.search_promo_status || '').trim(),
+    carrots_status: String(raw?.carrotsStatus || raw?.carrots_status || '').trim(),
     is_favorite: Boolean(raw?.isFavorite),
     orders: Math.max(0, Math.trunc(toNumber(metrics?.orders, 0))),
     spent: toNumber(metrics?.spent, 0),
@@ -2628,7 +2711,6 @@ async function scriptFetchSearchCPOProducts() {
       completeFilter: {
         filter: {
           searchPromoStatus: ['SEARCH_PROMO_STATUS_ENABLED', 'SEARCH_PROMO_STATUS_DISABLED'],
-          notAvailableOnly: true,
         },
         metricsTimeBounds: bounds,
       },
@@ -3078,13 +3160,3 @@ async function scriptDeactivateProducts(actionID, skus) {
   }
   return { success: true }
 }
-
-
-
-
-
-
-
-
-
-

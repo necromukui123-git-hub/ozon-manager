@@ -11,7 +11,8 @@ import (
 
 type SearchCPOProductAvailabilityUpdate struct {
 	SourceSKU             string
-	CarrotsStatus         string
+	SearchPromoStatus     *string
+	CarrotsStatus         *string
 	AvailabilityPromo     *bool
 	AvailabilityPayload   datatypes.JSON
 	AvailabilityCheckedAt time.Time
@@ -107,11 +108,18 @@ func (r *SearchCPORepository) ApplyAvailabilityUpdates(shopID uint, updates []Se
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		for _, item := range updates {
 			fields := map[string]interface{}{
-				"carrots_status":          item.CarrotsStatus,
-				"availability_promo":      item.AvailabilityPromo,
 				"availability_payload":    item.AvailabilityPayload,
 				"availability_checked_at": item.AvailabilityCheckedAt,
 				"updated_at":              time.Now(),
+			}
+			if item.SearchPromoStatus != nil {
+				fields["search_promo_status"] = *item.SearchPromoStatus
+			}
+			if item.CarrotsStatus != nil {
+				fields["carrots_status"] = *item.CarrotsStatus
+			}
+			if item.AvailabilityPromo != nil {
+				fields["availability_promo"] = item.AvailabilityPromo
 			}
 			if err := tx.Model(&model.SearchCPOProduct{}).
 				Where("shop_id = ? AND source_sku = ?", shopID, item.SourceSKU).

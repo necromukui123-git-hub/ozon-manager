@@ -2,9 +2,9 @@
   <div class="search-cpo-page">
     <div class="hero-shell">
       <div class="hero-copy">
-        <h2 class="gradient">CPO 商品批量报名与规则自动化</h2>
+        <h2 class="gradient">CPO 商品批量报名与状态迁移</h2>
         <p class="hero-subtitle">
-          隐藏 CPO 商品支持两条链路：手动按当前筛选结果报名，以及按 Morkovsk 三阶段规则自动迁移。
+          同一页面保留两条链路：人工按当前筛选结果批量报名，以及按 state1 到 state2 规则迁移到 Morkovsk。
         </p>
         <div class="hero-metrics">
           <div class="metric-pill">
@@ -26,7 +26,7 @@
         </div>
       </div>
       <div class="page-actions">
-        <el-button :loading="refreshing" @click="handleRefreshProducts">刷新隐藏商品</el-button>
+        <el-button :loading="refreshing" @click="handleRefreshProducts">刷新 CPO 商品</el-button>
         <el-button :loading="savingConfig" @click="handleSaveConfig">保存默认活动</el-button>
         <el-button type="primary" :loading="running" :disabled="filteredItems.length === 0" @click="handleRunNow">
           报名当前筛选结果
@@ -38,13 +38,14 @@
       <BentoCard title="执行说明" :icon="InfoFilled" size="1x1">
         <div class="hint-list">
           <div>1. “报名当前筛选结果”只处理当前页面筛选出的商品，用于人工批量报名。</div>
-          <div>2. “规则自动化”会先刷新隐藏商品，再按 state1 / state2 / state3_trigger 规则推进。</div>
-          <div>3. 状态1商品：加入默认活动，并按开关决定是否显式执行 `product/enable`。</div>
-          <div>4. 状态3触发商品：先退出其它促销活动，再调用 `carrots/batch_enable` 加入 Morkovsk。</div>
+          <div>2. “状态迁移自动化”会先刷新 CPO 商品，再同步 availability 后推进规则。</div>
+          <div>3. State 1：加入已保存的默认活动，不在这一阶段执行 `enable`。</div>
+          <div>4. State 2：先同步全部活动并退出已命中的官方/店铺活动，再执行 `enable` 和 `carrots/batch_enable`。</div>
+          <div>5. State 3 兜底：用于收敛历史漏跑后已变成 enabled 的商品，继续走同一条迁移链路。</div>
         </div>
       </BentoCard>
 
-      <BentoCard title="规则自动化" :icon="Clock" size="1x1">
+      <BentoCard title="状态迁移自动化" :icon="Clock" size="1x1">
         <div class="automation-card">
           <div class="automation-target">
             <span class="metric-label">固定目标</span>
@@ -69,18 +70,12 @@
                 <span class="inline-tip">按服务器分钟粒度执行</span>
               </div>
             </el-form-item>
-            <el-form-item label="Enable 步骤">
-              <div class="inline-row">
-                <el-switch v-model="config.enable_step" />
-                <span class="inline-tip">状态1报名后显式调用 `product/enable`</span>
-              </div>
-            </el-form-item>
           </el-form>
           <div class="automation-actions">
             <el-button type="primary" plain :loading="automationRunning" @click="handleStartAutomationRun">
               手动执行一次
             </el-button>
-            <span class="inline-tip">自动触发和按钮手动触发共用同一条规则执行链路。</span>
+            <span class="inline-tip">自动触发和按钮手动触发共用同一条状态迁移链路。</span>
           </div>
         </div>
       </BentoCard>
@@ -143,8 +138,8 @@
           <el-select v-model="filters.ruleState" style="width: 180px">
             <el-option label="全部" value="all" />
             <el-option label="State 1" value="state1" />
-            <el-option label="State 2" value="state2" />
-            <el-option label="State 3 触发" value="state3_trigger" />
+            <el-option label="State 2（迁移触发）" value="state2" />
+            <el-option label="State 3 兜底" value="state3_trigger" />
             <el-option label="已加入 Morkovsk" value="morkovsk_joined" />
             <el-option label="其它 / 未识别" value="other" />
           </el-select>
@@ -205,8 +200,8 @@
           <el-table-column label="CPO 状态" width="190" align="center">
             <template #default="{ row }">
               <div class="status-stack">
-                <el-tag :type="row.search_promo_status === 'SEARCH_PROMO_STATUS_ENABLED' ? 'success' : 'info'">
-                  {{ row.search_promo_status === 'SEARCH_PROMO_STATUS_ENABLED' ? '已开启' : '已关闭' }}
+                <el-tag :type="searchPromoStatusTagType(row.search_promo_status)">
+                  {{ searchPromoStatusLabel(row.search_promo_status) }}
                 </el-tag>
                 <el-tag size="small" :type="carrotsStatusTagType(row.carrots_status)">
                   {{ carrotsStatusLabel(row.carrots_status) }}
@@ -285,7 +280,7 @@
       </div>
     </BentoCard>
 
-    <BentoCard title="自动化历史" :icon="Clock" size="4x1" no-padding>
+    <BentoCard title="状态迁移历史" :icon="Clock" size="4x1" no-padding>
       <div class="table-shell">
         <el-table :data="automationRuns" v-loading="automationRunsLoading">
           <el-table-column prop="id" label="任务ID" width="90" />
@@ -303,7 +298,7 @@
           </el-table-column>
           <el-table-column label="状态统计" min-width="280">
             <template #default="{ row }">
-              <div class="meta">抓取 {{ row.total_fetched }} / State1 {{ row.total_state1 }} / State2 {{ row.total_state2 }} / State3 {{ row.total_state3_trigger }}</div>
+              <div class="meta">抓取 {{ row.total_fetched }} / State1 {{ row.total_state1 }} / State2 迁移 {{ row.total_state2 }} / State3 兜底 {{ row.total_state3_trigger }}</div>
               <div class="meta">处理 {{ row.total_processed }} / 成功 {{ row.success_items }} / 失败 {{ row.failed_items }} / 跳过 {{ row.skipped_items }}</div>
             </template>
           </el-table-column>
@@ -361,11 +356,11 @@
       </el-table>
     </el-dialog>
 
-    <el-dialog v-model="automationDetailVisible" title="自动化运行详情" width="1320px">
+    <el-dialog v-model="automationDetailVisible" title="状态迁移详情" width="1320px">
       <div v-if="automationDetail" class="detail-summary detail-summary--wrap">
         <el-tag :type="statusTagType(automationDetail.status)">{{ statusLabel(automationDetail.status) }}</el-tag>
         <span>触发方式 {{ triggerModeLabel(automationDetail.trigger_mode) }}</span>
-        <span>State1 {{ automationDetail.total_state1 }} / State2 {{ automationDetail.total_state2 }} / State3 {{ automationDetail.total_state3_trigger }}</span>
+        <span>State1 {{ automationDetail.total_state1 }} / State2 迁移 {{ automationDetail.total_state2 }} / State3 兜底 {{ automationDetail.total_state3_trigger }}</span>
         <span>成功 {{ automationDetail.success_items }} / 失败 {{ automationDetail.failed_items }} / 跳过 {{ automationDetail.skipped_items }}</span>
       </div>
 
@@ -397,15 +392,6 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="Enable" min-width="180">
-          <template #default="{ row }">
-            <div class="result-lines">
-              <div>{{ statusLabel(row.enable_status) }}</div>
-              <div v-if="row.enable_result?.message">{{ row.enable_result.message }}</div>
-              <div v-if="row.enable_result?.error" class="error-text">{{ row.enable_result.error }}</div>
-            </div>
-          </template>
-        </el-table-column>
         <el-table-column label="退出其它活动" min-width="240">
           <template #default="{ row }">
             <div class="result-lines">
@@ -414,6 +400,15 @@
                 {{ item.title }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
               </div>
               <div v-if="!row.exit_results || row.exit_results.length === 0">-</div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="Enable" min-width="180">
+          <template #default="{ row }">
+            <div class="result-lines">
+              <div>{{ statusLabel(row.enable_status) }}</div>
+              <div v-if="row.enable_result?.message">{{ row.enable_result.message }}</div>
+              <div v-if="row.enable_result?.error" class="error-text">{{ row.enable_result.error }}</div>
             </div>
           </template>
         </el-table-column>
@@ -478,8 +473,7 @@ const config = reactive({
   official_action_ids: [],
   shop_action_ids: [],
   auto_enabled: false,
-  schedule_time: '09:05',
-  enable_step: true
+  schedule_time: '09:05'
 })
 
 const filters = reactive({
@@ -556,7 +550,6 @@ function resetState() {
   config.shop_action_ids = []
   config.auto_enabled = false
   config.schedule_time = '09:05'
-  config.enable_step = true
   detail.value = null
   automationDetail.value = null
   detailVisible.value = false
@@ -604,7 +597,6 @@ async function loadConfig() {
   config.shop_action_ids = Array.isArray(data.shop_action_ids) ? data.shop_action_ids : []
   config.auto_enabled = Boolean(data.auto_enabled)
   config.schedule_time = data.schedule_time || '09:05'
-  config.enable_step = data.enable_step !== false
 }
 
 async function loadProducts(silent = false) {
@@ -664,8 +656,7 @@ async function handleSaveConfig() {
       official_action_ids: config.official_action_ids,
       shop_action_ids: config.shop_action_ids,
       auto_enabled: config.auto_enabled,
-      schedule_time: config.schedule_time || '09:05',
-      enable_step: config.enable_step
+      schedule_time: config.schedule_time || '09:05'
     })
     ElMessage.success('CPO 配置已保存')
   } catch (error) {
@@ -753,7 +744,7 @@ async function handleStartAutomationRun() {
 
   try {
     await ElMessageBox.confirm(
-      '自动化执行会刷新隐藏商品、同步 availability，并按 Morkovsk 三阶段规则推进，是否继续？',
+      '自动化执行会刷新 CPO 商品、同步 availability，并按 state1 / state2 / state3 兜底规则推进迁移，是否继续？',
       '确认执行自动化',
       {
         confirmButtonText: '开始执行',
@@ -900,6 +891,18 @@ function availabilityTagType(value) {
   return 'warning'
 }
 
+function searchPromoStatusLabel(status) {
+  if (status === 'SEARCH_PROMO_STATUS_ENABLED') return '已开启'
+  if (status === 'SEARCH_PROMO_STATUS_DISABLED') return '已关闭'
+  return '状态未知'
+}
+
+function searchPromoStatusTagType(status) {
+  if (status === 'SEARCH_PROMO_STATUS_ENABLED') return 'success'
+  if (status === 'SEARCH_PROMO_STATUS_DISABLED') return 'info'
+  return 'warning'
+}
+
 function carrotsStatusLabel(status) {
   if (status === 'CARROTS_STATUS_ENABLED') return 'Carrots 已开启'
   if (status === 'CARROTS_STATUS_DISABLED') return 'Carrots 已关闭'
@@ -917,9 +920,9 @@ function ruleStateLabel(state) {
     case 'state1':
       return 'State 1'
     case 'state2':
-      return 'State 2'
+      return 'State 2（迁移触发）'
     case 'state3_trigger':
-      return 'State 3 触发'
+      return 'State 3 兜底'
     case 'morkovsk_joined':
       return '已加入 Morkovsk'
     case 'other':

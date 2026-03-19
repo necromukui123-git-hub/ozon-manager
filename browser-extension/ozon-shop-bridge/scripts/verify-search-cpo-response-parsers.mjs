@@ -1,0 +1,124 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import vm from 'node:vm'
+import { fileURLToPath } from 'node:url'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+const repoRoot = path.resolve(__dirname, '../../..')
+
+function normalizeSKU(value) {
+  return String(value || '').trim()
+}
+
+function firstNonEmptySearchCPOText(...values) {
+  for (const value of values) {
+    const text = normalizeSKU(value)
+    if (text) return text
+  }
+  return ''
+}
+
+function loadPatchContext() {
+  const source = readFileSync(
+    path.join(repoRoot, 'browser-extension/ozon-shop-bridge/background_search_cpo_response_patch.js'),
+    'utf8',
+  )
+  const context = {
+    console,
+    self: {},
+    normalizeSKU,
+    firstNonEmptySearchCPOText,
+  }
+  vm.createContext(context)
+  new vm.Script(source, { filename: 'background_search_cpo_response_patch.js' }).runInContext(context)
+  return context
+}
+
+function readDocResponse(relativePath) {
+  const absolutePath = path.join(repoRoot, relativePath)
+  const raw = readFileSync(absolutePath, 'utf8')
+  const marker = '响应数据：'
+  const index = raw.indexOf(marker)
+  if (index < 0) {
+    throw new Error(`未在 ${relativePath} 中找到“响应数据：”段落`)
+  }
+  return JSON.parse(raw.slice(index + marker.length).trim())
+}
+
+const context = loadPatchContext()
+const {
+  normalizeSearchCPOAvailabilityItems,
+  normalizeSearchCPOEnableItems,
+  normalizeSearchCPOMorkovskItems,
+} = context
+
+assert.equal(typeof normalizeSearchCPOAvailabilityItems, 'function', 'availability parser missing')
+assert.equal(typeof normalizeSearchCPOEnableItems, 'function', 'enable parser missing')
+assert.equal(typeof normalizeSearchCPOMorkovskItems, 'function', 'morkovsk parser missing')
+
+const availabilityResponse = readDocResponse('doc/按订单付费推广商品操作/search_promo_availability.txt')
+const availabilityPairs = Object.keys(availabilityResponse.skuToIsSearchPromoAvailable).map((sku) => ({
+  sourceSKU: sku,
+  targetSKU: sku,
+}))
+const availabilityItems = normalizeSearchCPOAvailabilityItems({ data: availabilityResponse }, availabilityPairs)
+assert.equal(availabilityItems.length, availabilityPairs.length, 'availability item count mismatch')
+const availabilityBySKU = Object.fromEntries(availabilityItems.map((item) => [item.source_sku, item]))
+assert.equal(availabilityBySKU['3323213720'].availability_promo, true, 'expected sku 3323213720 availability=true')
+assert.equal(availabilityBySKU['3328977168'].availability_promo, false, 'expected sku 3328977168 availability=false')
+assert.equal(availabilityBySKU['3328977168'].payload.unavailableReason, 'PROMOTION_UNAVAILABLE_REASON_NO_SALES')
+assert.ok(availabilityItems.every((item) => item.error === ''), 'availability parser should not report missing matches for fixture')
+
+const missingAvailability = normalizeSearchCPOAvailabilityItems(
+  { data: { skuToIsSearchPromoAvailable: { '100': true } } },
+  [{ sourceSKU: '999', targetSKU: '999' }],
+)
+assert.match(missingAvailability[0].error, /未匹配到 search_promo_availability 响应/)
+
+const enableResponse = readDocResponse('doc/按订单付费推广商品操作/enable.txt')
+const enablePairs = enableResponse.bids.map((item) => ({ sourceSKU: item.sku, targetSKU: item.sku }))
+const enableItems = normalizeSearchCPOEnableItems({ data: enableResponse }, enablePairs)
+assert.ok(enableItems.every((item) => item.status === 'success' && item.error === ''), 'enable fixture should be all success')
+
+const failedEnable = normalizeSearchCPOEnableItems(
+  {
+    data: {
+      bids: [{
+        sku: '100',
+        bid: 0,
+        error: 'validation failed',
+        errorReason: 'BID_ERROR_INVALID',
+        unavailableReason: 'PROMOTION_UNAVAILABLE_REASON_NO_SALES',
+      }],
+    },
+  },
+  [{ sourceSKU: '100', targetSKU: '100' }],
+)
+assert.equal(failedEnable[0].status, 'failed', 'enable business failure should be marked failed')
+assert.match(failedEnable[0].error, /validation failed/)
+
+const morkovskResponse = readDocResponse('doc/按订单付费推广商品操作/batch_enable.txt')
+const morkovskPairs = Object.keys(morkovskResponse.skuToInfo).map((sku) => ({ sourceSKU: sku, targetSKU: sku }))
+const morkovskItems = normalizeSearchCPOMorkovskItems({ data: morkovskResponse }, morkovskPairs)
+assert.ok(morkovskItems.every((item) => item.status === 'success' && item.error === ''), 'morkovsk fixture should be all success')
+
+const failedMorkovsk = normalizeSearchCPOMorkovskItems(
+  {
+    data: {
+      skuToInfo: {
+        '200': {
+          isEnabled: false,
+          error: 'CARROT_ERROR_BID_TOO_LOW',
+          bidPercent: 0,
+        },
+      },
+    },
+  },
+  [{ sourceSKU: '200', targetSKU: '200' }],
+)
+assert.equal(failedMorkovsk[0].status, 'failed', 'morkovsk business failure should be marked failed')
+assert.match(failedMorkovsk[0].error, /CARROT_ERROR_BID_TOO_LOW/)
+
+console.log('Search CPO parser checks passed')
