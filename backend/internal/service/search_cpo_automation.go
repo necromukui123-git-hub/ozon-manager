@@ -115,6 +115,64 @@ type searchCPOMigrationLoadResult struct {
 	IssueResults []dto.SearchCPORunActionResult
 }
 
+func isSearchCPOJoinedRepairState(state *searchCPOAutomationItemState) bool {
+	if state == nil {
+		return false
+	}
+	if state.Product.MorkovskJoinedAt != nil {
+		return true
+	}
+	if state.RuleStateBefore == model.SearchCPORuleStateJoined {
+		return true
+	}
+	return state.RuleStateAfter == model.SearchCPORuleStateJoined
+}
+
+func markSearchCPOJoinedRepairSkippedSteps(state *searchCPOAutomationItemState) {
+	if state == nil {
+		return
+	}
+	state.EnableStatus = model.SearchCPOItemStatusSkipped
+	state.EnableResult = dto.SearchCPOAutomationStepResult{
+		Status:  model.SearchCPOItemStatusSkipped,
+		Message: "已加入 Morkovsk，跳过重复 enable",
+	}
+	state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+	state.MorkovskResult = dto.SearchCPOAutomationStepResult{
+		Status:  model.SearchCPOItemStatusSkipped,
+		Message: "已加入 Morkovsk，跳过重复加入",
+	}
+}
+
+func (s *SearchCPOService) verifySearchCPOShopActionExit(shopID, triggerUserID uint, action model.PromotionAction, sourceSKU string, status string, message string) (string, string) {
+	if s == nil {
+		return status, message
+	}
+	refreshErr := s.promotionService.refreshShopActionProducts(&action, triggerUserID)
+	if refreshErr != nil {
+		if isSkippableSearchCPOMigrationRefreshMessage(errorText(refreshErr)) {
+			return status, message
+		}
+		return model.SearchCPOItemStatusFailed, firstNonEmptyServiceTrimmed(
+			fmt.Sprintf("退出后复核失败: %s", errorText(refreshErr)),
+			message,
+			"退出后复核失败",
+		)
+	}
+	activeProducts, err := s.promotionRepo.ListActionProductsByActionIDsAndSourceSKUs(shopID, []uint{action.ID}, []string{sourceSKU})
+	if err != nil {
+		return model.SearchCPOItemStatusFailed, firstNonEmptyServiceTrimmed(
+			fmt.Sprintf("退出后复核失败: %s", err.Error()),
+			message,
+			"退出后复核失败",
+		)
+	}
+	if len(activeProducts) > 0 {
+		return model.SearchCPOItemStatusFailed, "退出后复核仍在活动中"
+	}
+	return status, message
+}
+
 func (s *SearchCPOService) StartAutomationScheduler() {
 	if s.repo == nil {
 		return
@@ -381,6 +439,7 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 	state1SKUs := make([]string, 0)
 	state2SKUs := make([]string, 0)
 	state3SKUs := make([]string, 0)
+	joinedRepairSKUs := make([]string, 0)
 	now := time.Now()
 	for _, product := range products {
 		before := strings.TrimSpace(product.RuleState)
@@ -418,6 +477,9 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 			}
 		}
 		itemStates[product.SourceSKU] = state
+		if isSearchCPOJoinedRepairState(state) {
+			joinedRepairSKUs = append(joinedRepairSKUs, product.SourceSKU)
+		}
 		switch after {
 		case model.SearchCPORuleStateState1:
 			state1SKUs = append(state1SKUs, product.SourceSKU)
@@ -432,7 +494,7 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 	run.TotalState1 = len(state1SKUs)
 	run.TotalState2 = len(state2SKUs)
 	run.TotalState3Trigger = len(state3SKUs)
-	run.TotalProcessed = len(state1SKUs) + len(state2SKUs) + len(state3SKUs)
+	run.TotalProcessed = len(state1SKUs) + len(state2SKUs) + len(state3SKUs) + len(joinedRepairSKUs)
 	if err := s.repo.UpdateAutoRun(run); err != nil {
 		return err
 	}
@@ -442,7 +504,7 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 			return err
 		}
 	}
-	migrationSKUs := uniqueSourceSKUs(append(append([]string{}, state2SKUs...), state3SKUs...))
+	migrationSKUs := uniqueSourceSKUs(append(append(append([]string{}, state2SKUs...), state3SKUs...), joinedRepairSKUs...))
 	if len(migrationSKUs) > 0 {
 		if err := s.processMigrationItems(input, triggerUserID, migrationSKUs, itemStates); err != nil {
 			return err
@@ -639,11 +701,16 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 		if state == nil {
 			continue
 		}
+		joinedRepair := isSearchCPOJoinedRepairState(state)
 		exitResults := cloneSearchCPORunActionResults(precheckResults)
 		matchedActions := grouped[sku]
 		if len(matchedActions) == 0 {
 			state.ExitResults = exitResults
 			state.ExitStatus = model.SearchCPOItemStatusSkipped
+			if joinedRepair {
+				markSearchCPOJoinedRepairSkippedSteps(state)
+				continue
+			}
 			eligibleForEnable = append(eligibleForEnable, sku)
 			continue
 		}
@@ -671,49 +738,63 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 		}
 
 		if len(shopActions) > 0 {
-			job, createErr := s.promotionService.CreateUnifiedShopActionsJob(triggerUserID, input.ShopID, model.AutomationJobTypePromoUnifiedRemove, shopActions, []string{sku})
-			if createErr != nil {
-				exitFailed = true
-				for _, action := range shopActions {
-					exitResults = append(exitResults, dto.SearchCPORunActionResult{
-						PromotionActionID: action.ID,
-						SourceActionID:    action.SourceActionID,
-						Title:             displayActionName(action),
-						Source:            action.Source,
-						Status:            model.SearchCPOItemStatusFailed,
-						Error:             createErr.Error(),
-					})
+			shopExitMeta := buildSearchCPOSKUMetaFromStates([]string{sku}, itemStates)
+			requestSKU := normalizeSearchCPOTargetSKU(sku, state.Product.SKU)
+			if requestSKU == "" {
+				requestSKU = sku
+			}
+			for _, action := range shopActions {
+				result := dto.SearchCPORunActionResult{
+					PromotionActionID: action.ID,
+					SourceActionID:    action.SourceActionID,
+					Title:             displayActionName(action),
+					Source:            action.Source,
+					Status:            model.SearchCPOItemStatusSuccess,
 				}
-			} else {
-				waitedJob, waitErr := s.automationService.WaitForJobCompletion(job.ID, searchCPOShopWaitTimeout)
-				itemBySKU := make(map[string]model.AutomationJobItem, len(waitedJob.Items))
-				for _, jobItem := range waitedJob.Items {
-					itemBySKU[jobItem.SourceSKU] = jobItem
-				}
-				for _, action := range shopActions {
-					result := dto.SearchCPORunActionResult{
-						PromotionActionID: action.ID,
-						SourceActionID:    action.SourceActionID,
-						Title:             displayActionName(action),
-						Source:            action.Source,
-						Status:            model.SearchCPOItemStatusSuccess,
-					}
-					if jobItem, ok := itemBySKU[sku]; ok {
-						result.Status, result.Error = summarizeSearchCPOShopExitJobItem(jobItem, waitedJob.ErrorMessage)
-						if result.Status == model.SearchCPOItemStatusFailed {
-							exitFailed = true
-						}
-					} else if waitErr != nil || waitedJob.Status == model.AutomationJobStatusFailed {
-						result.Status = model.SearchCPOItemStatusFailed
-						result.Error = firstNonEmptyServiceTrimmed(errorText(waitErr), waitedJob.ErrorMessage, "店铺活动退出失败")
-						exitFailed = true
-					} else {
-						result.Status = model.SearchCPOItemStatusFailed
-						result.Error = "店铺活动未返回退出结果"
-						exitFailed = true
-					}
+				job, createErr := s.promotionService.CreateShopActionJobWithMeta(
+					triggerUserID,
+					input.ShopID,
+					model.AutomationJobTypeShopActionRemove,
+					action.SourceActionID,
+					[]string{requestSKU},
+					shopExitMeta,
+				)
+				if createErr != nil {
+					result.Status = model.SearchCPOItemStatusFailed
+					result.Error = createErr.Error()
+					exitFailed = true
 					actionResults = append(actionResults, result)
+					continue
 				}
+				waitedJob, waitErr := s.automationService.WaitForJobCompletion(job.ID, searchCPOShopWaitTimeout)
+				var jobItem *model.AutomationJobItem
+				if waitedJob != nil {
+					for i := range waitedJob.Items {
+						if strings.TrimSpace(waitedJob.Items[i].SourceSKU) == requestSKU {
+							jobItem = &waitedJob.Items[i]
+							break
+						}
+					}
+				}
+				switch {
+				case jobItem != nil:
+					result.Status, result.Error = summarizeSearchCPOShopExitJobItem(*jobItem, waitedJob.ErrorMessage)
+				case waitErr != nil || (waitedJob != nil && waitedJob.Status == model.AutomationJobStatusFailed):
+					result.Status = model.SearchCPOItemStatusFailed
+					waitedJobMessage := ""
+					if waitedJob != nil {
+						waitedJobMessage = waitedJob.ErrorMessage
+					}
+					result.Error = firstNonEmptyServiceTrimmed(errorText(waitErr), waitedJobMessage, "店铺活动退出失败")
+				default:
+					result.Status = model.SearchCPOItemStatusFailed
+					result.Error = "店铺活动未返回退出结果"
+				}
+				result.Status, result.Error = s.verifySearchCPOShopActionExit(input.ShopID, triggerUserID, action, sku, result.Status, result.Error)
+				if result.Status == model.SearchCPOItemStatusFailed {
+					exitFailed = true
+				}
+				actionResults = append(actionResults, result)
 			}
 		}
 
@@ -721,13 +802,21 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 		state.ExitResults = exitResults
 		if exitFailed {
 			state.ExitStatus = model.SearchCPOItemStatusFailed
-			state.EnableStatus = model.SearchCPOItemStatusSkipped
-			state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未执行 enable"}
-			state.MorkovskStatus = model.SearchCPOItemStatusSkipped
-			state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未加入 Morkovsk"}
+			if joinedRepair {
+				markSearchCPOJoinedRepairSkippedSteps(state)
+			} else {
+				state.EnableStatus = model.SearchCPOItemStatusSkipped
+				state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未执行 enable"}
+				state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+				state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未加入 Morkovsk"}
+			}
 			continue
 		}
 		state.ExitStatus = summarizeSearchCPOActionResultsStatus(actionResults)
+		if joinedRepair {
+			markSearchCPOJoinedRepairSkippedSteps(state)
+			continue
+		}
 		eligibleForEnable = append(eligibleForEnable, sku)
 	}
 

@@ -1,10 +1,10 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-21
-状态：进行中（Search CPO 前置活动 404 自动禁用、Enable 逐 SKU 诊断与状态3跳过重复 enable 已落地，待真实 Seller 复测）
+最后更新时间：2026-03-22
+状态：进行中（Search CPO 店铺活动退出改为按活动逐条 remove + 数值 SKU 退出 + 退出后复核，待真实 Seller 复测）
 
 ## 本次交付单元
-本次目标：继续修正 Search CPO 状态迁移在 live Seller 场景里的两类误判：前置活动 404 不应整批阻断；`product/enable` 不应因响应包裹层变化或 job 级错误扇出而把多个 SKU 误判为同一条失败，同时状态3商品应跳过重复 enable。
+本次目标：继续修正 Search CPO 状态迁移在 live Seller 场景里的店铺活动退出误判：店铺 `deactivate` 需要按活动逐条执行并优先使用数值 SKU，退出后要复核商品是否仍留在店铺活动中；对已误入 `morkovsk_joined` 的商品，后续自动化运行应自动补做非目标活动退出，而不再重复执行 `enable` / `Morkovsk`。
 
 ## 已完成（含关键文件）
 0. Search CPO 刷新状态落库修复：
@@ -52,6 +52,11 @@
    - `backend/internal/service/search_cpo_automation.go` 现在会优先按 `search_cpo_enable_snapshot/search_cpo_morkovsk_snapshot` 的 artifact 逐 SKU 结算步骤结果；当 job 整体失败或快照缺失时，回退到按当前 SKU 装饰错误，不再把首条 `source_sku=...` 错误复制给所有商品。
    - 状态迁移后半段里，若商品当前已是 `SEARCH_PROMO_STATUS_ENABLED`，则直接把 `Enable` 记为“跳过”，并继续进入 Morkovsk，不再因重复 enable 把状态3商品误判成失败。
    - `frontend/src/views/promotions/SearchCPO.vue` 的自动化详情已补展示 `Enable/Morkovsk` 的 `requested_sku`、`parser_revision`、HTTP、root/sample keys 和解析错误。
+7.3 Search CPO 店铺活动退出按活动逐条复核：
+   - `backend/internal/service/search_cpo_automation.go` 的 Search CPO 迁移后半段不再复用 `promo_unified_remove` 多活动聚合结果；店铺活动退出改为按活动逐条创建 `shop_action_remove` 任务，逐条等待并逐条落 `exit_results`，避免一个 SKU 的聚合结果被复制到所有活动行。
+   - Search CPO 店铺退出请求现优先使用数值 `sku`：后端会按 `source_sku -> product.SKU` 计算目标请求 SKU，并把该值作为单活动 remove job 的执行 SKU；退出完成后会立即刷新对应活动商品并按原始 `source_sku` 复核，若商品仍留在该活动中，则把结果改判为失败并落明细 `退出后复核仍在活动中`。
+   - 已经落入 `morkovsk_joined` 的商品现会被纳入自动化补救路径：若本次全量同步后仍命中官方/店铺非目标活动，则只执行“退出其它活动”清理，不再重复 `enable` 或重复加入 Morkovsk；若未命中其它活动，则本次运行仅记为跳过。
+   - 由于 `dev-tracker` 文件 owner 为 `BUILTIN\\Administrators`，本次文档同步改用受控 PowerShell 文本替换完成；无新增数据库结构变更，无新增 migration 脚本。
 8. 数据库与迁移：
    - 本次无新增表结构变更，无新增 migration 脚本。
 9. 本批验证结果：
@@ -372,6 +377,7 @@
 1. reload 扩展后在真实 Seller 环境复测 `search_promo_availability`，确认新的 `requested_sku/parser_revision/root_keys` 诊断是否足以直接定位 live 响应漂移或 SKU 匹配问题。
 2. 继续补强第三步退出链路的真实结果判定，重点核对官方/店铺活动 remove 的逐 SKU 明细与幂等表现。
 3. 结合真实联调结果补充 Search CPO 自动化逐步骤测试与交付口径，准备拆分下一批实现。
+
 
 
 

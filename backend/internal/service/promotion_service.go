@@ -1618,6 +1618,11 @@ func (s *PromotionService) UnifiedRepricePromote(userID uint, req *dto.UnifiedRe
 
 // CreateShopActionJob 创建店铺促销操作的 automation job
 func (s *PromotionService) CreateShopActionJob(userID, shopID uint, jobType string, sourceActionID string, skus []string) (*model.AutomationJob, error) {
+	return s.CreateShopActionJobWithMeta(userID, shopID, jobType, sourceActionID, skus, nil)
+}
+
+// CreateShopActionJobWithMeta 创建可携带附加元数据的店铺促销操作任务。
+func (s *PromotionService) CreateShopActionJobWithMeta(userID, shopID uint, jobType string, sourceActionID string, skus []string, extraMeta map[string]interface{}) (*model.AutomationJob, error) {
 	if s.automationService == nil {
 		return nil, fmt.Errorf("automation service unavailable")
 	}
@@ -1650,6 +1655,9 @@ func (s *PromotionService) CreateShopActionJob(userID, shopID uint, jobType stri
 	// 通过 artifact 存储 meta，Agent 轮询时会读取
 	meta := map[string]interface{}{
 		"source_action_id": sourceActionID,
+	}
+	for key, value := range extraMeta {
+		meta[key] = value
 	}
 	if err := s.automationService.CreateArtifact(job.ID, "shop_action_meta", meta); err != nil {
 		return nil, err

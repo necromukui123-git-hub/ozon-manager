@@ -1,6 +1,6 @@
 # Ozon Manager 开发总任务
 
-最后更新时间：2026-03-20  
+最后更新时间：2026-03-22  
 负责人：团队 + Codex  
 范围：统一官方促销与店铺促销的一套业务流程，并让店铺促销在浏览器登录态下低打扰执行。
 
@@ -40,7 +40,7 @@
 | T15 | 自动添加商品至促销活动（配置 + 调度 + 执行历史） | done | 新增“自动加促销”页面；支持保存绝对日期配置、手动执行、官方/店铺活动候选刷新、按上架日期筛商品、执行历史与逐商品失败明细 | 依赖 Ozon 目录刷新、官方候选接口与浏览器插件执行链稳定 |
 | T16 | Search CPO 商品批量报名页面（含执行历史） | done | 新增 `/promotions/search-cpo` 页面，支持 CPO 商品刷新、本地筛选、按当前筛选结果执行官方/店铺活动报名；页面明确“已关闭”语义，官方报名支持目录缓存兜底，且官方失败不再阻断店铺活动；刷新时优先复用已打开的 CPO 页签，未找到页签时明确提示，不再默认新开 Ozon 页面 | 依赖插件执行 `sync_search_cpo_products` 任务并使用 Seller 登录态 |
 | T17 | 插件登录态自动连接主流程收敛 | done | popup 默认展示管理端连接状态，普通用户无需手填 token；非 localhost 首次可按提示授权，手填配置仅保留高级设置兜底 | 依赖管理端 `localStorage.token/currentShopId` 继续稳定 |
-| T18 | Search CPO 状态迁移自动化规则 | in_progress | 支持手动触发 + 定时调度；对状态1商品执行“初始活动报名”，对状态2商品执行“全量同步活动 -> 退出命中活动 -> enable -> carrots/batch_enable”，对状态3触发商品按 live 条件（`SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true`）继续收敛，不再强依赖已有 `state2_detected_at`；店铺活动退出遇到“商品当前不在活动中”或 `404/NotFound` 不再阻断后续 `enable/Morkovsk`，迁移前置阶段若命中已失效活动也会自动标记 `disabled` 并跳过；当前若商品已是 `SEARCH_PROMO_STATUS_ENABLED` 会直接跳过重复 `enable`，而 `enable/Morkovsk` 详情会补展示 `requested_sku/parser_revision/HTTP/root/sample keys` 诊断，不再把首条 job 错误灌给整批 SKU | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` / 店铺活动 `deactivate` 接口结构稳定；本地样本文档已对齐 `search_promo_availability -> skuToIsSearchPromoAvailable/WithReason`、`product/enable -> bids[]`、`carrots/batch_enable -> skuToInfo{}`、`官方deactivate -> product_ids + rejected[]`，当前剩余风险主要收敛为 live `product/enable` / `carrots/batch_enable` 仍可能继续暴露新的包裹层或 challenge 响应，需要按运行详情中的 step diagnostics 持续补样本 |
+| T18 | Search CPO 状态迁移自动化规则 | in_progress | 支持手动触发 + 定时调度；对状态1商品执行“初始活动报名”，对状态2商品执行“全量同步活动 -> 退出命中活动 -> enable -> carrots/batch_enable”，对状态3触发商品按 live 条件（`SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true`）继续收敛，不再强依赖已有 `state2_detected_at`；店铺活动退出遇到“商品当前不在活动中”或 `404/NotFound` 不再阻断后续 `enable/Morkovsk`，迁移前置阶段若命中已失效活动也会自动标记 `disabled` 并跳过；当前若商品已是 `SEARCH_PROMO_STATUS_ENABLED` 会直接跳过重复 `enable`，而 `enable/Morkovsk` 详情会补展示 `requested_sku/parser_revision/HTTP/root/sample keys` 诊断，不再把首条 job 错误灌给整批 SKU；Search CPO 专用店铺退出现已改为按活动逐条执行单活动 remove、优先使用数值 SKU 发起店铺 `deactivate`，并在退出后刷新活动商品复核，已误入 `morkovsk_joined` 但仍命中非目标活动的商品会在后续自动化里自动补做退出清理 | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` / 店铺活动 `deactivate` 接口结构稳定；本地样本文档已对齐 `search_promo_availability -> skuToIsSearchPromoAvailable/WithReason`、`product/enable -> bids[]`、`carrots/batch_enable -> skuToInfo{}`、`官方deactivate -> product_ids + rejected[]`，当前剩余风险主要收敛为 live `product/enable` / `carrots/batch_enable` 仍可能继续暴露新的包裹层或 challenge 响应，以及店铺活动 `active/deactivate` live 返回与本地活动商品刷新存在时间差，需继续按自动化详情与活动复核结果补样本 |
 
 ## 近期完成里程碑（已完成）
 1. 按店铺执行引擎模式（`auto`/`extension`/`agent`）已落地。
@@ -76,6 +76,7 @@
 2. 常规场景店铺任务静默执行，不打断用户主流程。
 3. 登录兜底仅在未登录 Seller 时触发。
 4. 异步任务全链路可追踪，失败可定位。
+
 
 
 

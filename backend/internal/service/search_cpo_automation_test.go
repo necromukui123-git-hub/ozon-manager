@@ -189,6 +189,69 @@ func TestBuildSearchCPOSKUMetaFromStates(t *testing.T) {
 	}
 }
 
+func TestIsSearchCPOJoinedRepairState(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 3, 22, 8, 0, 0, 0, time.UTC)
+
+	t.Run("joined at marks repair state", func(t *testing.T) {
+		t.Parallel()
+		if !isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
+			Product: model.SearchCPOProduct{MorkovskJoinedAt: &now},
+		}) {
+			t.Fatalf("expected joined item to require repair evaluation")
+		}
+	})
+
+	t.Run("joined rule state also marks repair state", func(t *testing.T) {
+		t.Parallel()
+		if !isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
+			RuleStateBefore: model.SearchCPORuleStateJoined,
+		}) {
+			t.Fatalf("expected joined rule state to require repair evaluation")
+		}
+		if !isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
+			RuleStateAfter: model.SearchCPORuleStateJoined,
+		}) {
+			t.Fatalf("expected joined target state to require repair evaluation")
+		}
+	})
+
+	t.Run("non joined state does not trigger repair", func(t *testing.T) {
+		t.Parallel()
+		if isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
+			RuleStateBefore: model.SearchCPORuleStateState3Trigger,
+			RuleStateAfter:  model.SearchCPORuleStateState3Trigger,
+			Product: model.SearchCPOProduct{
+				SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
+				CarrotsStatus:     "CARROTS_STATUS_DISABLED",
+			},
+		}) {
+			t.Fatalf("unexpected repair state for non-joined product")
+		}
+	})
+}
+
+func TestMarkSearchCPOJoinedRepairSkippedSteps(t *testing.T) {
+	t.Parallel()
+
+	state := &searchCPOAutomationItemState{}
+	markSearchCPOJoinedRepairSkippedSteps(state)
+
+	if state.EnableStatus != model.SearchCPOItemStatusSkipped {
+		t.Fatalf("EnableStatus = %q", state.EnableStatus)
+	}
+	if state.EnableResult.Message != "已加入 Morkovsk，跳过重复 enable" {
+		t.Fatalf("EnableResult.Message = %q", state.EnableResult.Message)
+	}
+	if state.MorkovskStatus != model.SearchCPOItemStatusSkipped {
+		t.Fatalf("MorkovskStatus = %q", state.MorkovskStatus)
+	}
+	if state.MorkovskResult.Message != "已加入 Morkovsk，跳过重复加入" {
+		t.Fatalf("MorkovskResult.Message = %q", state.MorkovskResult.Message)
+	}
+}
+
 func TestDecodeSearchCPOAvailabilityDiagnostics(t *testing.T) {
 	t.Parallel()
 
