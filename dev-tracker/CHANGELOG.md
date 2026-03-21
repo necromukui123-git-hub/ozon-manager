@@ -2,22 +2,24 @@
 
 ## 2026-03-22
 ### 主题
-修正 Search CPO 状态迁移里“店铺活动退出看似成功、商品却仍留在店铺活动中”的误判，并为已误入 `morkovsk_joined` 的商品补齐自动退出补救路径。
+修正 Search CPO 状态迁移里的两类现场误判：店铺活动退出看似成功、商品却仍留在店铺活动中，以及历史 `morkovsk_joined_at` 压过当前 live 状态导致“手动执行一次”不再把商品重新推进到状态4。
 
 ### 关键变更
 1. `backend/internal/service/search_cpo_automation.go`：
    - Search CPO 店铺活动退出不再复用 `promo_unified_remove` 的多活动聚合结果，而是按活动逐条创建 `shop_action_remove` 任务、逐条等待并逐条写入 `exit_results`。
    - Search CPO 店铺退出请求现优先使用数值 `sku`；任务完成后会立即刷新对应活动商品，并按原始 `source_sku` 复核该商品是否仍在活动中，若仍存在则把退出结果改判为失败并提示 `退出后复核仍在活动中`。
-   - 对已存在 `morkovsk_joined_at` 的商品，自动化运行新增“joined repair”补救路径：若仍命中非目标活动，仅执行退出清理，不再重复 `enable` / `Morkovsk`。
+   - Search CPO 状态派生新增 live 优先判定：当 `search_promo_status + carrots_status + availability` 已明确落在状态1/2/3/4 之一时，不再让历史 `morkovsk_joined_at` 无条件压过当前 live 状态；live 已回退到状态1/2/3 的商品会在本次运行里清空失效 joined 标记并重新进入正常迁移。
+   - `joined repair` 现仅对 live 仍为状态4、且 `RuleStateAfter = morkovsk_joined` 的商品生效；状态2商品会重新执行 `退出其它活动 -> enable -> Morkovsk`，状态3商品会重新执行 `退出其它活动 -> 跳过重复 enable -> Morkovsk`。
 2. `backend/internal/service/promotion_service.go`：
    - 新增 `CreateShopActionJobWithMeta`，为 Search CPO 专用单活动 remove 任务保留扩展元数据入口，同时兼容现有 `CreateShopActionJob` 调用方。
 3. `backend/internal/service/search_cpo_automation_test.go`：
    - 新增 joined repair 辅助逻辑单测，锁定“已加入 Morkovsk 的商品跳过重复步骤”这一行为边界。
 
 ### 影响范围
-1. `3371928661`、`3352634622` 这类已推进到状态4的商品，若仍残留在店铺活动 28 中，后续自动化运行会继续尝试把它们从 28 清理出去，而不会重复执行 `enable` 或重复加入 Morkovsk。
-2. Search CPO 自动化详情中的店铺退出结果将按活动粒度展示真实状态；若 28 实际未删掉，会直接显示该活动失败，而不再被聚合结果掩盖。
-3. 无数据库结构变更，无新增 migration 脚本。
+1. `3371928661`、`3352634622` 这类商品即使历史上已经写过 `morkovsk_joined_at`，只要当前 Ozon live 状态被手工改回状态2/3，下一次“手动执行一次”也会重新把它们送回正常迁移，而不再被短路成 joined repair。
+2. 已推进到状态4、却仍残留在店铺活动 28 中的商品，后续自动化运行会继续尝试把它们从 28 清理出去，而不会重复执行 `enable` 或重复加入 Morkovsk。
+3. Search CPO 自动化详情中的店铺退出结果将按活动粒度展示真实状态；若 28 实际未删掉，会直接显示该活动失败，而不再被聚合结果掩盖。
+4. 无数据库结构变更，无新增 migration 脚本。
 
 ### 验证
 1. `cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./internal/service`
@@ -920,6 +922,7 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
+
 
 
 

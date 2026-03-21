@@ -95,13 +95,77 @@ func TestDeriveSearchCPORuleState(t *testing.T) {
 		}
 	})
 
-	t.Run("joined wins over other states", func(t *testing.T) {
+	t.Run("live state2 overrides historical joined marker", func(t *testing.T) {
+		t.Parallel()
+		joinedAt := now.Add(-30 * time.Minute)
+		state, detectedAt := deriveSearchCPORuleState(model.SearchCPOProduct{
+			MorkovskJoinedAt:  &joinedAt,
+			SearchPromoStatus: "SEARCH_PROMO_STATUS_DISABLED",
+			CarrotsStatus:     "CARROTS_STATUS_DISABLED",
+			AvailabilityPromo: &trueValue,
+			State2DetectedAt:  &joinedAt,
+		}, model.SearchCPORuleStateState3Trigger, now)
+		if state != model.SearchCPORuleStateState2 {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState2)
+		}
+		if detectedAt == nil || !detectedAt.Equal(joinedAt) {
+			t.Fatalf("expected detectedAt to stay %v, got %v", joinedAt, detectedAt)
+		}
+	})
+
+	t.Run("live state3 overrides historical joined marker", func(t *testing.T) {
+		t.Parallel()
+		joinedAt := now.Add(-30 * time.Minute)
+		state, detectedAt := deriveSearchCPORuleState(model.SearchCPOProduct{
+			MorkovskJoinedAt:  &joinedAt,
+			SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
+			CarrotsStatus:     "CARROTS_STATUS_DISABLED",
+			AvailabilityPromo: &trueValue,
+			State2DetectedAt:  &joinedAt,
+		}, model.SearchCPORuleStateJoined, now)
+		if state != model.SearchCPORuleStateState3Trigger {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState3Trigger)
+		}
+		if detectedAt == nil || !detectedAt.Equal(joinedAt) {
+			t.Fatalf("expected detectedAt to stay %v, got %v", joinedAt, detectedAt)
+		}
+	})
+
+	t.Run("joined requires explicit live state4 and local marker", func(t *testing.T) {
 		t.Parallel()
 		joinedAt := now.Add(-30 * time.Minute)
 		state, _ := deriveSearchCPORuleState(model.SearchCPOProduct{
-			MorkovskJoinedAt: &joinedAt,
-			State2DetectedAt: &joinedAt,
+			MorkovskJoinedAt:  &joinedAt,
+			SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
+			CarrotsStatus:     "CARROTS_STATUS_ENABLED",
+			AvailabilityPromo: &trueValue,
+			State2DetectedAt:  &joinedAt,
 		}, model.SearchCPORuleStateState3Trigger, now)
+		if state != model.SearchCPORuleStateJoined {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateJoined)
+		}
+	})
+
+	t.Run("live state4 without local marker stays other", func(t *testing.T) {
+		t.Parallel()
+		state, _ := deriveSearchCPORuleState(model.SearchCPOProduct{
+			SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
+			CarrotsStatus:     "CARROTS_STATUS_ENABLED",
+			AvailabilityPromo: &trueValue,
+		}, model.SearchCPORuleStateState3Trigger, now)
+		if state != model.SearchCPORuleStateOther {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateOther)
+		}
+	})
+
+	t.Run("ambiguous live state keeps joined fallback", func(t *testing.T) {
+		t.Parallel()
+		joinedAt := now.Add(-30 * time.Minute)
+		state, _ := deriveSearchCPORuleState(model.SearchCPOProduct{
+			MorkovskJoinedAt:  &joinedAt,
+			SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
+			CarrotsStatus:     "CARROTS_STATUS_ENABLED",
+		}, model.SearchCPORuleStateJoined, now)
 		if state != model.SearchCPORuleStateJoined {
 			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateJoined)
 		}
@@ -192,28 +256,27 @@ func TestBuildSearchCPOSKUMetaFromStates(t *testing.T) {
 func TestIsSearchCPOJoinedRepairState(t *testing.T) {
 	t.Parallel()
 
-	now := time.Date(2026, 3, 22, 8, 0, 0, 0, time.UTC)
-
-	t.Run("joined at marks repair state", func(t *testing.T) {
+	t.Run("only current joined rule state marks repair state", func(t *testing.T) {
 		t.Parallel()
-		if !isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
-			Product: model.SearchCPOProduct{MorkovskJoinedAt: &now},
-		}) {
-			t.Fatalf("expected joined item to require repair evaluation")
-		}
-	})
-
-	t.Run("joined rule state also marks repair state", func(t *testing.T) {
-		t.Parallel()
-		if !isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
-			RuleStateBefore: model.SearchCPORuleStateJoined,
-		}) {
-			t.Fatalf("expected joined rule state to require repair evaluation")
-		}
 		if !isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
 			RuleStateAfter: model.SearchCPORuleStateJoined,
 		}) {
 			t.Fatalf("expected joined target state to require repair evaluation")
+		}
+	})
+
+	t.Run("historical joined markers alone do not trigger repair", func(t *testing.T) {
+		t.Parallel()
+		now := time.Date(2026, 3, 22, 8, 0, 0, 0, time.UTC)
+		if isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
+			RuleStateBefore: model.SearchCPORuleStateJoined,
+		}) {
+			t.Fatalf("unexpected repair state for historical joined rule state")
+		}
+		if isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
+			Product: model.SearchCPOProduct{MorkovskJoinedAt: &now},
+		}) {
+			t.Fatalf("unexpected repair state for stale joined marker")
 		}
 	})
 
@@ -228,6 +291,41 @@ func TestIsSearchCPOJoinedRepairState(t *testing.T) {
 			},
 		}) {
 			t.Fatalf("unexpected repair state for non-joined product")
+		}
+	})
+}
+
+func TestShouldResetSearchCPOJoinedMarker(t *testing.T) {
+	t.Parallel()
+
+	joinedAt := time.Date(2026, 3, 22, 8, 0, 0, 0, time.UTC)
+	product := model.SearchCPOProduct{MorkovskJoinedAt: &joinedAt}
+
+	t.Run("state2 resets joined marker", func(t *testing.T) {
+		t.Parallel()
+		if !shouldResetSearchCPOJoinedMarker(product, model.SearchCPORuleStateState2, true) {
+			t.Fatalf("expected state2 to reset joined marker")
+		}
+	})
+
+	t.Run("state3 resets joined marker", func(t *testing.T) {
+		t.Parallel()
+		if !shouldResetSearchCPOJoinedMarker(product, model.SearchCPORuleStateState3Trigger, true) {
+			t.Fatalf("expected state3 to reset joined marker")
+		}
+	})
+
+	t.Run("state4 keeps joined marker", func(t *testing.T) {
+		t.Parallel()
+		if shouldResetSearchCPOJoinedMarker(product, searchCPOLiveStateState4, true) {
+			t.Fatalf("did not expect state4 to reset joined marker")
+		}
+	})
+
+	t.Run("unconfirmed live state keeps joined marker", func(t *testing.T) {
+		t.Parallel()
+		if shouldResetSearchCPOJoinedMarker(product, "", false) {
+			t.Fatalf("did not expect unconfirmed live state to reset joined marker")
 		}
 	})
 }
