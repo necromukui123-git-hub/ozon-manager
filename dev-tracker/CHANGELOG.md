@@ -1,5 +1,32 @@
 # Ozon Manager 变更日志
 
+## 2026-03-21
+### 主题
+修正 Search CPO 状态迁移里的两类现场误判：前置活动 404 不应整批阻断，`product/enable` / `carrots/batch_enable` 也不应因响应包裹层变化或 job 级错误扇出而误伤多个 SKU。
+
+### 关键变更
+1. `backend/internal/service/search_cpo_automation.go`：
+   - 迁移前置阶段改为仅处理 `status=active` 的活动；刷新活动商品时若命中 `404/NotFound`，自动将该活动标记为 `disabled` 并跳过，不再整批阻断后续 `enable` / `Morkovsk`。
+   - `enable` / `Morkovsk` 现在优先按 artifact 逐 SKU 回填步骤结果；当 job 整体失败、快照缺失或结果缺项时，会回退到“按当前 SKU 装饰错误”，不再把首条 `source_sku=...` 错误复制给所有商品。
+   - 对当前已是 `SEARCH_PROMO_STATUS_ENABLED` 的商品，迁移后半段会直接跳过重复 `enable`，继续进入 Morkovsk。
+2. `browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v3.js`：
+   - `product/enable` 与 `carrots/batch_enable` 现已支持 `data/result/response` 包裹层解析，并在未匹配响应时输出 `source_sku/requested_sku/parser_revision/HTTP/root/sample keys` 诊断。
+3. `frontend/src/views/promotions/SearchCPO.vue`：
+   - 自动化详情里的 `Enable` / `Morkovsk` 现会补展示 step diagnostics；活动结果仍保留店铺活动 `source_action_id`，便于直接定位失效缓存记录。
+4. 测试与脚本：
+   - 扩展 parser fixture 已新增 `enable` / `Morkovsk` 包裹层与缺匹配诊断场景，后端也补了逐 SKU fallback / step diagnostics 单测。
+
+### 影响范围
+1. `3371928661` 这类状态2商品，若 `enable` 现场仍失败，详情会展示它自己的 `requested_sku/parser_revision/HTTP/root/sample keys`，不再被别的 SKU 错误覆盖。
+2. `3352634622` 这类当前已是状态3的商品，不再因为重复 `enable` 被额外打成失败，而会直接进入 Morkovsk。
+3. 当某条历史店铺/官方活动记录已失效时，自动化详情仍会明确显示对应活动与 `source_action_id`。
+4. 无数据库结构变更，无新增 migration 脚本。
+
+### 验证
+1. `node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`
+2. `node --check browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v3.js`
+3. `cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./pkg/ozon ./internal/service`
+4. `cd frontend && cmd /c npm run build`
 ## 2026-03-20
 ### 主题
 修正 Search CPO 状态迁移里的退出判定与 `state3_trigger`，让店铺活动 `404/NotFound` 不再误阻断迁移，并按官方 `deactivate` 响应解析逐商品失败原因。
@@ -871,6 +898,7 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
+
 
 
 

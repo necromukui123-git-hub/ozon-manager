@@ -337,7 +337,7 @@
           <template #default="{ row }">
             <div class="result-lines">
               <div v-for="item in row.official_results" :key="`official-${row.id}-${item.promotion_action_id}`">
-                {{ item.title }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
+                {{ actionResultLabel(item) }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
               </div>
               <div v-if="!row.official_results || row.official_results.length === 0">-</div>
             </div>
@@ -347,7 +347,7 @@
           <template #default="{ row }">
             <div class="result-lines">
               <div v-for="item in row.shop_results" :key="`shop-${row.id}-${item.promotion_action_id}`">
-                {{ item.title }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
+                {{ actionResultLabel(item) }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
               </div>
               <div v-if="!row.shop_results || row.shop_results.length === 0">-</div>
             </div>
@@ -464,7 +464,7 @@
             <div class="result-lines">
               <div class="result-line-muted">步骤状态: {{ statusLabel(row.initial_status) }}</div>
               <div v-for="item in row.initial_results" :key="`init-${row.id}-${item.promotion_action_id}`">
-                {{ item.title }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
+                {{ actionResultLabel(item) }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
               </div>
               <div v-if="!row.initial_results || row.initial_results.length === 0">-</div>
             </div>
@@ -475,27 +475,47 @@
             <div class="result-lines">
               <div class="result-line-muted">步骤状态: {{ statusLabel(row.exit_status) }}</div>
               <div v-for="item in row.exit_results" :key="`exit-${row.id}-${item.promotion_action_id}`">
-                {{ item.title }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
+                {{ actionResultLabel(item) }}: {{ statusLabel(item.status) }}<span v-if="item.error"> / {{ item.error }}</span>
               </div>
               <div v-if="!row.exit_results || row.exit_results.length === 0">-</div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="Enable" min-width="180">
+        <el-table-column label="Enable" min-width="220">
           <template #default="{ row }">
             <div class="result-lines">
               <div>{{ statusLabel(row.enable_status) }}</div>
               <div v-if="row.enable_result?.message">{{ row.enable_result.message }}</div>
               <div v-if="row.enable_result?.error" class="error-text">{{ row.enable_result.error }}</div>
+              <div v-if="row.enable_result?.diagnostics" class="result-line-muted">
+                requested_sku: {{ row.enable_result.diagnostics.requested_sku || '-' }} / parser_revision: {{ row.enable_result.diagnostics.parser_revision || '-' }}
+              </div>
+              <div v-if="row.enable_result?.diagnostics" class="result-line-muted">
+                HTTP: {{ formatAvailabilityHTTP(row.enable_result.diagnostics) }} / Content-Type: {{ row.enable_result.diagnostics.response_content_type || '-' }}
+              </div>
+              <div v-if="row.enable_result?.diagnostics" class="result-line-muted">
+                root: {{ joinAvailabilityDiagnosticKeys(row.enable_result.diagnostics.response_root_keys) }} / sample: {{ joinAvailabilityDiagnosticKeys(row.enable_result.diagnostics.sample_response_keys) }}
+              </div>
+              <div v-if="row.enable_result?.diagnostics?.response_parse_error" class="error-text">解析错误: {{ row.enable_result.diagnostics.response_parse_error }}</div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="Morkovsk" min-width="180">
+        <el-table-column label="Morkovsk" min-width="220">
           <template #default="{ row }">
             <div class="result-lines">
               <div>{{ statusLabel(row.morkovsk_status) }}</div>
               <div v-if="row.morkovsk_result?.message">{{ row.morkovsk_result.message }}</div>
               <div v-if="row.morkovsk_result?.error" class="error-text">{{ row.morkovsk_result.error }}</div>
+              <div v-if="row.morkovsk_result?.diagnostics" class="result-line-muted">
+                requested_sku: {{ row.morkovsk_result.diagnostics.requested_sku || '-' }} / parser_revision: {{ row.morkovsk_result.diagnostics.parser_revision || '-' }}
+              </div>
+              <div v-if="row.morkovsk_result?.diagnostics" class="result-line-muted">
+                HTTP: {{ formatAvailabilityHTTP(row.morkovsk_result.diagnostics) }} / Content-Type: {{ row.morkovsk_result.diagnostics.response_content_type || '-' }}
+              </div>
+              <div v-if="row.morkovsk_result?.diagnostics" class="result-line-muted">
+                root: {{ joinAvailabilityDiagnosticKeys(row.morkovsk_result.diagnostics.response_root_keys) }} / sample: {{ joinAvailabilityDiagnosticKeys(row.morkovsk_result.diagnostics.sample_response_keys) }}
+              </div>
+              <div v-if="row.morkovsk_result?.diagnostics?.response_parse_error" class="error-text">解析错误: {{ row.morkovsk_result.diagnostics.response_parse_error }}</div>
             </div>
           </template>
         </el-table-column>
@@ -957,6 +977,16 @@ function statusTagType(status) {
   }
 }
 
+function actionResultLabel(item) {
+  const title = String(item?.title || '').trim() || '未命名活动'
+  const source = String(item?.source || '').trim()
+  const sourceActionID = String(item?.source_action_id || '').trim()
+  if (source === 'shop' && sourceActionID) {
+    return `${title} (source_action_id=${sourceActionID})`
+  }
+  return title
+}
+
 function availabilityLabel(value) {
   if (value === true) return '可进入下一阶段'
   if (value === false) return '暂不可推进'
@@ -1413,3 +1443,4 @@ function triggerModeLabel(mode) {
   }
 }
 </style>
+

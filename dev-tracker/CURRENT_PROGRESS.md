@@ -1,10 +1,10 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-20  
-状态：进行中（Search CPO 迁移退出判定与 state3 识别已修正，待 reload 插件后做真实 Seller 复测）
+最后更新时间：2026-03-21
+状态：进行中（Search CPO 前置活动 404 自动禁用、Enable 逐 SKU 诊断与状态3跳过重复 enable 已落地，待真实 Seller 复测）
 
 ## 本次交付单元
-本次目标：在保留现有 Search CPO availability 诊断链路的前提下，修正状态迁移自动化里“退出其它活动”和 `state3_trigger` 的真实判定，使 `404/NotFound` 型店铺活动退出不再阻断迁移、官方活动退出能透出 `rejected[]` 原因、`SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true` 的商品可直接进入 `state3_trigger`。
+本次目标：继续修正 Search CPO 状态迁移在 live Seller 场景里的两类误判：前置活动 404 不应整批阻断；`product/enable` 不应因响应包裹层变化或 job 级错误扇出而把多个 SKU 误判为同一条失败，同时状态3商品应跳过重复 enable。
 
 ## 已完成（含关键文件）
 0. Search CPO 刷新状态落库修复：
@@ -43,14 +43,23 @@
    - `backend/internal/service/search_cpo_automation.go` 已放宽 `state3_trigger`：当商品 live 状态满足 `SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true` 时，即使没有历史 `state2_detected_at` 也会进入迁移后半段，并在首次命中时回填 `state2_detected_at`。
    - 店铺活动退出现在会把“商品当前不在活动中”与 `404/NotFound` 归类为可跳过结果，不再阻断后续 `enable` / `carrots/batch_enable`；逐动作明细会保留 `action_not_found/source_action_id` 诊断。
    - 官方活动退出已按 `doc\按订单付费推广商品操作\官方deactivate.txt` 对齐 `product_ids + rejected[]` 响应，逐 SKU 错误会直接透出具体 `reason`，不再只剩“部分活动退出失败”。
+7.1 Search CPO 迁移前置活动 404 自动禁用与详情补强：
+   - `backend/internal/service/search_cpo_automation.go` 迁移前置阶段改为仅处理 `status=active` 的活动；刷新活动商品时若命中 `404/NotFound`，会自动将对应活动标记为 `disabled` 并跳过，不再把整批 state2/state3 迁移直接打断。
+   - 前置阶段若仍出现不可恢复错误，会把失败活动写入 `exit_results`，避免详情页只剩“退出其它活动失败”与备注 404，而没有具体活动行。
+   - `frontend/src/views/promotions/SearchCPO.vue` 的手动/自动化详情现会在店铺活动标题后附带 `source_action_id=...`，便于直接定位失效的本地活动缓存记录。
+7.2 Search CPO Enable / Morkovsk 逐 SKU 诊断与状态3收敛：
+   - `browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v3.js` 现已把 `product/enable` 与 `carrots/batch_enable` 的 live 响应纳入与 availability 同级的包裹层扫描和运行时诊断，支持 `data/result/response` 包裹层，并在缺匹配时输出 `source_sku/requested_sku/parser_revision/HTTP/root/sample keys`。
+   - `backend/internal/service/search_cpo_automation.go` 现在会优先按 `search_cpo_enable_snapshot/search_cpo_morkovsk_snapshot` 的 artifact 逐 SKU 结算步骤结果；当 job 整体失败或快照缺失时，回退到按当前 SKU 装饰错误，不再把首条 `source_sku=...` 错误复制给所有商品。
+   - 状态迁移后半段里，若商品当前已是 `SEARCH_PROMO_STATUS_ENABLED`，则直接把 `Enable` 记为“跳过”，并继续进入 Morkovsk，不再因重复 enable 把状态3商品误判成失败。
+   - `frontend/src/views/promotions/SearchCPO.vue` 的自动化详情已补展示 `Enable/Morkovsk` 的 `requested_sku`、`parser_revision`、HTTP、root/sample keys 和解析错误。
 8. 数据库与迁移：
    - 本次无新增表结构变更，无新增 migration 脚本。
 9. 本批验证结果：
-   - 店铺活动退出补丁语法检查通过：`node --check browser-extension/ozon-shop-bridge/background_search_cpo_remove_result_patch.js`。
-   - Search CPO parser 样本回归通过：`node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`。
-   - Search CPO service worker 加载顺序与 remove 分类回归通过：`node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-service-worker-order.mjs`。
+   - 扩展 parser fixture 通过：`node browser-extension/ozon-shop-bridge/scripts/verify-search-cpo-response-parsers.mjs`。
+   - 扩展语法检查通过：`node --check browser-extension/ozon-shop-bridge/background_search_cpo_runtime_diagnostics_patch_v3.js`。
    - 后端定向测试通过：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./pkg/ozon ./internal/service`。
    - 前端构建通过：`cd frontend && cmd /c npm run build`。
+
 5. 数据库与迁移：
    - 本次无新增表结构变更，无新增 migration 脚本。
 6. 本批验证结果：

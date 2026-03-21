@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -249,6 +251,100 @@ func TestDecodeSearchCPOAvailabilityDiagnostics(t *testing.T) {
 	}
 }
 
+func TestBuildSearchCPOStepResultFromArtifactItemCarriesDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	result := buildSearchCPOStepResultFromArtifactItem(searchCPOStepArtifactItem{
+		SourceSKU:              "1966971285-N0wL",
+		Status:                 model.SearchCPOItemStatusFailed,
+		Error:                  "未匹配到 Search CPO 开启响应",
+		Message:                "未匹配到 Search CPO 开启响应",
+		RequestedSKU:           "3371928661",
+		ParserRevision:         "2026-03-21-a",
+		BuildRevision:          "2026-03-21-a",
+		ResponseRootKeys:       []string{"data", "response_kind"},
+		SampleResponseKeys:     []string{"result", "bids"},
+		ResponseHTTPStatus:     200,
+		ResponseHTTPStatusText: "OK",
+		ResponseContentType:    "text/html; charset=utf-8",
+		ResponseParseError:     "Unexpected token '<'",
+		ResponseExcerpt:        "<!doctype html><html>challenge</html>",
+		ResponseLength:         38,
+		ResponseKind:           "text",
+		ScriptResultType:       "object",
+		ResponseItemCount:      0,
+	})
+
+	if result.Status != model.SearchCPOItemStatusFailed {
+		t.Fatalf("Status = %q", result.Status)
+	}
+	if result.Diagnostics == nil {
+		t.Fatalf("expected diagnostics to be present")
+	}
+	if result.Diagnostics.RequestedSKU != "3371928661" {
+		t.Fatalf("RequestedSKU = %q", result.Diagnostics.RequestedSKU)
+	}
+	if result.Diagnostics.ParserRevision != "2026-03-21-a" {
+		t.Fatalf("ParserRevision = %q", result.Diagnostics.ParserRevision)
+	}
+	if result.Diagnostics.ResponseHTTPStatus != 200 {
+		t.Fatalf("ResponseHTTPStatus = %d", result.Diagnostics.ResponseHTTPStatus)
+	}
+	if result.Diagnostics.ResponseContentType != "text/html; charset=utf-8" {
+		t.Fatalf("ResponseContentType = %q", result.Diagnostics.ResponseContentType)
+	}
+	if result.Diagnostics.ResponseItemCount != 0 {
+		t.Fatalf("ResponseItemCount = %d", result.Diagnostics.ResponseItemCount)
+	}
+}
+
+func TestDecodeSearchCPOAutomationStepResultNormalizesDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	raw, err := json.Marshal(dto.SearchCPOAutomationStepResult{
+		Status:  model.SearchCPOItemStatusFailed,
+		Error:   " parser failed ",
+		Message: " missing match ",
+		Diagnostics: &dto.SearchCPOStepDiagnostics{
+			RequestedSKU:           " 3371928661 ",
+			ParserRevision:         " 2026-03-21-a ",
+			ResponseRootKeys:       []string{" data ", " result "},
+			SampleResponseKeys:     []string{" bids "},
+			ResponseHTTPStatus:     200,
+			ResponseHTTPStatusText: " OK ",
+			ResponseContentType:    " text/html; charset=utf-8 ",
+			ResponseParseError:     " Unexpected token '<' ",
+			ResponseExcerpt:        " <!doctype html> ",
+			ResponseLength:         12,
+			ResponseKind:           " text ",
+			ScriptResultType:       " object ",
+		},
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	decoded := decodeSearchCPOAutomationStepResult(datatypes.JSON(raw))
+	if decoded.Error != "parser failed" {
+		t.Fatalf("Error = %q", decoded.Error)
+	}
+	if decoded.Message != "missing match" {
+		t.Fatalf("Message = %q", decoded.Message)
+	}
+	if decoded.Diagnostics == nil {
+		t.Fatalf("expected diagnostics to be present")
+	}
+	if decoded.Diagnostics.RequestedSKU != "3371928661" {
+		t.Fatalf("RequestedSKU = %q", decoded.Diagnostics.RequestedSKU)
+	}
+	if len(decoded.Diagnostics.ResponseRootKeys) != 2 {
+		t.Fatalf("ResponseRootKeys len = %d", len(decoded.Diagnostics.ResponseRootKeys))
+	}
+	if decoded.Diagnostics.ResponseHTTPStatusText != "OK" {
+		t.Fatalf("ResponseHTTPStatusText = %q", decoded.Diagnostics.ResponseHTTPStatusText)
+	}
+}
+
 func TestSummarizeSearchCPOActionResultsStatus(t *testing.T) {
 	t.Parallel()
 
@@ -337,4 +433,98 @@ func TestSummarizeSearchCPOShopExitJobItem(t *testing.T) {
 			t.Fatalf("expected failure message to be preserved")
 		}
 	})
+}
+
+func TestBuildSearchCPOMigrationRefreshIssue(t *testing.T) {
+	t.Parallel()
+
+	t.Run("404 refresh error becomes skipped and carries action identity", func(t *testing.T) {
+		t.Parallel()
+
+		result, skippable := buildSearchCPOMigrationRefreshIssue(model.PromotionAction{
+			ID:             28,
+			ActionID:       28001,
+			Source:         "shop",
+			SourceActionID: "3231133",
+			Title:          "活动 28",
+		}, fmt.Errorf(`API error (status 404): {"code":5,"message":"rpc error: code = NotFound desc = Resource not found"}`))
+		if !skippable {
+			t.Fatalf("expected skippable issue")
+		}
+		if result.Status != model.SearchCPOItemStatusSkipped {
+			t.Fatalf("status = %q, want %q", result.Status, model.SearchCPOItemStatusSkipped)
+		}
+		if result.SourceActionID != "3231133" {
+			t.Fatalf("SourceActionID = %q", result.SourceActionID)
+		}
+		if result.PromotionActionID != 28 {
+			t.Fatalf("PromotionActionID = %d", result.PromotionActionID)
+		}
+		if result.Error == "" || !strings.Contains(result.Error, "已自动禁用并跳过") {
+			t.Fatalf("unexpected error text: %q", result.Error)
+		}
+	})
+
+	t.Run("other refresh error stays failed", func(t *testing.T) {
+		t.Parallel()
+
+		result, skippable := buildSearchCPOMigrationRefreshIssue(model.PromotionAction{
+			ID:       7,
+			ActionID: 7001,
+			Source:   "official",
+			Title:    "官方活动 A",
+		}, fmt.Errorf("500 Internal Server Error"))
+		if skippable {
+			t.Fatalf("expected non-skippable issue")
+		}
+		if result.Status != model.SearchCPOItemStatusFailed {
+			t.Fatalf("status = %q, want %q", result.Status, model.SearchCPOItemStatusFailed)
+		}
+		if result.Error == "" || !strings.Contains(result.Error, "前置刷新官方活动商品失败") {
+			t.Fatalf("unexpected error text: %q", result.Error)
+		}
+	})
+}
+
+func TestMarkSearchCPOMigrationSetupFailedCarriesExitResults(t *testing.T) {
+	t.Parallel()
+
+	itemStates := map[string]*searchCPOAutomationItemState{
+		"sku-1": {},
+	}
+	exitResults := []dto.SearchCPORunActionResult{
+		{
+			PromotionActionID: 28,
+			SourceActionID:    "3231133",
+			Title:             "活动 28",
+			Source:            "shop",
+			Status:            model.SearchCPOItemStatusFailed,
+			Error:             "前置刷新店铺活动商品失败: API error (status 404): resource not found",
+		},
+	}
+
+	markSearchCPOMigrationSetupFailed([]string{"sku-1"}, itemStates, "迁移前置失败", exitResults)
+
+	state := itemStates["sku-1"]
+	if state == nil {
+		t.Fatalf("state missing")
+	}
+	if state.ExitStatus != model.SearchCPOItemStatusFailed {
+		t.Fatalf("ExitStatus = %q", state.ExitStatus)
+	}
+	if len(state.ExitResults) != 1 {
+		t.Fatalf("ExitResults len = %d", len(state.ExitResults))
+	}
+	if state.ExitResults[0].SourceActionID != "3231133" {
+		t.Fatalf("ExitResults[0].SourceActionID = %q", state.ExitResults[0].SourceActionID)
+	}
+	if state.Message != "迁移前置失败" {
+		t.Fatalf("Message = %q", state.Message)
+	}
+	if state.EnableStatus != model.SearchCPOItemStatusSkipped {
+		t.Fatalf("EnableStatus = %q", state.EnableStatus)
+	}
+	if state.MorkovskStatus != model.SearchCPOItemStatusSkipped {
+		t.Fatalf("MorkovskStatus = %q", state.MorkovskStatus)
+	}
 }

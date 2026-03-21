@@ -73,6 +73,42 @@ func TestAutomationJobFailureMessageAvoidsDuplicateSearchCPOSourceSKUPrefix(t *t
 	}
 }
 
+func TestAutomationJobFailureMessageForSourceSKUPrefersMatchingItem(t *testing.T) {
+	t.Parallel()
+
+	job := &model.AutomationJob{
+		JobType: model.AutomationJobTypeSearchCPOEnableProducts,
+		Items: []model.AutomationJobItem{
+			{SourceSKU: "offer-1", StepReaddError: "source_sku=offer-1: 未匹配到 Search CPO 开启响应: 3371928661"},
+			{SourceSKU: "offer-2", StepReaddError: "source_sku=offer-2: 未匹配到 Search CPO 开启响应: 3352634622"},
+		},
+	}
+
+	got := automationJobFailureMessageForSourceSKU(job, "offer-2", "fallback")
+	want := "source_sku=offer-2: 未匹配到 Search CPO 开启响应: 3352634622"
+	if got != want {
+		t.Fatalf("automationJobFailureMessageForSourceSKU() = %q, want %q", got, want)
+	}
+}
+
+func TestAutomationJobFailureMessageForSourceSKUDecoratesJobErrorWithRequestedSource(t *testing.T) {
+	t.Parallel()
+
+	job := &model.AutomationJob{
+		JobType:      model.AutomationJobTypeSearchCPOEnableProducts,
+		ErrorMessage: "未匹配到 Search CPO 开启响应: 3371928661",
+		Items: []model.AutomationJobItem{{
+			SourceSKU: "offer-1",
+		}},
+	}
+
+	got := automationJobFailureMessageForSourceSKU(job, "offer-2", "fallback")
+	want := "source_sku=offer-2: 未匹配到 Search CPO 开启响应: 3371928661"
+	if got != want {
+		t.Fatalf("automationJobFailureMessageForSourceSKU() = %q, want %q", got, want)
+	}
+}
+
 func TestAutomationJobFailureMessageFallsBackWhenNoErrors(t *testing.T) {
 	t.Parallel()
 

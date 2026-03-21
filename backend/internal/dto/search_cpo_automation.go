@@ -11,9 +11,27 @@ type SearchCPOAutomationRunListRequest struct {
 }
 
 type SearchCPOAutomationStepResult struct {
-	Status  string `json:"status"`
-	Error   string `json:"error,omitempty"`
-	Message string `json:"message,omitempty"`
+	Status      string                    `json:"status"`
+	Error       string                    `json:"error,omitempty"`
+	Message     string                    `json:"message,omitempty"`
+	Diagnostics *SearchCPOStepDiagnostics `json:"diagnostics,omitempty"`
+}
+
+type SearchCPOStepDiagnostics struct {
+	RequestedSKU           string   `json:"requested_sku,omitempty"`
+	ParserRevision         string   `json:"parser_revision,omitempty"`
+	BuildRevision          string   `json:"build_revision,omitempty"`
+	ResponseRootKeys       []string `json:"response_root_keys,omitempty"`
+	SampleResponseKeys     []string `json:"sample_response_keys,omitempty"`
+	ResponseHTTPStatus     int      `json:"response_http_status,omitempty"`
+	ResponseHTTPStatusText string   `json:"response_http_status_text,omitempty"`
+	ResponseContentType    string   `json:"response_content_type,omitempty"`
+	ResponseParseError     string   `json:"response_parse_error,omitempty"`
+	ResponseExcerpt        string   `json:"response_excerpt,omitempty"`
+	ResponseLength         int      `json:"response_length,omitempty"`
+	ResponseKind           string   `json:"response_kind,omitempty"`
+	ScriptResultType       string   `json:"script_result_type,omitempty"`
+	ResponseItemCount      int      `json:"response_item_count,omitempty"`
 }
 
 type SearchCPOAvailabilityDiagnostics struct {

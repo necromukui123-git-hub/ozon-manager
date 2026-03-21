@@ -75,10 +75,24 @@ type searchCPOStepArtifact struct {
 }
 
 type searchCPOStepArtifactItem struct {
-	SourceSKU string `json:"source_sku"`
-	Status    string `json:"status"`
-	Error     string `json:"error,omitempty"`
-	Message   string `json:"message,omitempty"`
+	SourceSKU              string   `json:"source_sku"`
+	Status                 string   `json:"status"`
+	Error                  string   `json:"error,omitempty"`
+	Message                string   `json:"message,omitempty"`
+	RequestedSKU           string   `json:"requested_sku,omitempty"`
+	ParserRevision         string   `json:"parser_revision,omitempty"`
+	BuildRevision          string   `json:"build_revision,omitempty"`
+	ResponseRootKeys       []string `json:"response_root_keys,omitempty"`
+	SampleResponseKeys     []string `json:"sample_response_keys,omitempty"`
+	ResponseHTTPStatus     int      `json:"response_http_status,omitempty"`
+	ResponseHTTPStatusText string   `json:"response_http_status_text,omitempty"`
+	ResponseContentType    string   `json:"response_content_type,omitempty"`
+	ResponseParseError     string   `json:"response_parse_error,omitempty"`
+	ResponseExcerpt        string   `json:"response_excerpt,omitempty"`
+	ResponseLength         int      `json:"response_length,omitempty"`
+	ResponseKind           string   `json:"response_kind,omitempty"`
+	ScriptResultType       string   `json:"script_result_type,omitempty"`
+	ResponseItemCount      int      `json:"response_item_count,omitempty"`
 }
 
 type searchCPOAutomationItemState struct {
@@ -94,6 +108,11 @@ type searchCPOAutomationItemState struct {
 	EnableResult    dto.SearchCPOAutomationStepResult
 	MorkovskResult  dto.SearchCPOAutomationStepResult
 	Message         string
+}
+
+type searchCPOMigrationLoadResult struct {
+	Grouped      map[string][]model.PromotionAction
+	IssueResults []dto.SearchCPORunActionResult
 }
 
 func (s *SearchCPOService) StartAutomationScheduler() {
@@ -596,13 +615,22 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 
 	actions, err := s.syncActionsForMigration(input.ShopID, triggerUserID)
 	if err != nil {
-		markSearchCPOMigrationSetupFailed(sourceSKUs, itemStates, err.Error())
+		markSearchCPOMigrationSetupFailed(sourceSKUs, itemStates, err.Error(), nil)
 		return nil
 	}
-	grouped, err := s.loadActiveMigrationActions(input.ShopID, triggerUserID, sourceSKUs, actions)
+	loadResult, err := s.loadActiveMigrationActions(input.ShopID, triggerUserID, sourceSKUs, actions)
+	var grouped map[string][]model.PromotionAction
+	precheckResults := []dto.SearchCPORunActionResult(nil)
+	if loadResult != nil {
+		grouped = loadResult.Grouped
+		precheckResults = cloneSearchCPORunActionResults(loadResult.IssueResults)
+	}
 	if err != nil {
-		markSearchCPOMigrationSetupFailed(sourceSKUs, itemStates, err.Error())
+		markSearchCPOMigrationSetupFailed(sourceSKUs, itemStates, err.Error(), precheckResults)
 		return nil
+	}
+	if grouped == nil {
+		grouped = make(map[string][]model.PromotionAction)
 	}
 
 	eligibleForEnable := make([]string, 0, len(sourceSKUs))
@@ -611,14 +639,16 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 		if state == nil {
 			continue
 		}
+		exitResults := cloneSearchCPORunActionResults(precheckResults)
 		matchedActions := grouped[sku]
 		if len(matchedActions) == 0 {
+			state.ExitResults = exitResults
 			state.ExitStatus = model.SearchCPOItemStatusSkipped
 			eligibleForEnable = append(eligibleForEnable, sku)
 			continue
 		}
 		officialActions, shopActions := splitActionsBySource(matchedActions)
-		exitResults := make([]dto.SearchCPORunActionResult, 0, len(matchedActions))
+		actionResults := make([]dto.SearchCPORunActionResult, 0, len(matchedActions))
 		exitFailed := false
 
 		if len(officialActions) > 0 {
@@ -636,7 +666,7 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 					result.Error = firstNonEmptyServiceTrimmed(errorText(removeErr), officialRemoveError(resp), "官方活动退出失败")
 					exitFailed = true
 				}
-				exitResults = append(exitResults, result)
+				actionResults = append(actionResults, result)
 			}
 		}
 
@@ -682,11 +712,12 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 						result.Error = "店铺活动未返回退出结果"
 						exitFailed = true
 					}
-					exitResults = append(exitResults, result)
+					actionResults = append(actionResults, result)
 				}
 			}
 		}
 
+		exitResults = append(exitResults, actionResults...)
 		state.ExitResults = exitResults
 		if exitFailed {
 			state.ExitStatus = model.SearchCPOItemStatusFailed
@@ -696,60 +727,76 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 			state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未加入 Morkovsk"}
 			continue
 		}
-		state.ExitStatus = summarizeSearchCPOActionResultsStatus(exitResults)
+		state.ExitStatus = summarizeSearchCPOActionResultsStatus(actionResults)
 		eligibleForEnable = append(eligibleForEnable, sku)
 	}
 
 	if len(eligibleForEnable) == 0 {
 		return nil
 	}
-	enableMeta := buildSearchCPOSKUMetaFromStates(eligibleForEnable, itemStates)
-	enableMap, err := s.executeEnableStep(triggerUserID, input.ShopID, eligibleForEnable, enableMeta)
-	if err != nil {
-		for _, sku := range eligibleForEnable {
-			if state := itemStates[sku]; state != nil {
-				state.EnableStatus = model.SearchCPOItemStatusFailed
-				state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusFailed, Error: err.Error()}
-				state.MorkovskStatus = model.SearchCPOItemStatusSkipped
-				state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
-			}
-		}
-		return nil
-	}
-
 	eligibleForMorkovsk := make([]string, 0, len(eligibleForEnable))
+	pendingEnable := make([]string, 0, len(eligibleForEnable))
 	for _, sku := range eligibleForEnable {
 		state := itemStates[sku]
 		if state == nil {
 			continue
 		}
-		step, ok := enableMap[sku]
-		if !ok {
-			state.EnableStatus = model.SearchCPOItemStatusFailed
-			state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusFailed, Error: "未返回 enable 结果"}
-			state.MorkovskStatus = model.SearchCPOItemStatusSkipped
-			state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
+		if strings.TrimSpace(state.Product.SearchPromoStatus) == "SEARCH_PROMO_STATUS_ENABLED" {
+			state.EnableStatus = model.SearchCPOItemStatusSkipped
+			state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "当前已开启搜索推广，跳过 enable"}
+			state.MorkovskStatus = model.SearchCPOItemStatusPending
+			eligibleForMorkovsk = append(eligibleForMorkovsk, sku)
 			continue
 		}
-		state.EnableStatus = step.Status
-		state.EnableResult = step
-		if step.Status != model.SearchCPOItemStatusSuccess {
-			state.MorkovskStatus = model.SearchCPOItemStatusSkipped
-			state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
-			continue
+		pendingEnable = append(pendingEnable, sku)
+	}
+	if len(pendingEnable) > 0 {
+		enableMeta := buildSearchCPOSKUMetaFromStates(pendingEnable, itemStates)
+		enableMap, err := s.executeEnableStep(triggerUserID, input.ShopID, pendingEnable, enableMeta)
+		if err != nil {
+			for _, sku := range pendingEnable {
+				if state := itemStates[sku]; state != nil {
+					state.EnableStatus = model.SearchCPOItemStatusFailed
+					state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusFailed, Error: err.Error()}
+					state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+					state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
+				}
+			}
+			return nil
 		}
-		state.Product.SearchPromoStatus = "SEARCH_PROMO_STATUS_ENABLED"
-		if state.RuleStateAfter == model.SearchCPORuleStateState2 {
-			state.RuleStateAfter = model.SearchCPORuleStateState3Trigger
+		for _, sku := range pendingEnable {
+			state := itemStates[sku]
+			if state == nil {
+				continue
+			}
+			step, ok := enableMap[sku]
+			if !ok {
+				state.EnableStatus = model.SearchCPOItemStatusFailed
+				state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusFailed, Error: "未返回 enable 结果"}
+				state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+				state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
+				continue
+			}
+			state.EnableStatus = step.Status
+			state.EnableResult = step
+			if step.Status != model.SearchCPOItemStatusSuccess {
+				state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+				state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "enable 失败，未加入 Morkovsk"}
+				continue
+			}
+			state.Product.SearchPromoStatus = "SEARCH_PROMO_STATUS_ENABLED"
+			if state.RuleStateAfter == model.SearchCPORuleStateState2 {
+				state.RuleStateAfter = model.SearchCPORuleStateState3Trigger
+			}
+			if err := s.repo.UpdateProductFields(input.ShopID, sku, map[string]interface{}{
+				"search_promo_status": "SEARCH_PROMO_STATUS_ENABLED",
+				"rule_state":          state.RuleStateAfter,
+			}); err != nil {
+				return err
+			}
+			state.MorkovskStatus = model.SearchCPOItemStatusPending
+			eligibleForMorkovsk = append(eligibleForMorkovsk, sku)
 		}
-		if err := s.repo.UpdateProductFields(input.ShopID, sku, map[string]interface{}{
-			"search_promo_status": "SEARCH_PROMO_STATUS_ENABLED",
-			"rule_state":          state.RuleStateAfter,
-		}); err != nil {
-			return err
-		}
-		state.MorkovskStatus = model.SearchCPOItemStatusPending
-		eligibleForMorkovsk = append(eligibleForMorkovsk, sku)
 	}
 
 	if len(eligibleForMorkovsk) == 0 {
@@ -808,41 +855,58 @@ func (s *SearchCPOService) syncActionsForMigration(shopID, triggerUserID uint) (
 	if msg := buildSearchCPOActionSyncFailureMessage(result); msg != "" {
 		return nil, fmt.Errorf("同步活动清单失败: %s", msg)
 	}
-	actions, err := s.promotionRepo.FindPromotionActionsByShopID(shopID)
+	actions, err := s.promotionRepo.FindActivePromotionActions(shopID)
 	if err != nil {
 		return nil, err
 	}
 	return actions, nil
 }
 
-func (s *SearchCPOService) loadActiveMigrationActions(shopID, triggerUserID uint, sourceSKUs []string, actions []model.PromotionAction) (map[string][]model.PromotionAction, error) {
-	grouped := make(map[string][]model.PromotionAction)
+func (s *SearchCPOService) loadActiveMigrationActions(shopID, triggerUserID uint, sourceSKUs []string, actions []model.PromotionAction) (*searchCPOMigrationLoadResult, error) {
+	result := &searchCPOMigrationLoadResult{Grouped: make(map[string][]model.PromotionAction)}
 	if len(actions) == 0 || len(sourceSKUs) == 0 {
-		return grouped, nil
+		return result, nil
 	}
+	refreshedActions := make([]model.PromotionAction, 0, len(actions))
 	for i := range actions {
 		action := actions[i]
-		if action.Source == "shop" {
-			if err := s.promotionService.refreshShopActionProducts(&action, triggerUserID); err != nil {
-				return nil, err
-			}
+		if strings.TrimSpace(action.Status) != "" && !strings.EqualFold(strings.TrimSpace(action.Status), "active") {
 			continue
 		}
-		if err := s.promotionService.refreshOfficialActionProducts(&action); err != nil {
-			return nil, err
+		var refreshErr error
+		if action.Source == "shop" {
+			refreshErr = s.promotionService.refreshShopActionProducts(&action, triggerUserID)
+		} else {
+			refreshErr = s.promotionService.refreshOfficialActionProducts(&action)
 		}
+		if refreshErr != nil {
+			issueResult, skippable := buildSearchCPOMigrationRefreshIssue(action, refreshErr)
+			if skippable {
+				if err := s.promotionRepo.UpdatePromotionActionStatus(action.ID, "disabled"); err != nil {
+					issueResult.Status = model.SearchCPOItemStatusFailed
+					issueResult.Error = fmt.Sprintf("前置刷新命中失效活动，但自动禁用失败: %s", err.Error())
+					result.IssueResults = append(result.IssueResults, issueResult)
+					return result, fmt.Errorf("%s", issueResult.Error)
+				}
+				result.IssueResults = append(result.IssueResults, issueResult)
+				continue
+			}
+			result.IssueResults = append(result.IssueResults, issueResult)
+			return result, fmt.Errorf("%s", issueResult.Error)
+		}
+		refreshedActions = append(refreshedActions, action)
 	}
 
-	actionIDs := actionIDsForActions(actions)
+	actionIDs := actionIDsForActions(refreshedActions)
 	if len(actionIDs) == 0 {
-		return grouped, nil
+		return result, nil
 	}
 	activeProducts, err := s.promotionRepo.ListActionProductsByActionIDsAndSourceSKUs(shopID, actionIDs, sourceSKUs)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
-	actionByID := make(map[uint]model.PromotionAction, len(actions))
-	for _, action := range actions {
+	actionByID := make(map[uint]model.PromotionAction, len(refreshedActions))
+	for _, action := range refreshedActions {
 		actionByID[action.ID] = action
 	}
 	for _, item := range activeProducts {
@@ -850,18 +914,19 @@ func (s *SearchCPOService) loadActiveMigrationActions(shopID, triggerUserID uint
 		if !ok {
 			continue
 		}
-		grouped[item.SourceSKU] = append(grouped[item.SourceSKU], action)
+		result.Grouped[item.SourceSKU] = append(result.Grouped[item.SourceSKU], action)
 	}
-	return grouped, nil
+	return result, nil
 }
 
-func markSearchCPOMigrationSetupFailed(sourceSKUs []string, itemStates map[string]*searchCPOAutomationItemState, message string) {
+func markSearchCPOMigrationSetupFailed(sourceSKUs []string, itemStates map[string]*searchCPOAutomationItemState, message string, exitResults []dto.SearchCPORunActionResult) {
 	message = strings.TrimSpace(message)
 	for _, sku := range sourceSKUs {
 		state := itemStates[sku]
 		if state == nil {
 			continue
 		}
+		state.ExitResults = cloneSearchCPORunActionResults(exitResults)
 		state.ExitStatus = model.SearchCPOItemStatusFailed
 		state.EnableStatus = model.SearchCPOItemStatusSkipped
 		state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "迁移前置失败，未执行 enable"}
@@ -896,8 +961,64 @@ func buildSearchCPOActionSyncFailureMessage(result *dto.SyncActionsResult) strin
 	return strings.Join(problems, "; ")
 }
 
+func buildSearchCPOMigrationRefreshIssue(action model.PromotionAction, err error) (dto.SearchCPORunActionResult, bool) {
+	trimmedError := strings.TrimSpace(errorText(err))
+	if isSkippableSearchCPOMigrationRefreshMessage(trimmedError) {
+		return dto.SearchCPORunActionResult{
+			PromotionActionID: action.ID,
+			ActionID:          action.ActionID,
+			SourceActionID:    action.SourceActionID,
+			Title:             displayActionName(action),
+			Source:            action.Source,
+			Status:            model.SearchCPOItemStatusSkipped,
+			Error:             fmt.Sprintf("前置刷新发现活动已失效，已自动禁用并跳过: %s", trimmedError),
+		}, true
+	}
+	scope := "官方"
+	if action.Source == "shop" {
+		scope = "店铺"
+	}
+	return dto.SearchCPORunActionResult{
+		PromotionActionID: action.ID,
+		ActionID:          action.ActionID,
+		SourceActionID:    action.SourceActionID,
+		Title:             displayActionName(action),
+		Source:            action.Source,
+		Status:            model.SearchCPOItemStatusFailed,
+		Error:             fmt.Sprintf("前置刷新%s活动商品失败: %s", scope, trimmedError),
+	}, false
+}
+
+func isSkippableSearchCPOMigrationRefreshMessage(message string) bool {
+	text := strings.TrimSpace(strings.ToLower(message))
+	if text == "" {
+		return false
+	}
+	if strings.Contains(text, "status 404") || strings.Contains(text, "404 not found") {
+		return true
+	}
+	if strings.Contains(text, "action_not_found") || strings.Contains(text, "活动不存在") {
+		return true
+	}
+	if strings.Contains(text, "rpc error: code = notfound desc = resource not found") {
+		return true
+	}
+	if strings.Contains(text, "resource not found") && (strings.Contains(text, "notfound") || strings.Contains(text, "status 404")) {
+		return true
+	}
+	return false
+}
+
+func cloneSearchCPORunActionResults(results []dto.SearchCPORunActionResult) []dto.SearchCPORunActionResult {
+	if len(results) == 0 {
+		return nil
+	}
+	cloned := make([]dto.SearchCPORunActionResult, len(results))
+	copy(cloned, results)
+	return cloned
+}
+
 func (s *SearchCPOService) executeEnableStep(userID, shopID uint, sourceSKUs []string, meta map[string]interface{}) (map[string]dto.SearchCPOAutomationStepResult, error) {
-	results := make(map[string]dto.SearchCPOAutomationStepResult)
 	job, err := s.automationService.CreateSearchCPOEnableProductsJob(userID, shopID, sourceSKUs, meta)
 	if err != nil {
 		return nil, err
@@ -906,29 +1027,10 @@ func (s *SearchCPOService) executeEnableStep(userID, shopID uint, sourceSKUs []s
 	if waitErr != nil {
 		return nil, waitErr
 	}
-	if waitedJob.Status != model.AutomationJobStatusSuccess && waitedJob.Status != model.AutomationJobStatusPartialSuccess {
-		return nil, fmt.Errorf(automationJobFailureMessage(waitedJob, "extension enable failed"))
-	}
-	artifact, err := s.automationService.GetLatestArtifact(waitedJob.ID, "search_cpo_enable_snapshot")
-	if err != nil {
-		return nil, err
-	}
-	snapshot := searchCPOStepArtifact{}
-	if err := json.Unmarshal(artifact.Meta, &snapshot); err != nil {
-		return nil, err
-	}
-	for _, item := range snapshot.Items {
-		results[strings.TrimSpace(item.SourceSKU)] = dto.SearchCPOAutomationStepResult{
-			Status:  normalizeSearchCPOStepStatus(item.Status),
-			Error:   strings.TrimSpace(item.Error),
-			Message: strings.TrimSpace(item.Message),
-		}
-	}
-	return results, nil
+	return s.loadSearchCPOStepResults(waitedJob, "search_cpo_enable_snapshot", "enable", sourceSKUs), nil
 }
 
 func (s *SearchCPOService) executeMorkovskBatchEnable(userID, shopID uint, sourceSKUs []string, meta map[string]interface{}) (map[string]dto.SearchCPOAutomationStepResult, error) {
-	results := make(map[string]dto.SearchCPOAutomationStepResult)
 	job, err := s.automationService.CreateSearchCPOBatchEnableMorkovskJob(userID, shopID, sourceSKUs, meta)
 	if err != nil {
 		return nil, err
@@ -937,25 +1039,68 @@ func (s *SearchCPOService) executeMorkovskBatchEnable(userID, shopID uint, sourc
 	if waitErr != nil {
 		return nil, waitErr
 	}
-	if waitedJob.Status != model.AutomationJobStatusSuccess && waitedJob.Status != model.AutomationJobStatusPartialSuccess {
-		return nil, fmt.Errorf(automationJobFailureMessage(waitedJob, "extension batch enable failed"))
-	}
-	artifact, err := s.automationService.GetLatestArtifact(waitedJob.ID, "search_cpo_morkovsk_snapshot")
-	if err != nil {
-		return nil, err
-	}
-	snapshot := searchCPOStepArtifact{}
-	if err := json.Unmarshal(artifact.Meta, &snapshot); err != nil {
-		return nil, err
-	}
-	for _, item := range snapshot.Items {
-		results[strings.TrimSpace(item.SourceSKU)] = dto.SearchCPOAutomationStepResult{
-			Status:  normalizeSearchCPOStepStatus(item.Status),
-			Error:   strings.TrimSpace(item.Error),
-			Message: strings.TrimSpace(item.Message),
+	return s.loadSearchCPOStepResults(waitedJob, "search_cpo_morkovsk_snapshot", "Morkovsk", sourceSKUs), nil
+}
+
+func (s *SearchCPOService) loadSearchCPOStepResults(waitedJob *model.AutomationJob, artifactType, stepLabel string, sourceSKUs []string) map[string]dto.SearchCPOAutomationStepResult {
+	results := make(map[string]dto.SearchCPOAutomationStepResult, len(sourceSKUs))
+	fallbackMessage := strings.TrimSpace(fmt.Sprintf("未返回 %s 结果", stepLabel))
+	if waitedJob != nil {
+		if artifact, err := s.automationService.GetLatestArtifact(waitedJob.ID, artifactType); err == nil {
+			snapshot := searchCPOStepArtifact{}
+			if unmarshalErr := json.Unmarshal(artifact.Meta, &snapshot); unmarshalErr == nil {
+				for _, item := range snapshot.Items {
+					sourceSKU := strings.TrimSpace(item.SourceSKU)
+					if sourceSKU == "" {
+						continue
+					}
+					results[sourceSKU] = buildSearchCPOStepResultFromArtifactItem(item)
+				}
+			} else {
+				fallbackMessage = fmt.Sprintf("解析 %s 快照失败: %v", stepLabel, unmarshalErr)
+			}
+		} else {
+			fallbackMessage = fmt.Sprintf("读取 %s 快照失败: %v", stepLabel, err)
 		}
 	}
-	return results, nil
+	for _, sku := range sourceSKUs {
+		normalizedSKU := strings.TrimSpace(sku)
+		if normalizedSKU == "" {
+			continue
+		}
+		if _, ok := results[normalizedSKU]; ok {
+			continue
+		}
+		results[normalizedSKU] = dto.SearchCPOAutomationStepResult{
+			Status: model.SearchCPOItemStatusFailed,
+			Error:  automationJobFailureMessageForSourceSKU(waitedJob, normalizedSKU, fallbackMessage),
+		}
+	}
+	return results
+}
+
+func buildSearchCPOStepResultFromArtifactItem(item searchCPOStepArtifactItem) dto.SearchCPOAutomationStepResult {
+	return dto.SearchCPOAutomationStepResult{
+		Status:  normalizeSearchCPOStepStatus(item.Status),
+		Error:   strings.TrimSpace(item.Error),
+		Message: strings.TrimSpace(item.Message),
+		Diagnostics: normalizeSearchCPOStepDiagnostics(&dto.SearchCPOStepDiagnostics{
+			RequestedSKU:           strings.TrimSpace(item.RequestedSKU),
+			ParserRevision:         strings.TrimSpace(item.ParserRevision),
+			BuildRevision:          strings.TrimSpace(item.BuildRevision),
+			ResponseRootKeys:       trimSearchCPODiagnosticStrings(item.ResponseRootKeys),
+			SampleResponseKeys:     trimSearchCPODiagnosticStrings(item.SampleResponseKeys),
+			ResponseHTTPStatus:     item.ResponseHTTPStatus,
+			ResponseHTTPStatusText: strings.TrimSpace(item.ResponseHTTPStatusText),
+			ResponseContentType:    strings.TrimSpace(item.ResponseContentType),
+			ResponseParseError:     strings.TrimSpace(item.ResponseParseError),
+			ResponseExcerpt:        strings.TrimSpace(item.ResponseExcerpt),
+			ResponseLength:         item.ResponseLength,
+			ResponseKind:           strings.TrimSpace(item.ResponseKind),
+			ScriptResultType:       strings.TrimSpace(item.ScriptResultType),
+			ResponseItemCount:      item.ResponseItemCount,
+		}),
+	}
 }
 func deriveSearchCPORuleState(product model.SearchCPOProduct, previousState string, now time.Time) (string, *time.Time) {
 	if product.MorkovskJoinedAt != nil {
@@ -1157,6 +1302,9 @@ func decodeSearchCPOAutomationStepResult(raw datatypes.JSON) dto.SearchCPOAutoma
 	}
 	_ = json.Unmarshal(raw, &result)
 	result.Status = normalizeSearchCPOStepStatus(result.Status)
+	result.Error = strings.TrimSpace(result.Error)
+	result.Message = strings.TrimSpace(result.Message)
+	result.Diagnostics = normalizeSearchCPOStepDiagnostics(result.Diagnostics)
 	return result
 }
 
@@ -1250,6 +1398,52 @@ func hasSearchCPOAvailabilityDiagnostics(value *dto.SearchCPOAvailabilityDiagnos
 		value.ResponseKind != "" ||
 		value.ScriptResultType != "" ||
 		value.UnavailableReason != ""
+}
+
+func normalizeSearchCPOStepDiagnostics(value *dto.SearchCPOStepDiagnostics) *dto.SearchCPOStepDiagnostics {
+	if value == nil {
+		return nil
+	}
+	normalized := &dto.SearchCPOStepDiagnostics{
+		RequestedSKU:           strings.TrimSpace(value.RequestedSKU),
+		ParserRevision:         strings.TrimSpace(value.ParserRevision),
+		BuildRevision:          strings.TrimSpace(value.BuildRevision),
+		ResponseRootKeys:       trimSearchCPODiagnosticStrings(value.ResponseRootKeys),
+		SampleResponseKeys:     trimSearchCPODiagnosticStrings(value.SampleResponseKeys),
+		ResponseHTTPStatus:     value.ResponseHTTPStatus,
+		ResponseHTTPStatusText: strings.TrimSpace(value.ResponseHTTPStatusText),
+		ResponseContentType:    strings.TrimSpace(value.ResponseContentType),
+		ResponseParseError:     strings.TrimSpace(value.ResponseParseError),
+		ResponseExcerpt:        strings.TrimSpace(value.ResponseExcerpt),
+		ResponseLength:         value.ResponseLength,
+		ResponseKind:           strings.TrimSpace(value.ResponseKind),
+		ScriptResultType:       strings.TrimSpace(value.ScriptResultType),
+		ResponseItemCount:      value.ResponseItemCount,
+	}
+	if !hasSearchCPOStepDiagnostics(normalized) {
+		return nil
+	}
+	return normalized
+}
+
+func hasSearchCPOStepDiagnostics(value *dto.SearchCPOStepDiagnostics) bool {
+	if value == nil {
+		return false
+	}
+	return value.RequestedSKU != "" ||
+		value.ParserRevision != "" ||
+		value.BuildRevision != "" ||
+		len(value.ResponseRootKeys) > 0 ||
+		len(value.SampleResponseKeys) > 0 ||
+		value.ResponseHTTPStatus > 0 ||
+		value.ResponseHTTPStatusText != "" ||
+		value.ResponseContentType != "" ||
+		value.ResponseParseError != "" ||
+		value.ResponseExcerpt != "" ||
+		value.ResponseLength > 0 ||
+		value.ResponseKind != "" ||
+		value.ScriptResultType != "" ||
+		value.ResponseItemCount > 0
 }
 
 func normalizeSearchCPOStepStatus(status string) string {

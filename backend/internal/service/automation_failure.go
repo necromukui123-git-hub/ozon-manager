@@ -22,6 +22,35 @@ func automationJobFailureMessage(job *model.AutomationJob, fallback string) stri
 	return fallback
 }
 
+func automationJobFailureMessageForSourceSKU(job *model.AutomationJob, sourceSKU, fallback string) string {
+	if job == nil {
+		return fallback
+	}
+	normalizedSourceSKU := strings.TrimSpace(sourceSKU)
+	if normalizedSourceSKU != "" {
+		for _, item := range job.Items {
+			if strings.TrimSpace(item.SourceSKU) != normalizedSourceSKU {
+				continue
+			}
+			if trimmed := firstNonEmptyServiceTrimmed(item.StepExitError, item.StepRepriceError, item.StepReaddError); trimmed != "" {
+				return decorateAutomationFailureMessage(job.JobType, normalizedSourceSKU, trimmed)
+			}
+		}
+	}
+	if trimmed := strings.TrimSpace(job.ErrorMessage); trimmed != "" {
+		return decorateAutomationFailureMessage(job.JobType, firstNonEmptyServiceTrimmed(normalizedSourceSKU, firstAutomationFailureSourceSKU(job.Items)), trimmed)
+	}
+	if normalizedSourceSKU == "" {
+		for _, item := range job.Items {
+			if trimmed := firstNonEmptyServiceTrimmed(item.StepExitError, item.StepRepriceError, item.StepReaddError); trimmed != "" {
+				return decorateAutomationFailureMessage(job.JobType, item.SourceSKU, trimmed)
+			}
+		}
+		return fallback
+	}
+	return decorateAutomationFailureMessage(job.JobType, normalizedSourceSKU, fallback)
+}
+
 func decorateAutomationFailureMessage(jobType, sourceSKU, message string) string {
 	trimmed := strings.TrimSpace(message)
 	if trimmed == "" {
