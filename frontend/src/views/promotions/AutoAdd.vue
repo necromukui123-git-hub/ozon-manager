@@ -22,7 +22,14 @@
               placeholder="09:05"
             />
           </el-form-item>
-          <el-form-item label="目标日期">
+          <el-form-item label="上架时间规则">
+            <el-radio-group v-model="form.target_date_mode" class="target-date-mode-group">
+              <el-radio-button label="yesterday">昨天</el-radio-button>
+              <el-radio-button label="today">今天</el-radio-button>
+              <el-radio-button label="custom">自定义日期</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="isCustomTargetDateMode" label="自定义日期">
             <el-date-picker
               v-model="form.target_date"
               type="date"
@@ -33,7 +40,7 @@
           </el-form-item>
           <el-form-item>
             <div class="form-tip">
-              定时任务会每天按已保存的绝对日期执行。若要切换到其他日期，需要重新保存配置。
+              定时任务会按所选规则动态计算执行日期；只有“自定义日期”模式才会保存固定日期。
             </div>
           </el-form-item>
         </el-form>
@@ -41,7 +48,7 @@
 
       <BentoCard title="执行说明" :icon="InfoFilled" size="1x1">
         <div class="hint-list">
-          <div>1. 执行前会强制刷新 Ozon 商品目录，并按该目录的上架日期过滤商品。</div>
+          <div>1. 执行前会强制刷新 Ozon 商品目录，并按本次解析出的上架日期筛选商品。</div>
           <div>2. 官方活动会先执行，只有成功的商品才会继续进入店铺活动。</div>
           <div>3. 历史记录会保留逐商品失败原因，不会在商品列表主表打额外标签。</div>
         </div>
@@ -101,7 +108,12 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="target_date" label="目标日期" width="120" />
+        <el-table-column label="日期规则" width="120">
+          <template #default="{ row }">
+            {{ targetDateModeLabel(row.target_date_mode) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="target_date" label="实际日期" width="120" />
         <el-table-column label="状态" width="140">
           <template #default="{ row }">
             <el-tag :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
@@ -130,7 +142,8 @@
     <el-dialog v-model="detailVisible" title="执行详情" width="1100px">
       <div v-if="detail" class="detail-summary">
         <el-tag :type="statusTagType(detail.status)">{{ statusLabel(detail.status) }}</el-tag>
-        <span>目标日期：{{ detail.target_date }}</span>
+        <span>日期规则：{{ targetDateModeLabel(detail.target_date_mode) }}</span>
+        <span>实际日期：{{ detail.target_date }}</span>
         <span>成功 {{ detail.success_items }} / 失败 {{ detail.failed_items }} / 跳过 {{ detail.skipped_items }}</span>
       </div>
 
@@ -199,6 +212,7 @@ let pollTimer = null
 const form = reactive({
   enabled: false,
   schedule_time: '09:05',
+  target_date_mode: 'yesterday',
   target_date: '',
   official_action_ids: [],
   shop_action_ids: []
@@ -206,6 +220,7 @@ const form = reactive({
 
 const officialActions = computed(() => actions.value.filter(action => action.source === 'official'))
 const shopActions = computed(() => actions.value.filter(action => action.source === 'shop'))
+const isCustomTargetDateMode = computed(() => form.target_date_mode === 'custom')
 
 watch(
   () => userStore.currentShopId,
@@ -226,6 +241,7 @@ onUnmounted(() => {
 function resetForm() {
   form.enabled = false
   form.schedule_time = '09:05'
+  form.target_date_mode = 'yesterday'
   form.target_date = ''
   form.official_action_ids = []
   form.shop_action_ids = []
@@ -263,6 +279,7 @@ async function loadConfig() {
   const data = res.data || {}
   form.enabled = !!data.enabled
   form.schedule_time = data.schedule_time || '09:05'
+  form.target_date_mode = normalizeTargetDateMode(data.target_date_mode, data.target_date)
   form.target_date = data.target_date || ''
   form.official_action_ids = Array.isArray(data.official_action_ids) ? data.official_action_ids : []
   form.shop_action_ids = Array.isArray(data.shop_action_ids) ? data.shop_action_ids : []
@@ -289,6 +306,10 @@ async function handleSaveConfig() {
     ElMessage.warning('请先选择店铺')
     return
   }
+  if (isCustomTargetDateMode.value && !form.target_date) {
+    ElMessage.warning('自定义日期模式下请先选择日期')
+    return
+  }
 
   saving.value = true
   try {
@@ -296,7 +317,8 @@ async function handleSaveConfig() {
       shop_id: shopId,
       enabled: form.enabled,
       schedule_time: form.schedule_time,
-      target_date: form.target_date,
+      target_date_mode: form.target_date_mode,
+      target_date: isCustomTargetDateMode.value ? form.target_date : '',
       official_action_ids: form.official_action_ids,
       shop_action_ids: form.shop_action_ids
     })
@@ -315,6 +337,10 @@ async function handleRunNow() {
     ElMessage.warning('请先选择店铺')
     return
   }
+  if (isCustomTargetDateMode.value && !form.target_date) {
+    ElMessage.warning('自定义日期模式下请先选择日期')
+    return
+  }
 
   try {
     await ElMessageBox.confirm(
@@ -330,7 +356,8 @@ async function handleRunNow() {
   try {
     await startAutoPromotionRun({
       shop_id: shopId,
-      target_date: form.target_date,
+      target_date_mode: form.target_date_mode,
+      target_date: isCustomTargetDateMode.value ? form.target_date : '',
       official_action_ids: form.official_action_ids,
       shop_action_ids: form.shop_action_ids
     })
@@ -377,6 +404,27 @@ function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
+  }
+}
+
+function normalizeTargetDateMode(mode, targetDate) {
+  const normalized = String(mode || '').trim().toLowerCase()
+  if (['yesterday', 'today', 'custom'].includes(normalized)) {
+    return normalized
+  }
+  return targetDate ? 'custom' : 'yesterday'
+}
+
+function targetDateModeLabel(mode) {
+  switch (normalizeTargetDateMode(mode)) {
+    case 'yesterday':
+      return '昨天'
+    case 'today':
+      return '今天'
+    case 'custom':
+      return '自定义日期'
+    default:
+      return '-'
   }
 }
 
@@ -443,6 +491,14 @@ function statusTagType(status) {
 
 .config-form {
   padding-right: 8px;
+}
+
+.target-date-mode-group {
+  width: 100%;
+}
+
+.target-date-mode-group :deep(.el-radio-button__inner) {
+  min-width: 96px;
 }
 
 .form-tip {

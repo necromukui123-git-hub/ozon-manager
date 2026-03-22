@@ -28,7 +28,7 @@ func (r *AutoPromotionRepository) FindConfigByShopID(shopID uint) (*model.AutoPr
 func (r *AutoPromotionRepository) UpsertConfig(config *model.AutoPromotionConfig) error {
 	return r.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "shop_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"enabled", "schedule_time", "target_date", "official_action_ids", "shop_action_ids", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"enabled", "schedule_time", "target_date_mode", "target_date", "official_action_ids", "shop_action_ids", "updated_at"}),
 	}).Create(config).Error
 }
 
@@ -122,9 +122,9 @@ func (r *AutoPromotionRepository) MarkStaleRunningRunsFailed(staleBefore time.Ti
 	return r.db.Model(&model.AutoPromotionRun{}).
 		Where("status = ? AND updated_at < ?", model.AutoPromotionRunStatusRunning, staleBefore).
 		Updates(map[string]interface{}{
-			"status":         model.AutoPromotionRunStatusFailed,
-			"error_message":  "后台重启后将超时运行标记为失败",
-			"completed_at":   time.Now(),
-			"updated_at":     time.Now(),
+			"status":        model.AutoPromotionRunStatusFailed,
+			"error_message": "后台重启后将超时运行标记为失败",
+			"completed_at":  time.Now(),
+			"updated_at":    time.Now(),
 		}).Error
 }

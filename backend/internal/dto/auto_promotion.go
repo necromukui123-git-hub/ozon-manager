@@ -4,7 +4,8 @@ type AutoPromotionConfigRequest struct {
 	ShopID            uint   `json:"shop_id" binding:"required"`
 	Enabled           bool   `json:"enabled"`
 	ScheduleTime      string `json:"schedule_time"`
-	TargetDate        string `json:"target_date" binding:"required"`
+	TargetDateMode    string `json:"target_date_mode"`
+	TargetDate        string `json:"target_date"`
 	OfficialActionIDs []uint `json:"official_action_ids"`
 	ShopActionIDs     []uint `json:"shop_action_ids"`
 }
@@ -14,6 +15,7 @@ type AutoPromotionConfigResponse struct {
 	ShopID            uint   `json:"shop_id"`
 	Enabled           bool   `json:"enabled"`
 	ScheduleTime      string `json:"schedule_time"`
+	TargetDateMode    string `json:"target_date_mode"`
 	TargetDate        string `json:"target_date"`
 	OfficialActionIDs []uint `json:"official_action_ids"`
 	ShopActionIDs     []uint `json:"shop_action_ids"`
@@ -22,7 +24,8 @@ type AutoPromotionConfigResponse struct {
 
 type AutoPromotionRunRequest struct {
 	ShopID            uint   `json:"shop_id" binding:"required"`
-	TargetDate        string `json:"target_date" binding:"required"`
+	TargetDateMode    string `json:"target_date_mode"`
+	TargetDate        string `json:"target_date"`
 	OfficialActionIDs []uint `json:"official_action_ids"`
 	ShopActionIDs     []uint `json:"shop_action_ids"`
 }
@@ -46,15 +49,15 @@ type AutoPromotionActionResult struct {
 }
 
 type AutoPromotionRunItemResponse struct {
-	ID              uint                      `json:"id"`
-	ProductID       *uint                     `json:"product_id,omitempty"`
-	OzonProductID   int64                     `json:"ozon_product_id"`
-	SourceSKU       string                    `json:"source_sku"`
-	ProductName     string                    `json:"product_name"`
-	ListingDate     string                    `json:"listing_date"`
-	OverallStatus   string                    `json:"overall_status"`
-	OfficialStatus  string                    `json:"official_status"`
-	ShopStatus      string                    `json:"shop_status"`
+	ID              uint                        `json:"id"`
+	ProductID       *uint                       `json:"product_id,omitempty"`
+	OzonProductID   int64                       `json:"ozon_product_id"`
+	SourceSKU       string                      `json:"source_sku"`
+	ProductName     string                      `json:"product_name"`
+	ListingDate     string                      `json:"listing_date"`
+	OverallStatus   string                      `json:"overall_status"`
+	OfficialStatus  string                      `json:"official_status"`
+	ShopStatus      string                      `json:"shop_status"`
 	OfficialResults []AutoPromotionActionResult `json:"official_results"`
 	ShopResults     []AutoPromotionActionResult `json:"shop_results"`
 }
@@ -63,6 +66,7 @@ type AutoPromotionRunSummaryResponse struct {
 	ID              uint   `json:"id"`
 	TriggerMode     string `json:"trigger_mode"`
 	TriggerDate     string `json:"trigger_date"`
+	TargetDateMode  string `json:"target_date_mode"`
 	TargetDate      string `json:"target_date"`
 	Status          string `json:"status"`
 	TotalCandidates int    `json:"total_candidates"`
@@ -84,11 +88,11 @@ type AutoPromotionRunListResponse struct {
 
 type AutoPromotionRunDetailResponse struct {
 	AutoPromotionRunSummaryResponse
-	ShopID            uint                      `json:"shop_id"`
-	ConfigID          *uint                     `json:"config_id,omitempty"`
-	TriggeredBy       *uint                     `json:"triggered_by,omitempty"`
-	ScheduleTime      string                    `json:"schedule_time,omitempty"`
-	OfficialActionIDs []uint                    `json:"official_action_ids"`
-	ShopActionIDs     []uint                    `json:"shop_action_ids"`
+	ShopID            uint                           `json:"shop_id"`
+	ConfigID          *uint                          `json:"config_id,omitempty"`
+	TriggeredBy       *uint                          `json:"triggered_by,omitempty"`
+	ScheduleTime      string                         `json:"schedule_time,omitempty"`
+	OfficialActionIDs []uint                         `json:"official_action_ids"`
+	ShopActionIDs     []uint                         `json:"shop_action_ids"`
 	Items             []AutoPromotionRunItemResponse `json:"items"`
 }

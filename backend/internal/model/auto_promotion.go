@@ -10,6 +10,10 @@ const (
 	AutoPromotionTriggerModeManual    = "manual"
 	AutoPromotionTriggerModeScheduled = "scheduled"
 
+	AutoPromotionTargetDateModeYesterday = "yesterday"
+	AutoPromotionTargetDateModeToday     = "today"
+	AutoPromotionTargetDateModeCustom    = "custom"
+
 	AutoPromotionRunStatusPending        = "pending"
 	AutoPromotionRunStatusRunning        = "running"
 	AutoPromotionRunStatusSuccess        = "success"
@@ -55,7 +59,8 @@ type AutoPromotionConfig struct {
 	ShopID            uint           `gorm:"not null;uniqueIndex" json:"shop_id"`
 	Enabled           bool           `gorm:"not null;default:false" json:"enabled"`
 	ScheduleTime      string         `gorm:"size:5;not null;default:09:05" json:"schedule_time"`
-	TargetDate        time.Time      `gorm:"type:date;not null" json:"target_date"`
+	TargetDateMode    string         `gorm:"size:20;not null;default:custom" json:"target_date_mode"`
+	TargetDate        *time.Time     `gorm:"type:date" json:"target_date,omitempty"`
 	OfficialActionIDs datatypes.JSON `gorm:"type:jsonb;not null" json:"official_action_ids"`
 	ShopActionIDs     datatypes.JSON `gorm:"type:jsonb;not null" json:"shop_action_ids"`
 	CreatedAt         time.Time      `gorm:"autoCreateTime" json:"created_at"`
@@ -73,6 +78,7 @@ type AutoPromotionRun struct {
 	TriggeredBy     *uint          `gorm:"index" json:"triggered_by"`
 	TriggerMode     string         `gorm:"size:20;not null;index" json:"trigger_mode"`
 	TriggerDate     time.Time      `gorm:"type:date;not null;index" json:"trigger_date"`
+	TargetDateMode  string         `gorm:"size:20;not null;default:custom" json:"target_date_mode"`
 	TargetDate      time.Time      `gorm:"type:date;not null" json:"target_date"`
 	Status          string         `gorm:"size:30;not null;default:pending;index" json:"status"`
 	TotalCandidates int            `gorm:"default:0" json:"total_candidates"`

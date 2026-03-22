@@ -277,6 +277,14 @@
    - 处理：popup 重构为“自动连接为主”，新增“重新检测”；默认将 `Token / 店铺 ID / 管理端 Origin` 收进“高级设置 / 排障”，并首屏展示连接来源、管理端 Origin、最近检测和立即同步结果。
    - 处理：`README.md` 同步改写为普通用户说明：先在管理端登录并选择店铺，非 localhost 首次授权即可，只有自动连接失败时才使用高级设置兜底。
    - 涉及：`browser-extension/ozon-shop-bridge/background_search_cpo.js`、`browser-extension/ozon-shop-bridge/popup.html`、`browser-extension/ozon-shop-bridge/popup.js`、`browser-extension/ozon-shop-bridge/README.md`。
+39. 自动加促销恢复相对日期规则（昨天 / 今天 / 自定义）：
+   - 根因：`auto_promotion_configs.target_date` 被当成固定绝对日期保存，定时任务每天重复跑同一天，不再具备“昨天上架商品自动加促销”的原始语义。
+   - 处理：后端为 `auto_promotion_configs` / `auto_promotion_runs` 新增 `target_date_mode`，配置表的 `target_date` 改为仅在 `custom` 模式下保存；手动执行与定时调度都会在运行时解析出本次实际执行日期，并把“规则 + 实际日期”一起写入 run 与快照。
+   - 处理：前端 `/promotions/auto-add` 页面改为显式提供“昨天 / 今天 / 自定义日期”三种规则；历史列表与详情弹窗新增“日期规则”，原 `target_date` 明确展示为“实际日期”。
+   - 处理：新增 `upgrade_20260322_auto_promotion_relative_date_mode.sql`，旧配置与历史统一回填为 `custom`，避免静默改变已在线店铺的自动任务行为；`init_database.sql` 已同步回写最新结构。
+   - 测试：新增日期规则解析与配置校验单测，覆盖 `昨天/今天/自定义`、空模式兼容和非法输入分支。
+   - 涉及：`backend/internal/service/auto_promotion_service.go`、`backend/internal/service/auto_promotion_service_test.go`、`backend/internal/model/auto_promotion.go`、`backend/internal/dto/auto_promotion.go`、`backend/internal/repository/auto_promotion_repo.go`、`backend/migrations/init_database.sql`、`backend/migrations/upgrade_20260322_auto_promotion_relative_date_mode.sql`、`frontend/src/views/promotions/AutoAdd.vue`。
+
 ## 验证结果
 0. 后端回归测试通过（含本次商品同步修复）：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...`。
 0. 前端构建通过（含“同步商品”错误提示调整）：`cd frontend && cmd /c npm run build`（非沙箱环境执行）。
@@ -332,6 +340,9 @@
 49. 插件脚本语法检查通过（含 Search CPO 自动化 job 分发修复）：`node --check browser-extension/ozon-shop-bridge/background_search_cpo.js`。
 50. 后端回归测试通过（含 Search CPO 自动化链路回归）：`cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./...`。
 51. 前端构建通过（含 Search CPO 页面现有自动化入口回归）：`cd frontend && cmd /c npm run build`。
+52. 后端回归测试通过（含自动加促销相对日期规则）：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./...`。
+53. 前端构建通过（含 `/promotions/auto-add` 日期规则切换与历史展示调整）：`cd frontend && cmd /c npm run build`.
+
 ## 数据库执行记录
 0. 本次新增可执行升级脚本：`backend/migrations/upgrade_20260319_search_cpo_morkovsk_automation.sql`（Search CPO Morkovsk 自动化第一批）。
 1. 用途：扩展 `search_cpo_configs` 自动化配置字段、扩展 `search_cpo_products` 规则状态字段，并新增 `search_cpo_auto_runs`、`search_cpo_auto_run_items` 两张自动化运行表。
@@ -377,6 +388,11 @@
 36. 本次（Search CPO 刷新去掉 `notAvailableOnly`）无新增迁移脚本：仅调整插件抓取请求体、前端文案与交付文档，不涉及数据库结构变更。
 37. 本次（Search CPO 自动化 extension 分发修复）无新增迁移脚本：仅调整插件任务路由与交付文档，不涉及数据库结构变更。
 38. 本次（Search CPO availability 运行时诊断补强）无新增迁移脚本：仅新增扩展 runtime diagnostics patch、后端错误透传和回归脚本，不涉及数据库结构变更。
+39. 本次新增可执行升级脚本：`backend/migrations/upgrade_20260322_auto_promotion_relative_date_mode.sql`（自动加促销相对日期规则）。
+40. 用途：为自动加促销配置和运行历史补充 `target_date_mode`，并允许配置表在“昨天/今天”模式下不保存固定 `target_date`。
+41. 执行条件：目标库已存在 `auto_promotion_configs` 与 `auto_promotion_runs`；脚本支持幂等重复执行。
+42. 执行结果：脚本已编写，`init_database.sql` 已同步回写；本轮未在当前会话直接执行数据库升级。
+
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。
 2. 缺少真实环境下长时间混合在线回归报告。
@@ -386,13 +402,4 @@
 1. reload 扩展后在真实 Seller 环境复测 `search_promo_availability`，确认新的 `requested_sku/parser_revision/root_keys` 诊断是否足以直接定位 live 响应漂移或 SKU 匹配问题。
 2. 继续补强第三步退出链路的真实结果判定，重点核对官方/店铺活动 remove 的逐 SKU 明细与幂等表现。
 3. 结合真实联调结果补充 Search CPO 自动化逐步骤测试与交付口径，准备拆分下一批实现。
-
-
-
-
-
-
-
-
-
 

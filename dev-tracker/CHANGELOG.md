@@ -2,6 +2,33 @@
 
 ## 2026-03-22
 ### 主题
+恢复“自动加促销”的相对日期语义：支持昨天 / 今天 / 自定义日期，并让定时任务按规则动态计算本次执行日期。
+
+### 关键变更
+1. `backend/internal/service/auto_promotion_service.go`、`backend/internal/model/auto_promotion.go`、`backend/internal/dto/auto_promotion.go`、`backend/internal/repository/auto_promotion_repo.go`：
+   - 自动加促销配置和运行历史新增 `target_date_mode`，枚举固定为 `yesterday / today / custom`。
+   - 配置表中的 `target_date` 改为仅在 `custom` 模式下保存；手动执行和定时调度都会在运行时解析出本次实际日期并写入 run。
+   - `GetConfig` 的默认语义改为“昨天”，不再靠预填一个固定绝对日期模拟默认值。
+2. `frontend/src/views/promotions/AutoAdd.vue`：
+   - 页面配置项由“目标日期”改成“上架时间规则”，支持昨天、今天、自定义日期三种模式。
+   - 历史列表和详情弹窗新增“日期规则”，原 `target_date` 明确展示为“实际日期”。
+   - 自定义日期模式下新增前端校验，避免空日期直接发请求。
+3. `backend/migrations/init_database.sql`、`backend/migrations/upgrade_20260322_auto_promotion_relative_date_mode.sql`：
+   - 新环境基线已同步为最新结构。
+   - 旧环境可通过新增升级脚本把已有配置和历史回填为 `custom`，同时放宽配置表 `target_date` 的非空约束。
+4. `backend/internal/service/auto_promotion_service_test.go`：
+   - 新增日期规则解析与配置校验测试，覆盖昨天、今天、自定义日期、空模式兼容和非法输入。
+
+### 影响范围
+1. “自动加促销”重新具备“每天自动处理昨天上架商品”的核心语义。
+2. 现有已保存配置不会被静默改成“昨天”；升级后默认按 `custom` 保留原行为，运营可自行切换回相对规则。
+3. 本次包含数据库结构变更，旧库需要执行 `upgrade_20260322_auto_promotion_relative_date_mode.sql`。
+
+### 验证
+1. `cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./...` 通过。
+2. `cd frontend && cmd /c npm run build` 通过。
+## 2026-03-22
+### 主题
 收口搜索推广商品页面的信息架构，保留单一路由入口，但把人工批量报名和状态迁移自动化拆成同路由双标签，并同步统一用户可见文案。
 
 ### 关键变更
@@ -22,6 +49,33 @@
 
 ### 验证
 1. `cd frontend && cmd /c npm run build`
+## 2026-03-22
+### 主题
+恢复“自动加促销”的相对日期语义：支持昨天 / 今天 / 自定义日期，并让定时任务按规则动态计算本次执行日期。
+
+### 关键变更
+1. `backend/internal/service/auto_promotion_service.go`、`backend/internal/model/auto_promotion.go`、`backend/internal/dto/auto_promotion.go`、`backend/internal/repository/auto_promotion_repo.go`：
+   - 自动加促销配置和运行历史新增 `target_date_mode`，枚举固定为 `yesterday / today / custom`。
+   - 配置表中的 `target_date` 改为仅在 `custom` 模式下保存；手动执行和定时调度都会在运行时解析出本次实际日期并写入 run。
+   - `GetConfig` 的默认语义改为“昨天”，不再靠预填一个固定绝对日期模拟默认值。
+2. `frontend/src/views/promotions/AutoAdd.vue`：
+   - 页面配置项由“目标日期”改成“上架时间规则”，支持昨天、今天、自定义日期三种模式。
+   - 历史列表和详情弹窗新增“日期规则”，原 `target_date` 明确展示为“实际日期”。
+   - 自定义日期模式下新增前端校验，避免空日期直接发请求。
+3. `backend/migrations/init_database.sql`、`backend/migrations/upgrade_20260322_auto_promotion_relative_date_mode.sql`：
+   - 新环境基线已同步为最新结构。
+   - 旧环境可通过新增升级脚本把已有配置和历史回填为 `custom`，同时放宽配置表 `target_date` 的非空约束。
+4. `backend/internal/service/auto_promotion_service_test.go`：
+   - 新增日期规则解析与配置校验测试，覆盖昨天、今天、自定义日期、空模式兼容和非法输入。
+
+### 影响范围
+1. “自动加促销”重新具备“每天自动处理昨天上架商品”的核心语义。
+2. 现有已保存配置不会被静默改成“昨天”；升级后默认按 `custom` 保留原行为，运营可自行切换回相对规则。
+3. 本次包含数据库结构变更，旧库需要执行 `upgrade_20260322_auto_promotion_relative_date_mode.sql`。
+
+### 验证
+1. `cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./...` 通过。
+2. `cd frontend && cmd /c npm run build` 通过。
 ## 2026-03-22
 ### 主题
 修正 Search CPO 状态迁移里的两类现场误判：店铺活动退出看似成功、商品却仍留在店铺活动中，以及历史 `morkovsk_joined_at` 压过当前 live 状态导致“手动执行一次”不再把商品重新推进到状态4。
@@ -944,17 +998,4 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
-
-
-
-
-
-
-
-
-
-
-
-
-
 
