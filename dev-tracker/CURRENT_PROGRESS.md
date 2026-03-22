@@ -7,6 +7,11 @@
 本次目标：继续修正 Search CPO 状态迁移在 live Seller 场景里的两类误判：一是店铺 `deactivate` 需要按活动逐条执行并优先使用数值 SKU，退出后要复核商品是否仍留在店铺活动中；二是历史 `morkovsk_joined_at` 不能再压过当前 Ozon live 状态，避免用户手工把商品改回状态2/3后，“手动执行一次”仍被短路成 joined repair。
 
 ## 已完成（含关键文件）
+0. 搜索推广商品页面信息架构收口：
+   - `frontend/src/views/promotions/SearchCPO.vue` 现只保留共享数据加载、轮询和 `?tab=manual|automation` 标签路由；同一路由下拆成“商品池与手动报名”和“状态迁移自动化”两个工作面，并把顶部概览收口为缓存商品、当前筛选、默认活动、最近同步、自动化状态。
+   - 新增 `frontend/src/views/promotions/search-cpo/SearchCPOManualTab.vue`、`SearchCPOAutomationTab.vue`、`SearchCPORunDetailDialog.vue`、`SearchCPOAutomationDetailDialog.vue` 与 `ui.js`；手动报名和自动化的主界面、历史列表、详情弹窗已从单文件拆出，默认活动配置改为只在手动标签编辑，自动化标签只展示共享配置摘要与规则状态概览。
+   - `frontend/src/views/Layout.vue` 菜单入口已从“CPO 商品报名”改为“搜索推广商品”，用户不再需要在同一屏里同时处理商品筛选、活动配置、调度开关、两套历史和深度诊断。
+   - 前端构建通过：`cd frontend && cmd /c npm run build`。
 0. Search CPO 刷新状态落库修复：
    - `browser-extension/ozon-shop-bridge/background_search_cpo.js` 的 `normalizeSearchCPOProduct` 已补齐 `carrots_status` 映射，`list` 返回的 `carrotsStatus` 不再只留在原始 `payload` 中。
    - `frontend/src/views/promotions/SearchCPO.vue` 已把空 `search_promo_status` 改为显示“状态未知”，不再误标成“已关闭”。
@@ -381,6 +386,8 @@
 1. reload 扩展后在真实 Seller 环境复测 `search_promo_availability`，确认新的 `requested_sku/parser_revision/root_keys` 诊断是否足以直接定位 live 响应漂移或 SKU 匹配问题。
 2. 继续补强第三步退出链路的真实结果判定，重点核对官方/店铺活动 remove 的逐 SKU 明细与幂等表现。
 3. 结合真实联调结果补充 Search CPO 自动化逐步骤测试与交付口径，准备拆分下一批实现。
+
+
 
 
 

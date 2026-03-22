@@ -2,6 +2,28 @@
 
 ## 2026-03-22
 ### 主题
+收口搜索推广商品页面的信息架构，保留单一路由入口，但把人工批量报名和状态迁移自动化拆成同路由双标签，并同步统一用户可见文案。
+
+### 关键变更
+1. `frontend/src/views/promotions/SearchCPO.vue`：
+   - 页面改成容器组件，保留共享数据加载、轮询、详情弹窗状态与 `?tab=manual|automation` 路由同步，不再继续承载全部业务块和诊断 UI。
+   - 顶部概览改为缓存商品、当前筛选、默认活动、最近同步、自动化状态五个指标卡，真正展示 `last_synced`。
+2. `frontend/src/views/promotions/search-cpo/SearchCPOManualTab.vue`、`SearchCPOAutomationTab.vue`、`SearchCPORunDetailDialog.vue`、`SearchCPOAutomationDetailDialog.vue`、`ui.js`：
+   - 手动标签集中承载商品刷新、默认活动维护、本地筛选、商品表和手动报名历史。
+   - 自动化标签集中承载调度开关、触发时间、只读默认活动摘要、规则状态概览和自动化历史。
+   - 深度诊断继续只留在自动化详情弹窗，不再挤占主页面工作区。
+3. `frontend/src/views/Layout.vue`：
+   - 菜单入口从“CPO 商品报名”统一改为“搜索推广商品”，用户可见命名与当前业务口径对齐。
+
+### 影响范围
+1. `/promotions/search-cpo` 仍是同一个页面入口，但现在更像两个相邻工作面，而不是一个巨型总控台。
+2. 默认活动配置仍然是手动报名与自动化共用的一份数据，只是编辑入口收敛到了手动标签。
+3. 无数据库结构变更，无新增 migration 脚本；本次仅调整前端信息架构和用户可见文案。
+
+### 验证
+1. `cd frontend && cmd /c npm run build`
+## 2026-03-22
+### 主题
 修正 Search CPO 状态迁移里的两类现场误判：店铺活动退出看似成功、商品却仍留在店铺活动中，以及历史 `morkovsk_joined_at` 压过当前 live 状态导致“手动执行一次”不再把商品重新推进到状态4。
 
 ### 关键变更
@@ -922,6 +944,10 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
+
+
+
+
 
 
 
