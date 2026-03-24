@@ -1,5 +1,60 @@
 # Ozon Manager 变更日志
 
+## 2026-03-25
+### 主题
+修复 Windows 单机发布包在目标机上的两类部署阻塞：空库默认管理员登录异常，以及旧库缺少 `users.owner_id` 导致无法创建店铺管理员。
+
+### 关键变更
+1. `backend/migrations/init_database.sql`：
+   - 默认超级管理员 `super_admin` 的基线哈希已替换为真正匹配当前登录协议 `bcrypt(SHA256(admin123))` 的值，空库初始化后可直接登录。
+2. `backend/cmd/reset-password/main.go`、`backend/cmd/migrate-passwords/main.go`：
+   - 密码工具统一改回与当前登录逻辑一致的 `bcrypt(SHA256(明文密码))`，不再生成与前端登录链路不兼容的哈希。
+3. `frontend/src/utils/request.js`：
+   - 登录接口 `POST /api/v1/auth/login` 返回 `401` 时，前端不再清空本地状态并提示“登录已过期”，而是直接显示后端返回的登录失败消息。
+4. `backend/migrations/init_database_test.go`：
+   - 新增回归测试，直接校验基线 SQL 中 `super_admin` 的哈希必须满足 `bcrypt(SHA256(admin123))`。
+5. `README-windows-deploy.md`：
+   - 补充默认管理员账号说明，并明确 2026-03-25 之前的旧发布包初始化空库后，若出现默认账号无法登录，最简单的处理方式是重新用新基线初始化。
+6. `backend/migrations/upgrade_20260325_users_owner_id.sql`、`build-windows-release.ps1`：
+   - 为旧库补齐 `users.owner_id` 字段、外键和索引，并让发布包把所有 `upgrade_*.sql` 一并带上；目标机遇到 `SQLSTATE 42703` 时可直接执行增量脚本修复。
+
+### 影响范围
+1. 新生成的 Windows 发布包在空库环境下可直接使用 `super_admin / admin123` 登录。
+2. 已经用旧基线初始化过的数据库不会自动修复；需要重新初始化空库，或手工更新 `super_admin` 的 `password_hash`。
+3. 已按版本规则新增 `upgrade_20260325_users_owner_id.sql`，旧库可在不重建数据的前提下补齐员工归属字段并恢复店铺管理员/员工管理链路。
+
+### 验证
+1. `cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./migrations` 通过。
+2. `cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./...` 通过。
+3. `cd frontend && cmd /c npm run build` 通过。
+4. `powershell -ExecutionPolicy Bypass -File .\build-windows-release.ps1` 已重新产出包含升级脚本的 Windows 发布包。
+
+
+## 2026-03-23
+### 主题
+新增 Windows 单机发布包链路，让另一台 Windows 电脑在不安装 Go/Node 的前提下，直接运行后端、前端与 Chrome 插件。
+
+### 关键变更
+1. `backend/cmd/server/main.go`、`backend/cmd/server/frontend_static.go`、`backend/cmd/server/frontend_static_test.go`：
+   - 后端新增可选 `web/` 静态托管与 SPA fallback；命中前端路由时返回 `index.html`，`/api/*` 未命中时仍保持 JSON 404。
+   - CORS 由固定单一插件 ID 放宽为允许任意 `chrome-extension://` 来源，解决目标机手工加载扩展后无法访问后端的问题。
+2. `build-windows-release.ps1`、`package-browser-extension.ps1`、`start-release-server.bat`、`README-windows-deploy.md`：
+   - 新增统一发布脚本，可一次性构建前端 `dist`、后端 `server.exe`、插件 zip，并组装 `release/ozon-manager-win-x64` 与同名 zip。
+   - 发布包内同时包含 `server/start-ozon-manager.bat`、`server/database/init_database.sql`、部署说明和可直接加载的插件目录。
+3. Chrome 插件发布形态调整：
+   - 打包不再依赖旧的手工文件清单，而是按扩展运行目录递归复制真实运行文件，并排除 `dist/`、`scripts/`。
+   - 若旧 zip 正被占用，打包脚本会自动回退到时间戳文件名，避免整包构建失败；发布总包内仍统一输出稳定文件名 `ozon-shop-bridge-v<version>.zip`。
+
+### 影响范围
+1. 目标机只需安装 PostgreSQL 和 Chrome，即可通过 `server/start-ozon-manager.bat` 启动系统并在 `http://127.0.0.1:8080` 打开管理端。
+2. 空库初始化只需执行发布包中的 `server/database/init_database.sql`，不需要迁移旧数据库数据。
+3. 本次无数据库结构变更，无新增 migration 脚本。
+
+### 验证
+1. `cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./cmd/server` 通过。
+2. `cd frontend && cmd /c npm run build` 通过。
+3. `powershell -ExecutionPolicy Bypass -File .\build-windows-release.ps1` 已在非沙箱环境完整跑通，成功生成 `release/ozon-manager-win-x64` 与 `release/ozon-manager-win-x64.zip`。
+
 ## 2026-03-22
 ### 主题
 恢复“自动加促销”的相对日期语义：支持昨天 / 今天 / 自定义日期，并让定时任务按规则动态计算本次执行日期。
@@ -998,4 +1053,8 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
+
+
+
+
 

@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     role            VARCHAR(20) NOT NULL DEFAULT 'staff',  -- super_admin / shop_admin / staff
     status          VARCHAR(20) NOT NULL DEFAULT 'active', -- active / disabled
     last_login_at   TIMESTAMP,
+    owner_id        INTEGER REFERENCES users(id),
     created_by      INTEGER REFERENCES users(id),
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -551,6 +552,7 @@ CREATE INDEX IF NOT EXISTS idx_products_shop_id ON products(shop_id);
 CREATE INDEX IF NOT EXISTS idx_products_source_sku ON products(source_sku);
 CREATE INDEX IF NOT EXISTS idx_products_is_loss ON products(is_loss);
 CREATE INDEX IF NOT EXISTS idx_products_is_promoted ON products(is_promoted);
+CREATE INDEX IF NOT EXISTS idx_users_owner_id ON users(owner_id);
 CREATE INDEX IF NOT EXISTS idx_shops_owner_id ON shops(owner_id);
 CREATE INDEX IF NOT EXISTS idx_loss_products_product_id ON loss_products(product_id);
 CREATE INDEX IF NOT EXISTS idx_loss_products_loss_date ON loss_products(loss_date);
@@ -615,7 +617,7 @@ CREATE INDEX IF NOT EXISTS idx_automation_artifacts_job_id ON automation_artifac
 -- 密码: admin123
 -- ============================================================
 INSERT INTO users (username, password_hash, display_name, role, status)
-VALUES ('super_admin', '$2a$10$N9qo8uLOickgx2ZMRZoMy.MqrqBuBk0F.Gc7YMG.T9D.Z2OVOQHMu', '系统管理员', 'super_admin', 'active')
+VALUES ('super_admin', '$2a$10$8G/wyJgW6W3L9SXSvnRyQ.GO4//Q1fPdzodjLNaiJprgjnygTrHu6', '系统管理员', 'super_admin', 'active')
 ON CONFLICT (username) DO NOTHING;
 
 -- ============================================================

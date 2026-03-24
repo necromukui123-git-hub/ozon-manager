@@ -1,6 +1,6 @@
 # Ozon Manager 开发总任务
 
-最后更新时间：2026-03-22  
+最后更新时间：2026-03-25  
 负责人：团队 + Codex  
 范围：统一官方促销与店铺促销的一套业务流程，并让店铺促销在浏览器登录态下低打扰执行。
 
@@ -41,6 +41,7 @@
 | T16 | 搜索推广商品页面（手动报名 + 状态迁移双标签） | done | `/promotions/search-cpo` 保持单入口，但页内拆成“商品池与手动报名”和“状态迁移自动化”双标签；支持搜索推广商品刷新、本地筛选、按当前筛选结果执行官方/店铺活动报名、共享默认活动配置、分别查看手动报名与自动化历史；菜单名称已收口为“搜索推广商品” | 依赖插件执行 `sync_search_cpo_products` 任务并使用 Seller 登录态 |
 | T17 | 插件登录态自动连接主流程收敛 | done | popup 默认展示管理端连接状态，普通用户无需手填 token；非 localhost 首次可按提示授权，手填配置仅保留高级设置兜底 | 依赖管理端 `localStorage.token/currentShopId` 继续稳定 |
 | T18 | Search CPO 状态迁移自动化规则 | in_progress | 支持手动触发 + 定时调度；对状态1商品执行“初始活动报名”，对状态2商品执行“全量同步活动 -> 退出命中活动 -> enable -> carrots/batch_enable”，对状态3触发商品按 live 条件（`SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true`）继续收敛，不再强依赖已有 `state2_detected_at`；店铺活动退出遇到“商品当前不在活动中”或 `404/NotFound` 不再阻断后续 `enable/Morkovsk`，迁移前置阶段若命中已失效活动也会自动标记 `disabled` 并跳过；当前若商品已是 `SEARCH_PROMO_STATUS_ENABLED` 会直接跳过重复 `enable`，而 `enable/Morkovsk` 详情会补展示 `requested_sku/parser_revision/HTTP/root/sample keys` 诊断，不再把首条 job 错误灌给整批 SKU；Search CPO 专用店铺退出现已改为按活动逐条执行单活动 remove、优先使用数值 SKU 发起店铺 `deactivate`，并在退出后刷新活动商品复核；历史 `morkovsk_joined_at` 不再压过当前 live 状态，live 明确回退到状态1/2/3 的商品会清空失效 joined 标记并重新进入正常迁移，只有 live 仍是状态4 的商品才继续走 joined repair 清理 | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` / 店铺活动 `deactivate` 接口结构稳定；本地样本文档已对齐 `search_promo_availability -> skuToIsSearchPromoAvailable/WithReason`、`product/enable -> bids[]`、`carrots/batch_enable -> skuToInfo{}`、`官方deactivate -> product_ids + rejected[]`，当前剩余风险主要收敛为 live `product/enable` / `carrots/batch_enable` 仍可能继续暴露新的包裹层或 challenge 响应，以及店铺活动 `active/deactivate` live 返回与本地活动商品刷新存在时间差，需继续按自动化详情与活动复核结果补样本 |
+| T19 | Windows 单机发布包与异机部署 | done | 可在开发机一次性产出 `server.exe + 前端静态文件 + 插件目录/zip + 启动脚本 + 部署说明` 的 Windows 发布包；目标机仅安装 PostgreSQL 和 Chrome 即可启动，空库只需执行 `init_database.sql` | 依赖目标机本机浏览器访问 `127.0.0.1:8080`，暂不覆盖局域网多机访问 |
 
 ## 近期完成里程碑（已完成）
 1. 按店铺执行引擎模式（`auto`/`extension`/`agent`）已落地。
@@ -72,9 +73,15 @@
 26. Search CPO 刷新与状态迁移链路已补齐状态可见性和 SKU 语义：`list` 返回的 `carrotsStatus` 不再丢失，列表页空 `search_promo_status` 会显示“状态未知”；availability / enable / Morkovsk 三类 Seller job 改为请求数值 `sku`，未匹配响应时显式失败，不再静默写成 `availability=false` 或 `success`。
 27. Search CPO availability 运行时诊断已补齐：extension register/report 会带 `build_revision/parser_revision`，availability 未命中会回传 `requested_sku`、响应 key 摘要与 map key 数量，便于直接区分“live 响应漂移”与“SKU 匹配失败”。
 28. 搜索推广商品前端信息架构已收口：同一路由拆成“商品池与手动报名”和“状态迁移自动化”双标签，父容器只保留共享数据加载、轮询和 `?tab=manual|automation` 路由同步；默认活动配置回收到手动标签集中维护，自动化标签改为展示只读活动摘要与规则状态概览，深度诊断继续留在自动化详情弹窗。
+29. 后端现支持可选托管 `web/` 前端静态文件：发布包中的 `server.exe` 可直接同源提供管理端页面，目标机无需再安装 Node/Vite。
+30. 已新增 Windows 单机发布链路：仓库根目录可执行 `build-windows-release.ps1` 统一构建后端、前端和插件，并产出 `release/ozon-manager-win-x64` 目录与同名 zip；发布包内同时包含 `server/start-ozon-manager.bat`、`server/database/init_database.sql`、部署说明和可直接加载的插件目录。
+31. 已修正空库默认超级管理员账号基线：`init_database.sql` 中的 `super_admin/admin123` 哈希现与当前登录流程一致；登录接口返回 `401` 时，登录页不再一律误提示成“登录已过期”。
+32. 已补齐店铺管理员/员工上下级字段基线：`users` 表现已纳入 `owner_id` 列与索引，并新增 `upgrade_20260325_users_owner_id.sql` 供旧库修复；Windows 发布包同时开始携带全部 `upgrade_*.sql`，目标机可直接执行增量脚本解决 `SQLSTATE 42703`。
 ## 阶段完成标准
 1. 官方与店铺促销在统一 UX 下稳定可用。
 2. 常规场景店铺任务静默执行，不打断用户主流程。
 3. 登录兜底仅在未登录 Seller 时触发。
 4. 异步任务全链路可追踪，失败可定位。
+
+
 

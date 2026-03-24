@@ -1,12 +1,31 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-22
-状态：进行中（Search CPO 店铺活动退出已改为按活动逐条 remove + 数值 SKU 退出 + 退出后复核，历史 `morkovsk_joined_at` 也不再压过当前 live 状态，待真实 Seller 复测）
+最后更新时间：2026-03-25
+状态：进行中（已补齐 `users.owner_id` 基线与旧库升级脚本，待目标机执行 `upgrade_20260325_users_owner_id.sql` 并验证创建店铺管理员）
 
 ## 本次交付单元
-本次目标：继续修正 Search CPO 状态迁移在 live Seller 场景里的两类误判：一是店铺 `deactivate` 需要按活动逐条执行并优先使用数值 SKU，退出后要复核商品是否仍留在店铺活动中；二是历史 `morkovsk_joined_at` 不能再压过当前 Ozon live 状态，避免用户手工把商品改回状态2/3后，“手动执行一次”仍被短路成 joined repair。
+本次目标：修复另一台 Windows 目标机创建店铺管理员时报 `users.owner_id` 缺失的问题，并把该字段的基线、旧库升级脚本和发布包内容统一补齐。
 
 ## 已完成（含关键文件）
+0. `users.owner_id` 基线缺口修复：
+   - `backend/migrations/init_database.sql`：`users` 表已补齐 `owner_id` 字段和 `idx_users_owner_id` 索引，新库初始化后可直接创建店铺管理员、员工并查询上下级关系。
+   - `backend/migrations/upgrade_20260325_users_owner_id.sql`：新增旧库增量脚本，可幂等补齐 `owner_id` 字段、外键和索引，直接修复目标机现有数据库的 `SQLSTATE 42703`。
+   - `backend/migrations/init_database_test.go`：新增回归测试，锁定 `users` 表必须包含 `owner_id` 字段与索引，避免模型和基线再次漂移。
+   - `build-windows-release.ps1`、`README-windows-deploy.md`：发布包现会一并带上 `upgrade_*.sql`，部署说明也已明确旧库遇到该报错时应执行 `server/database/upgrade_20260325_users_owner_id.sql`。
+   - 验证：`cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./migrations` 通过；`cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./...` 通过；`cd frontend && cmd /c npm run build` 通过。
+0. 默认管理员哈希与登录失败提示修复：
+   - `backend/migrations/init_database.sql`：空库默认 `super_admin` 的 `password_hash` 已改成真正匹配当前登录协议 `bcrypt(SHA256(admin123))` 的基线值，重新初始化后的基线可直接登录。
+   - `backend/cmd/reset-password/main.go`、`backend/cmd/migrate-passwords/main.go`：密码工具统一改回与当前登录逻辑一致的 `bcrypt(SHA256(明文密码))`，避免生成与前端登录链路不兼容的哈希。
+   - `frontend/src/utils/request.js`：登录接口 `POST /auth/login` 返回 `401` 时，前端不再误提示“登录已过期”，而是直接显示后端返回的登录失败消息。
+   - `backend/migrations/init_database_test.go`：新增回归测试，直接校验基线 SQL 中 `super_admin` 的哈希必须满足 `bcrypt(SHA256(admin123))`，并拒绝把原始 `admin123` 误当成存储协议。
+   - 验证：`cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./migrations` 通过；`cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./...` 通过；`cd frontend && cmd /c npm run build` 通过。
+
+0. Windows 单机发布包与异机部署链路：
+   - `backend/cmd/server/main.go`、`backend/cmd/server/frontend_static.go`、`backend/cmd/server/frontend_static_test.go`：后端新增可选 `web/` 静态托管与 SPA fallback，`/api/*` 未命中仍保持 JSON 404；CORS 改为放行任意 `chrome-extension://` 来源，目标机手工加载插件后可直接访问本机后端。
+   - `build-windows-release.ps1`、`package-browser-extension.ps1`、`start-release-server.bat`、`README-windows-deploy.md`：新增统一发布链路，可一次性构建前端 `dist`、后端 `server.exe`、插件 zip 与 `release/ozon-manager-win-x64` 目录；发布包内含 `server/start-ozon-manager.bat`、`server/database/init_database.sql`、部署说明和可直接加载的插件目录。
+   - 本次无新增 migration 脚本、无表结构变更；目标机空库只需执行 `init_database.sql` 的发布副本，不迁移旧数据。
+   - 验证：`cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./cmd/server` 通过；`cd frontend && cmd /c npm run build` 通过；`powershell -ExecutionPolicy Bypass -File .\build-windows-release.ps1` 已在非沙箱环境完整跑通，成功产出 `release/ozon-manager-win-x64` 与同名 zip。
+
 0. 搜索推广商品页面信息架构收口：
    - `frontend/src/views/promotions/SearchCPO.vue` 现只保留共享数据加载、轮询和 `?tab=manual|automation` 标签路由；同一路由下拆成“商品池与手动报名”和“状态迁移自动化”两个工作面，并把顶部概览收口为缓存商品、当前筛选、默认活动、最近同步、自动化状态。
    - 新增 `frontend/src/views/promotions/search-cpo/SearchCPOManualTab.vue`、`SearchCPOAutomationTab.vue`、`SearchCPORunDetailDialog.vue`、`SearchCPOAutomationDetailDialog.vue` 与 `ui.js`；手动报名和自动化的主界面、历史列表、详情弹窗已从单文件拆出，默认活动配置改为只在手动标签编辑，自动化标签只展示共享配置摘要与规则状态概览。
@@ -398,8 +417,9 @@
 2. 缺少真实环境下长时间混合在线回归报告。
 3. 执行引擎路由监控指标尚未落地。
 
-## 下一步（最多 3 项）
-1. reload 扩展后在真实 Seller 环境复测 `search_promo_availability`，确认新的 `requested_sku/parser_revision/root_keys` 诊断是否足以直接定位 live 响应漂移或 SKU 匹配问题。
-2. 继续补强第三步退出链路的真实结果判定，重点核对官方/店铺活动 remove 的逐 SKU 明细与幂等表现。
-3. 结合真实联调结果补充 Search CPO 自动化逐步骤测试与交付口径，准备拆分下一批实现。
+## 下一步（最多 3 项）`r`n1. 在另一台 Windows 电脑上按 `README-windows-deploy.md` 做一次空库 smoke test，重点确认 `super_admin/admin123` 可首次登录，且登录失败时不会再误提示“登录已过期”。
+2. 如需支持局域网其它电脑访问，再单独补固定域名/局域网地址下的前端托管、插件权限和 CORS 口径，不混入本轮单机发布包。
+3. 继续推进 Search CPO 自动化的真实 Seller 回归，补齐 T18 剩余的 live 联调验证。
+
+
 

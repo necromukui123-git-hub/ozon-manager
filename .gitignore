@@ -1,6 +1,10 @@
 # 临时文件和脚本
 nul
 backend/.gocache/
+backend/.gocache-build/
+backend/.dist/
+browser-extension/ozon-shop-bridge/dist/
+release/
 .tmp/
 agent/node_modules/**/*.ps1
 

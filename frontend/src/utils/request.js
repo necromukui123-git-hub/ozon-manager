@@ -33,8 +33,13 @@ request.interceptors.response.use(
     if (response) {
       switch (response.status) {
         case 401:
+          if (config.url === '/auth/login') {
+            ElMessage.error(response.data?.message || '用户名或密码错误')
+            break
+          }
           localStorage.removeItem('token')
           localStorage.removeItem('user')
+          localStorage.removeItem('currentShopId')
           router.push('/login')
           ElMessage.error('登录已过期，请重新登录')
           break

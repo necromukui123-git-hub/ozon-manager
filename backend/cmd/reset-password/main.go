@@ -63,7 +63,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Match login flow: bcrypt(sha256(password))
+	// Match login flow: bcrypt(sha256(plain_password))
 	sha := hash.SHA256Hash(*password)
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(sha), bcrypt.DefaultCost)
 	if err != nil {
