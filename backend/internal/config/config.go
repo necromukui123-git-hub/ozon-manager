@@ -33,8 +33,12 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret      string `mapstructure:"secret"`
-	ExpireHours int    `mapstructure:"expire_hours"`
+	Secret              string `mapstructure:"secret"`
+	ExpireHours         int    `mapstructure:"expire_hours"`
+	AccessExpireMinutes int    `mapstructure:"access_expire_minutes"`
+	RefreshExpireHours  int    `mapstructure:"refresh_expire_hours"`
+	RefreshCookieName   string `mapstructure:"refresh_cookie_name"`
+	RefreshCookieSecure bool   `mapstructure:"refresh_cookie_secure"`
 }
 
 type LogConfig struct {

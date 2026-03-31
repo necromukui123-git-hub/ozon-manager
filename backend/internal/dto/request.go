@@ -9,8 +9,9 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string   `json:"token"`
-	User  UserInfo `json:"user"`
+	Token          string    `json:"token"`
+	TokenExpiresAt time.Time `json:"token_expires_at"`
+	User           UserInfo  `json:"user"`
 }
 
 type UserInfo struct {

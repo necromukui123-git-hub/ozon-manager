@@ -9,17 +9,19 @@ import App from './App.vue'
 import router from './router'
 import { initTheme } from './utils/theme'
 import { createSystemLog } from '@/api/log'
+import { useUserStore } from '@/stores/user'
 
 import './styles/main.scss'
 
 const app = createApp(App)
+const pinia = createPinia()
 
 // 注册Element Plus图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
 
-app.use(createPinia())
+app.use(pinia)
 app.use(router)
 app.use(ElementPlus, { locale: zhCn })
 
@@ -64,4 +66,10 @@ window.addEventListener('unhandledrejection', event => {
   })
 })
 
-app.mount('#app')
+async function bootstrap() {
+  const userStore = useUserStore(pinia)
+  await userStore.initializeAuth()
+  app.mount('#app')
+}
+
+bootstrap()

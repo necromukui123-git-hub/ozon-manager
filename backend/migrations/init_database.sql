@@ -27,7 +27,27 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- ============================================================
--- 2. 店铺表
+-- 2. 用户 refresh token 表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS user_refresh_tokens (
+    id                    SERIAL PRIMARY KEY,
+    user_id               INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash            VARCHAR(128) NOT NULL,
+    family_id             VARCHAR(64) NOT NULL,
+    user_agent            TEXT,
+    ip_address            VARCHAR(64),
+    issued_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at            TIMESTAMP NOT NULL,
+    last_used_at          TIMESTAMP,
+    revoked_at            TIMESTAMP,
+    revoke_reason         VARCHAR(100),
+    replaced_by_token_id  INTEGER REFERENCES user_refresh_tokens(id) ON DELETE SET NULL,
+    created_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================
+-- 3. 店铺表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS shops (
     id              SERIAL PRIMARY KEY,
@@ -42,7 +62,7 @@ CREATE TABLE IF NOT EXISTS shops (
 );
 
 -- ============================================================
--- 3. 用户-店铺关联表（员工与店铺的多对多关系）
+-- 4. 用户-店铺关联表（员工与店铺的多对多关系）
 -- ============================================================
 CREATE TABLE IF NOT EXISTS user_shops (
     id              SERIAL PRIMARY KEY,
@@ -53,7 +73,7 @@ CREATE TABLE IF NOT EXISTS user_shops (
 );
 
 -- ============================================================
--- 4. 商品表
+-- 5. 商品表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS products (
     id                  SERIAL PRIMARY KEY,
@@ -74,7 +94,7 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 -- ============================================================
--- 5. 亏损商品表
+-- 6. 亏损商品表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS loss_products (
     id                  SERIAL PRIMARY KEY,
@@ -91,7 +111,7 @@ CREATE TABLE IF NOT EXISTS loss_products (
 );
 
 -- ============================================================
--- 6. 已推广商品表
+-- 7. 已推广商品表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS promoted_products (
     id                  SERIAL PRIMARY KEY,
@@ -108,7 +128,7 @@ CREATE TABLE IF NOT EXISTS promoted_products (
 );
 
 -- ============================================================
--- 7. 促销活动缓存表
+-- 8. 促销活动缓存表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS promotion_actions (
     id                  SERIAL PRIMARY KEY,
@@ -135,7 +155,7 @@ CREATE TABLE IF NOT EXISTS promotion_actions (
 );
 
 -- ============================================================
--- 8. 活动商品缓存表
+-- 9. 活动商品缓存表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS promotion_action_products (
     id                  SERIAL PRIMARY KEY,
@@ -170,7 +190,7 @@ CREATE TABLE IF NOT EXISTS promotion_action_products (
 );
 
 -- ============================================================
--- 9. 活动候选商品缓存表
+-- 10. 活动候选商品缓存表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS promotion_action_candidates (
     id                  SERIAL PRIMARY KEY,
@@ -193,7 +213,7 @@ CREATE TABLE IF NOT EXISTS promotion_action_candidates (
 );
 
 -- ============================================================
--- 10. 自动加促销配置表
+-- 11. 自动加促销配置表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS auto_promotion_configs (
     id                  SERIAL PRIMARY KEY,
@@ -210,7 +230,7 @@ CREATE TABLE IF NOT EXISTS auto_promotion_configs (
 );
 
 -- ============================================================
--- 11. 自动加促销运行记录表
+-- 12. 自动加促销运行记录表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS auto_promotion_runs (
     id                  SERIAL PRIMARY KEY,
@@ -553,6 +573,10 @@ CREATE INDEX IF NOT EXISTS idx_products_source_sku ON products(source_sku);
 CREATE INDEX IF NOT EXISTS idx_products_is_loss ON products(is_loss);
 CREATE INDEX IF NOT EXISTS idx_products_is_promoted ON products(is_promoted);
 CREATE INDEX IF NOT EXISTS idx_users_owner_id ON users(owner_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_refresh_tokens_token_hash ON user_refresh_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_user_refresh_tokens_user_id ON user_refresh_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_refresh_tokens_family_id ON user_refresh_tokens(family_id);
+CREATE INDEX IF NOT EXISTS idx_user_refresh_tokens_expires_at ON user_refresh_tokens(expires_at);
 CREATE INDEX IF NOT EXISTS idx_shops_owner_id ON shops(owner_id);
 CREATE INDEX IF NOT EXISTS idx_loss_products_product_id ON loss_products(product_id);
 CREATE INDEX IF NOT EXISTS idx_loss_products_loss_date ON loss_products(loss_date);

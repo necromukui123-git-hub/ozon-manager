@@ -43,10 +43,11 @@ func main() {
 	autoPromotionRepo := repository.NewAutoPromotionRepository(db)
 	searchCPORepo := repository.NewSearchCPORepository(db)
 	operationLogRepo := repository.NewOperationLogRepository(db)
+	refreshTokenRepo := repository.NewRefreshTokenRepository(db)
 
 	// 初始化Service
-	authService := service.NewAuthService(userRepo, shopRepo)
-	userService := service.NewUserService(userRepo, shopRepo)
+	authService := service.NewAuthService(userRepo, shopRepo, refreshTokenRepo)
+	userService := service.NewUserService(userRepo, shopRepo, refreshTokenRepo)
 	shopService := service.NewShopService(shopRepo, userRepo)
 	productService := service.NewProductService(productRepo, shopRepo, promotionRepo)
 	ozonCatalogService := service.NewOzonCatalogService(ozonCatalogRepo, shopRepo)
@@ -99,6 +100,8 @@ func main() {
 		auth := api.Group("/auth")
 		{
 			auth.POST("/login", authHandler.Login)
+			auth.POST("/refresh", authHandler.Refresh)
+			auth.POST("/logout", authHandler.Logout)
 		}
 
 		// 不需要认证的系统接口
@@ -116,7 +119,6 @@ func main() {
 		authenticated.Use(middleware.OperationLogMiddleware(db))
 		{
 			// 认证相关（所有角色）
-			authenticated.POST("/auth/logout", authHandler.Logout)
 			authenticated.GET("/auth/me", authHandler.GetCurrentUser)
 			authenticated.PUT("/auth/password", userHandler.ChangePassword)
 

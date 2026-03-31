@@ -1,5 +1,40 @@
 # Ozon Manager 变更日志
 
+## 2026-03-31
+### 主题
+完成 Web 端 access token + refresh token 认证升级，实现 refresh token 轮换、会话撤销与前端静默续期，并保持 Chrome 插件对管理端 token 同步的兼容。
+
+### 关键变更
+1. `backend/internal/config/config.go`、`backend/config/config.yaml.example`、`backend/pkg/jwt/jwt.go`、`backend/pkg/jwt/jwt_test.go`：
+   - JWT 配置新增 `access_expire_minutes`、`refresh_expire_hours`、`refresh_cookie_name`、`refresh_cookie_secure`。
+   - access token 现带 `token_type=access` claim，`ParseToken` 只接受 access token。
+2. `backend/internal/model/refresh_token.go`、`backend/internal/repository/refresh_token_repo.go`、`backend/migrations/init_database.sql`、`backend/migrations/upgrade_20260331_refresh_tokens.sql`：
+   - 新增 `user_refresh_tokens` 持久化模型、仓储和迁移脚本；refresh token 仅保存哈希，支持按 token、family、user 维度撤销与轮换。
+3. `backend/internal/service/auth_service.go`、`backend/internal/handler/auth_handler.go`、`backend/cmd/server/main.go`：
+   - 登录成功后同时签发 access token 与 refresh token；refresh token 通过 `HttpOnly` Cookie 下发。
+   - 新增公开 `POST /api/v1/auth/refresh`，refresh 成功会轮换 refresh token 并返回新的 `token_expires_at`。
+   - `POST /api/v1/auth/logout` 改为公开路由，可在 access token 过期后仍撤销当前 refresh token 并清理 cookie。
+4. `backend/internal/service/user_service.go`、`backend/internal/service/user_service_test.go`：
+   - 改密、重置密码、禁用店铺管理员/员工与通用用户禁用场景下，统一撤销该用户全部 refresh token。
+5. `frontend/src/stores/user.js`、`frontend/src/utils/request.js`、`frontend/src/api/auth.js`、`frontend/src/main.js`：
+   - 前端新增 `tokenExpiresAt` 状态、应用启动静默 refresh、401 单飞刷新与 refresh 成功后的本地 token/user 同步。
+   - refresh 失败时统一清理本地登录态并跳转 `/login`；Chrome 插件继续消费管理端 `localStorage.token/currentShopId`。
+6. `backend/internal/repository/user_repo.go`、相关测试：
+   - `UpdateLastLogin` 改为使用 `time.Now()`，避免 sqlite 测试环境下 `NOW()` 不兼容。
+   - auth / refresh token / user service 测试库已改成按测试名隔离的 sqlite 内存 DSN，避免包内串库。
+
+### 影响范围
+1. Web 管理端现在默认采用短期 access token + 长期 refresh token 自动续期，隔夜重新打开浏览器时会优先尝试静默 refresh。
+2. 登出、改密、重置密码、禁用账号后，旧 refresh token 会失效，原会话无法继续刷新。
+3. Chrome 插件本轮未引入独立 refresh 流程，仍依赖管理端 `localStorage.token/currentShopId`；前端 refresh 成功后会继续同步该 token。
+4. 旧数据库升级需要执行 `backend/migrations/upgrade_20260331_refresh_tokens.sql`；新环境直接执行最新 `backend/migrations/init_database.sql`。
+
+### 验证
+1. `cd backend && $env:GOCACHE="$PWD\.gocache-auth"; $env:GOMODCACHE="$PWD\.gomodcache"; $env:GOPATH="$PWD\.gopath"; go test ./internal/service ./internal/handler` 通过。
+2. `cd backend && $env:GOCACHE="$PWD\.gocache-user"; $env:GOMODCACHE="$PWD\.gomodcache"; $env:GOPATH="$PWD\.gopath"; go test ./internal/service` 通过。
+3. `cd backend && $env:GOCACHE="$PWD\.gocache-all"; $env:GOMODCACHE="$PWD\.gomodcache"; $env:GOPATH="$PWD\.gopath"; go test ./...` 通过。
+4. `cd frontend && cmd /c npm run build` 通过。
+
 ## 2026-03-25
 ### 主题
 修复 Windows 单机发布包在目标机上的三类部署阻塞：空库默认管理员登录异常、旧库缺少 `users.owner_id` 导致无法创建店铺管理员，以及店铺 API Key 脏值/错误提示不清导致促销活动同步失败。
@@ -1056,3 +1091,4 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
+

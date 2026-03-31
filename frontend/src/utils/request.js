@@ -5,8 +5,23 @@ import { createSystemLog } from '@/api/log'
 
 const request = axios.create({
   baseURL: '/api/v1',
-  timeout: 30000
+  timeout: 30000,
+  withCredentials: true
 })
+
+const refreshClient = axios.create({
+  baseURL: '/api/v1',
+  timeout: 30000,
+  withCredentials: true
+})
+
+const LOGIN_URL = '/auth/login'
+const REFRESH_URL = '/auth/refresh'
+const LOGOUT_URL = '/auth/logout'
+const SYSTEM_LOG_URL = '/system/logs'
+
+let refreshPromise = null
+let authRedirecting = false
 
 // 请求拦截器
 request.interceptors.request.use(
@@ -27,22 +42,43 @@ request.interceptors.response.use(
   response => {
     return response.data
   },
-  error => {
+  async error => {
     const { response, config = {} } = error
 
     if (response) {
       switch (response.status) {
         case 401:
-          if (config.url === '/auth/login') {
+          if (config.url === LOGIN_URL) {
             ElMessage.error(response.data?.message || '用户名或密码错误')
             break
           }
-          localStorage.removeItem('token')
-          localStorage.removeItem('user')
-          localStorage.removeItem('currentShopId')
-          router.push('/login')
-          ElMessage.error('登录已过期，请重新登录')
-          break
+          if (config.url === SYSTEM_LOG_URL) {
+            break
+          }
+          if (config.url === LOGOUT_URL) {
+            clearLocalAuthState()
+            break
+          }
+          if (config.url === REFRESH_URL || config._retry) {
+            clearLocalAuthState()
+            redirectToLogin(response.data?.message || '登录已过期，请重新登录')
+            break
+          }
+
+          try {
+            await ensureRefreshed()
+            config._retry = true
+            config.headers = config.headers || {}
+            const token = localStorage.getItem('token')
+            if (token) {
+              config.headers.Authorization = `Bearer ${token}`
+            }
+            return request(config)
+          } catch (refreshError) {
+            clearLocalAuthState()
+            redirectToLogin(refreshError.response?.data?.message || '登录已过期，请重新登录')
+            return Promise.reject(refreshError)
+          }
         case 403:
           ElMessage.error('权限不足')
           if (!config.silent) {
@@ -107,5 +143,60 @@ request.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+function ensureRefreshed() {
+  if (!refreshPromise) {
+    refreshPromise = refreshClient.post(REFRESH_URL)
+      .then(response => {
+        const payload = response.data?.data
+        if (!payload?.token) {
+          throw new Error('refresh response missing token')
+        }
+
+        localStorage.setItem('token', payload.token)
+        if (payload.token_expires_at) {
+          localStorage.setItem('tokenExpiresAt', payload.token_expires_at)
+        } else {
+          localStorage.removeItem('tokenExpiresAt')
+        }
+
+        if (payload.user) {
+          localStorage.setItem('user', JSON.stringify(payload.user))
+        }
+
+        window.dispatchEvent(new CustomEvent('auth:updated'))
+        return payload
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+
+  return refreshPromise
+}
+
+function clearLocalAuthState() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('tokenExpiresAt')
+  localStorage.removeItem('user')
+  localStorage.removeItem('currentShopId')
+  window.dispatchEvent(new Event('auth:cleared'))
+}
+
+function redirectToLogin(message) {
+  if (authRedirecting) {
+    return
+  }
+
+  authRedirecting = true
+  if (router.currentRoute.value.path !== '/login') {
+    router.push('/login').finally(() => {
+      authRedirecting = false
+    })
+  } else {
+    authRedirecting = false
+  }
+  ElMessage.error(message)
+}
 
 export default request

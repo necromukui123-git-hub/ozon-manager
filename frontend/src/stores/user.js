@@ -1,10 +1,25 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login, getCurrentUser, logout } from '@/api/auth'
+import { login, getCurrentUser, logout, refreshSession } from '@/api/auth'
+
+const AUTH_UPDATED_EVENT = 'auth:updated'
+const AUTH_CLEARED_EVENT = 'auth:cleared'
+const REFRESH_EARLY_MS = 2 * 60 * 1000
+
+let authListenersBound = false
+
+function readStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem('user') || 'null')
+  } catch (error) {
+    return null
+  }
+}
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
-  const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
+  const tokenExpiresAt = ref(localStorage.getItem('tokenExpiresAt') || '')
+  const user = ref(readStoredUser())
   const currentShopId = ref(parseInt(localStorage.getItem('currentShopId')) || null)
 
   const isLoggedIn = computed(() => !!token.value)
@@ -25,18 +40,64 @@ export const useUserStore = defineStore('user', () => {
 
   const userShops = computed(() => user.value?.shops || [])
 
-  async function doLogin(username, password) {
-    const res = await login(username, password)
-    token.value = res.data.token
-    user.value = res.data.user
-    localStorage.setItem('token', token.value)
-    localStorage.setItem('user', JSON.stringify(user.value))
+  function syncFromStorage() {
+    token.value = localStorage.getItem('token') || ''
+    tokenExpiresAt.value = localStorage.getItem('tokenExpiresAt') || ''
+    user.value = readStoredUser()
+    currentShopId.value = parseInt(localStorage.getItem('currentShopId')) || null
+  }
 
-    // 设置默认店铺（仅业务用户需要）
-    if (res.data.user.shops && res.data.user.shops.length > 0) {
-      setCurrentShop(res.data.user.shops[0].id)
+  if (typeof window !== 'undefined' && !authListenersBound) {
+    window.addEventListener(AUTH_UPDATED_EVENT, syncFromStorage)
+    window.addEventListener(AUTH_CLEARED_EVENT, syncFromStorage)
+    authListenersBound = true
+  }
+
+  function ensureCurrentShop(shops) {
+    if (!shops || shops.length === 0) {
+      currentShopId.value = null
+      localStorage.removeItem('currentShopId')
+      return
     }
 
+    const hasCurrentShop = shops.some(shop => shop.id === currentShopId.value)
+    if (!hasCurrentShop) {
+      setCurrentShop(shops[0].id)
+    }
+  }
+
+  function persistAuth(payload) {
+    token.value = payload?.token || ''
+    tokenExpiresAt.value = payload?.token_expires_at || ''
+    user.value = payload?.user || null
+
+    if (token.value) {
+      localStorage.setItem('token', token.value)
+    } else {
+      localStorage.removeItem('token')
+    }
+
+    if (tokenExpiresAt.value) {
+      localStorage.setItem('tokenExpiresAt', tokenExpiresAt.value)
+    } else {
+      localStorage.removeItem('tokenExpiresAt')
+    }
+
+    if (user.value) {
+      localStorage.setItem('user', JSON.stringify(user.value))
+      ensureCurrentShop(user.value.shops)
+    } else {
+      localStorage.removeItem('user')
+      localStorage.removeItem('currentShopId')
+      currentShopId.value = null
+    }
+
+    window.dispatchEvent(new CustomEvent(AUTH_UPDATED_EVENT))
+  }
+
+  async function doLogin(username, password) {
+    const res = await login(username, password)
+    persistAuth(res.data)
     return res
   }
 
@@ -45,18 +106,63 @@ export const useUserStore = defineStore('user', () => {
       const res = await getCurrentUser()
       user.value = res.data
       localStorage.setItem('user', JSON.stringify(user.value))
+      ensureCurrentShop(user.value?.shops)
     } catch (e) {
-      doLogout()
+      await doLogout({ remote: false })
     }
   }
 
-  function doLogout() {
+  async function refreshAccessToken() {
+    const res = await refreshSession()
+    persistAuth(res.data)
+    return res
+  }
+
+  async function initializeAuth() {
+    if (!token.value) {
+      return
+    }
+
+    const expiresAt = Date.parse(tokenExpiresAt.value || '')
+    const shouldRefresh = !expiresAt || Number.isNaN(expiresAt) || expiresAt - Date.now() <= REFRESH_EARLY_MS
+
+    try {
+      if (shouldRefresh) {
+        await refreshAccessToken()
+        return
+      }
+
+      if (!user.value) {
+        await fetchUser()
+      }
+    } catch (error) {
+      await doLogout({ remote: false })
+    }
+  }
+
+  function clearAuthState() {
     token.value = ''
+    tokenExpiresAt.value = ''
     user.value = null
     currentShopId.value = null
     localStorage.removeItem('token')
+    localStorage.removeItem('tokenExpiresAt')
     localStorage.removeItem('user')
     localStorage.removeItem('currentShopId')
+    window.dispatchEvent(new Event(AUTH_CLEARED_EVENT))
+  }
+
+  async function doLogout(options = {}) {
+    const { remote = true } = options
+
+    const logoutPromise = remote
+      ? logout().catch(error => {
+        console.error(error)
+      })
+      : Promise.resolve()
+
+    clearAuthState()
+    await logoutPromise
   }
 
   function setCurrentShop(shopId) {
@@ -80,6 +186,7 @@ export const useUserStore = defineStore('user', () => {
 
   return {
     token,
+    tokenExpiresAt,
     user,
     currentShopId,
     isLoggedIn,
@@ -92,6 +199,8 @@ export const useUserStore = defineStore('user', () => {
     userShops,
     doLogin,
     fetchUser,
+    refreshAccessToken,
+    initializeAuth,
     doLogout,
     setCurrentShop,
     getRoleTagType,

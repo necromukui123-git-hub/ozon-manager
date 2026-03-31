@@ -57,3 +57,27 @@ func TestInitDatabaseUsersTableIncludesOwnerID(t *testing.T) {
 		t.Fatal("users.owner_id index is missing in init_database.sql")
 	}
 }
+
+func TestInitDatabaseIncludesUserRefreshTokensTable(t *testing.T) {
+	content, err := os.ReadFile("init_database.sql")
+	if err != nil {
+		t.Fatalf("read init_database.sql: %v", err)
+	}
+
+	sql := string(content)
+	if !strings.Contains(sql, "CREATE TABLE IF NOT EXISTS user_refresh_tokens (") {
+		t.Fatal("user_refresh_tokens table is missing in init_database.sql")
+	}
+
+	if !strings.Contains(sql, "token_hash") {
+		t.Fatal("user_refresh_tokens.token_hash column is missing in init_database.sql")
+	}
+
+	if !strings.Contains(sql, "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_refresh_tokens_token_hash ON user_refresh_tokens(token_hash);") {
+		t.Fatal("user_refresh_tokens.token_hash unique index is missing in init_database.sql")
+	}
+
+	if !strings.Contains(sql, "CREATE INDEX IF NOT EXISTS idx_user_refresh_tokens_family_id ON user_refresh_tokens(family_id);") {
+		t.Fatal("user_refresh_tokens.family_id index is missing in init_database.sql")
+	}
+}

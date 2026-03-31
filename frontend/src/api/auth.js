@@ -8,6 +8,10 @@ export function logout() {
   return request.post('/auth/logout')
 }
 
+export function refreshSession() {
+  return request.post('/auth/refresh')
+}
+
 export function getCurrentUser() {
   return request.get('/auth/me')
 }

@@ -1,12 +1,20 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-25
-状态：进行中（已补齐 `users.owner_id` 基线与旧库升级脚本，并新增店铺 API Key 清洗与同步活动错误前移；待目标机验证促销活动同步）
+最后更新时间：2026-03-31
+状态：进行中（已完成 access token + refresh token 代码实现与验证；待观察真实环境隔夜续期表现）
 
 ## 本次交付单元
-本次目标：收口另一台 Windows 目标机的部署阻塞，既修复 `users.owner_id` 缺失导致的建账号报错，也修复店铺 API Key 录入/使用过于脆弱导致的促销活动同步失败。
+本次目标：完成 access token + refresh token 认证升级，实现 Web 端自动续期与会话撤销，优先解决隔夜重新打开后的掉线问题，并保持现有 Chrome 插件 token 自动同步链路兼容。
 
 ## 已完成（含关键文件）
+0. access token + refresh token 认证升级已完成代码实现与验证：
+   - 设计与实施文档：`docs/superpowers/specs/2026-03-31-auth-refresh-token-design.md`、`docs/superpowers/plans/2026-03-31-auth-refresh-token-implementation.md` 已作为本轮实现基线保留。
+   - 后端认证链路：`backend/pkg/jwt/jwt.go`、`backend/internal/service/auth_service.go`、`backend/internal/handler/auth_handler.go`、`backend/cmd/server/main.go` 已切到短期 access token + `HttpOnly` refresh cookie；新增公开 `POST /api/v1/auth/refresh` 与公开 `POST /api/v1/auth/logout`，refresh 成功会轮换 refresh token 并返回新的 `token_expires_at`。
+   - refresh token 持久化：`backend/internal/model/refresh_token.go`、`backend/internal/repository/refresh_token_repo.go`、`backend/migrations/init_database.sql`、`backend/migrations/upgrade_20260331_refresh_tokens.sql` 已新增 `user_refresh_tokens` 表、唯一 `token_hash` 与 `family_id` 索引；旧库升级执行条件为“当前环境尚未存在 `user_refresh_tokens` 表或未包含本轮 refresh token 字段/索引”，本次代码交付未直接对现成业务库执行 SQL，结果为“脚本已创建并通过 `go test ./migrations ./internal/repository` 与 `go test ./...` 回归验证”。
+   - 会话撤销：`backend/internal/service/user_service.go` 已在改密、重置店铺管理员/员工密码、禁用店铺管理员/员工、通用用户禁用等场景下同步撤销该用户全部 refresh token。
+   - 前端续期：`frontend/src/stores/user.js`、`frontend/src/utils/request.js`、`frontend/src/api/auth.js`、`frontend/src/main.js` 已接入 `token_expires_at` 本地状态、应用启动静默 refresh、401 单飞刷新、refresh 成功后的 `localStorage.token` 更新，以及失败后的统一清理与跳转登录页。
+   - 插件兼容边界：本轮未改 Chrome 插件独立 refresh；插件继续依赖管理端 `localStorage.token/currentShopId`，因此前端 refresh 成功后仍会同步更新 `localStorage.token`。
+   - 本轮验证已完成：`cd backend && $env:GOCACHE="$PWD\.gocache-all"; $env:GOMODCACHE="$PWD\.gomodcache"; $env:GOPATH="$PWD\.gopath"; go test ./...` 通过；`cd frontend && cmd /c npm run build` 通过。
 0. 店铺 API Key 清洗与同步活动错误前移：
    - `backend/internal/service/shop_service.go`、`backend/internal/service/shop_service_test.go`：店铺创建/更新新增 `normalizeShopAPIKey`，统一清理前后空白并拒绝空白 API Key；补了对应单测，避免脏值继续落库。
    - `backend/pkg/ozon/client.go`、`backend/pkg/ozon/actions_test.go`：Ozon client 发请求前会再次 `TrimSpace(Api-Key)`，并把官方 400 `Invalid Api-Key` 识别成 `ErrInvalidAPIKey`；补了 header 清洗和错误映射测试。
@@ -423,6 +431,8 @@
 2. 缺少真实环境下长时间混合在线回归报告。
 3. 执行引擎路由监控指标尚未落地。
 
-## 下一步（最多 3 项）`r`n1. 在另一台 Windows 电脑上按 `README-windows-deploy.md` 做一次空库 smoke test，重点确认 `super_admin/admin123` 可首次登录，且登录失败时不会再误提示“登录已过期”。
-2. 如需支持局域网其它电脑访问，再单独补固定域名/局域网地址下的前端托管、插件权限和 CORS 口径，不混入本轮单机发布包。
-3. 继续推进 Search CPO 自动化的真实 Seller 回归，补齐 T18 剩余的 live 联调验证。
+## 下一步（最多 3 项）
+1. 先实现后端认证链路：补 `user_refresh_tokens` 表、refresh token 仓储与轮换逻辑，新增 `/api/v1/auth/refresh`，并把 `/api/v1/auth/logout` 改成可在 access token 过期后仍可撤销 refresh token 的公开接口。
+2. 再实现前端静默续期：应用启动先做 refresh 初始化，Axios `401` 改成单飞刷新并重放原请求，同时把 `token_expires_at` 纳入本地状态。
+3. 完成 Web 端后做插件兼容 smoke：确认管理端 refresh 成功后，`content-auth-sync.js` 能把新 access token 继续同步给插件；插件独立 refresh 能力另开后续任务，不混入本轮。
+

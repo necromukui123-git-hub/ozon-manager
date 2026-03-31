@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"gorm.io/gorm"
 	"ozon-manager/internal/model"
 )
@@ -11,6 +13,10 @@ type UserRepository struct {
 
 func NewUserRepository(db *gorm.DB) *UserRepository {
 	return &UserRepository{db: db}
+}
+
+func (r *UserRepository) DB() *gorm.DB {
+	return r.db
 }
 
 // FindByID 根据ID查找用户
@@ -69,7 +75,7 @@ func (r *UserRepository) UpdatePassword(id uint, passwordHash string) error {
 
 // UpdateLastLogin 更新最后登录时间
 func (r *UserRepository) UpdateLastLogin(id uint) error {
-	return r.db.Model(&model.User{}).Where("id = ?", id).Update("last_login_at", gorm.Expr("NOW()")).Error
+	return r.db.Model(&model.User{}).Where("id = ?", id).Update("last_login_at", time.Now()).Error
 }
 
 // UpdateShops 更新用户可访问的店铺

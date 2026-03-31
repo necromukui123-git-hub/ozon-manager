@@ -1,6 +1,6 @@
 # Ozon Manager 开发总任务
 
-最后更新时间：2026-03-25  
+最后更新时间：2026-03-31  
 负责人：团队 + Codex  
 范围：统一官方促销与店铺促销的一套业务流程，并让店铺促销在浏览器登录态下低打扰执行。
 
@@ -42,6 +42,7 @@
 | T17 | 插件登录态自动连接主流程收敛 | done | popup 默认展示管理端连接状态，普通用户无需手填 token；非 localhost 首次可按提示授权，手填配置仅保留高级设置兜底 | 依赖管理端 `localStorage.token/currentShopId` 继续稳定 |
 | T18 | Search CPO 状态迁移自动化规则 | in_progress | 支持手动触发 + 定时调度；对状态1商品执行“初始活动报名”，对状态2商品执行“全量同步活动 -> 退出命中活动 -> enable -> carrots/batch_enable”，对状态3触发商品按 live 条件（`SEARCH_PROMO_STATUS_ENABLED + CARROTS_STATUS_DISABLED + availability=true`）继续收敛，不再强依赖已有 `state2_detected_at`；店铺活动退出遇到“商品当前不在活动中”或 `404/NotFound` 不再阻断后续 `enable/Morkovsk`，迁移前置阶段若命中已失效活动也会自动标记 `disabled` 并跳过；当前若商品已是 `SEARCH_PROMO_STATUS_ENABLED` 会直接跳过重复 `enable`，而 `enable/Morkovsk` 详情会补展示 `requested_sku/parser_revision/HTTP/root/sample keys` 诊断，不再把首条 job 错误灌给整批 SKU；Search CPO 专用店铺退出现已改为按活动逐条执行单活动 remove、优先使用数值 SKU 发起店铺 `deactivate`，并在退出后刷新活动商品复核；历史 `morkovsk_joined_at` 不再压过当前 live 状态，live 明确回退到状态1/2/3 的商品会清空失效 joined 标记并重新进入正常迁移，只有 live 仍是状态4 的商品才继续走 joined repair 清理 | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` / 店铺活动 `deactivate` 接口结构稳定；本地样本文档已对齐 `search_promo_availability -> skuToIsSearchPromoAvailable/WithReason`、`product/enable -> bids[]`、`carrots/batch_enable -> skuToInfo{}`、`官方deactivate -> product_ids + rejected[]`，当前剩余风险主要收敛为 live `product/enable` / `carrots/batch_enable` 仍可能继续暴露新的包裹层或 challenge 响应，以及店铺活动 `active/deactivate` live 返回与本地活动商品刷新存在时间差，需继续按自动化详情与活动复核结果补样本 |
 | T19 | Windows 单机发布包与异机部署 | done | 可在开发机一次性产出 `server.exe + 前端静态文件 + 插件目录/zip + 启动脚本 + 部署说明` 的 Windows 发布包；目标机仅安装 PostgreSQL 和 Chrome 即可启动，空库只需执行 `init_database.sql` | 依赖目标机本机浏览器访问 `127.0.0.1:8080`，暂不覆盖局域网多机访问 |
+| T20 | 登录态升级为 access token + refresh token（Web 先落地，插件兼容） | done | Web 端已支持 access token 短期有效 + refresh token 自动续期；隔夜重新打开系统时优先静默续期，不再因单 JWT 24 小时过期直接掉线；登出、改密、重置密码、禁用账号后会撤销 refresh token；Chrome 插件继续兼容管理端 `localStorage.token/currentShopId` 同步 | 依赖 `user_refresh_tokens` 表、refresh cookie 配置、前端 401 单飞刷新与应用启动初始化；本轮未单独实现插件独立 refresh 流程 |
 
 ## 近期完成里程碑（已完成）
 1. 按店铺执行引擎模式（`auto`/`extension`/`agent`）已落地。
@@ -78,8 +79,10 @@
 31. 已修正空库默认超级管理员账号基线：`init_database.sql` 中的 `super_admin/admin123` 哈希现与当前登录流程一致；登录接口返回 `401` 时，登录页不再一律误提示成“登录已过期”。
 32. 已补齐店铺管理员/员工上下级字段基线：`users` 表现已纳入 `owner_id` 列与索引，并新增 `upgrade_20260325_users_owner_id.sql` 供旧库修复；Windows 发布包同时开始携带全部 `upgrade_*.sql`，目标机可直接执行增量脚本解决 `SQLSTATE 42703`。
 33. 已收口店铺凭证录入与促销同步错误语义：店铺创建/更新与 Ozon client 出站前都会清理 `Api-Key` 前后空白，`sync-actions` 命中官方 `Invalid Api-Key` 时会回退成明确中文提示，目标机可直接回到“我的店铺”修正凭证。
+34. 已完成 access token + refresh token 商用化认证改造：后端新增 `user_refresh_tokens` 持久化、`/auth/refresh` 轮换链路与公开 `/auth/logout`，改密/重置密码/禁用账号会同步撤销 refresh token；前端已接入启动静默续期、401 单飞 refresh 与 `token_expires_at` 本地状态恢复，Chrome 插件继续兼容管理端 `localStorage.token/currentShopId`。
 ## 阶段完成标准
 1. 官方与店铺促销在统一 UX 下稳定可用。
 2. 常规场景店铺任务静默执行，不打断用户主流程。
 3. 登录兜底仅在未登录 Seller 时触发。
 4. 异步任务全链路可追踪，失败可定位。
+

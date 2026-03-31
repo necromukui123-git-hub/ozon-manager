@@ -16,6 +16,10 @@ database:
 jwt:
   secret: "<YOUR_JWT_SECRET>"  # 请填写一个随机字符串，用于 JWT 签名（建议32位以上）
   expire_hours: 24
+  access_expire_minutes: 720
+  refresh_expire_hours: 720
+  refresh_cookie_name: "ozon_refresh_token"
+  refresh_cookie_secure: false
 
 log:
   level: debug  # debug / info / warn / error

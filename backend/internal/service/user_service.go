@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 
+	"gorm.io/gorm"
 	"ozon-manager/internal/dto"
 	"ozon-manager/internal/model"
 	"ozon-manager/internal/repository"
@@ -18,14 +19,16 @@ var (
 )
 
 type UserService struct {
-	userRepo *repository.UserRepository
-	shopRepo *repository.ShopRepository
+	userRepo    *repository.UserRepository
+	shopRepo    *repository.ShopRepository
+	refreshRepo *repository.RefreshTokenRepository
 }
 
-func NewUserService(userRepo *repository.UserRepository, shopRepo *repository.ShopRepository) *UserService {
+func NewUserService(userRepo *repository.UserRepository, shopRepo *repository.ShopRepository, refreshRepo *repository.RefreshTokenRepository) *UserService {
 	return &UserService{
-		userRepo: userRepo,
-		shopRepo: shopRepo,
+		userRepo:    userRepo,
+		shopRepo:    shopRepo,
+		refreshRepo: refreshRepo,
 	}
 }
 
@@ -124,7 +127,19 @@ func (s *UserService) UpdateUserStatus(userID uint, status string) error {
 		return ErrCannotModifyAdmin
 	}
 
-	return s.userRepo.UpdateStatus(userID, status)
+	return s.userRepo.DB().Transaction(func(tx *gorm.DB) error {
+		userRepo := repository.NewUserRepository(tx)
+		refreshRepo := repository.NewRefreshTokenRepository(tx)
+
+		if err := userRepo.UpdateStatus(userID, status); err != nil {
+			return err
+		}
+		if status != "disabled" {
+			return nil
+		}
+
+		return refreshRepo.RevokeAllByUserID(userID, "user_disabled")
+	})
 }
 
 // UpdateUserPassword 重置用户密码
@@ -144,7 +159,16 @@ func (s *UserService) UpdateUserPassword(userID uint, newPassword string) error 
 		return err
 	}
 
-	return s.userRepo.UpdatePassword(userID, passwordHash)
+	return s.userRepo.DB().Transaction(func(tx *gorm.DB) error {
+		userRepo := repository.NewUserRepository(tx)
+		refreshRepo := repository.NewRefreshTokenRepository(tx)
+
+		if err := userRepo.UpdatePassword(userID, passwordHash); err != nil {
+			return err
+		}
+
+		return refreshRepo.RevokeAllByUserID(userID, "password_reset")
+	})
 }
 
 // UpdateUserShops 更新用户可访问的店铺
@@ -231,7 +255,16 @@ func (s *UserService) ChangePassword(userID uint, oldPassword, newPassword strin
 		return err
 	}
 
-	return s.userRepo.UpdatePassword(userID, passwordHash)
+	return s.userRepo.DB().Transaction(func(tx *gorm.DB) error {
+		userRepo := repository.NewUserRepository(tx)
+		refreshRepo := repository.NewRefreshTokenRepository(tx)
+
+		if err := userRepo.UpdatePassword(userID, passwordHash); err != nil {
+			return err
+		}
+
+		return refreshRepo.RevokeAllByUserID(userID, "password_changed")
+	})
 }
 
 // ========== 系统管理员功能 ==========
@@ -370,14 +403,26 @@ func (s *UserService) UpdateShopAdminStatus(shopAdminID uint, status string) err
 		return ErrNotShopAdmin
 	}
 
-	// 如果是禁用操作，同步禁用该店铺管理员的所有店铺
-	if status == "disabled" {
-		if err := s.shopRepo.UpdateStatusByOwnerID(shopAdminID, false); err != nil {
+	return s.userRepo.DB().Transaction(func(tx *gorm.DB) error {
+		userRepo := repository.NewUserRepository(tx)
+		shopRepo := repository.NewShopRepository(tx)
+		refreshRepo := repository.NewRefreshTokenRepository(tx)
+
+		if status == "disabled" {
+			if err := shopRepo.UpdateStatusByOwnerID(shopAdminID, false); err != nil {
+				return err
+			}
+		}
+
+		if err := userRepo.UpdateStatus(shopAdminID, status); err != nil {
 			return err
 		}
-	}
+		if status != "disabled" {
+			return nil
+		}
 
-	return s.userRepo.UpdateStatus(shopAdminID, status)
+		return refreshRepo.RevokeAllByUserID(shopAdminID, "user_disabled")
+	})
 }
 
 // ResetShopAdminPassword 重置店铺管理员密码（系统管理员调用）
@@ -402,7 +447,16 @@ func (s *UserService) ResetShopAdminPassword(shopAdminID uint, newPassword strin
 		return err
 	}
 
-	return s.userRepo.UpdatePassword(shopAdminID, passwordHash)
+	return s.userRepo.DB().Transaction(func(tx *gorm.DB) error {
+		userRepo := repository.NewUserRepository(tx)
+		refreshRepo := repository.NewRefreshTokenRepository(tx)
+
+		if err := userRepo.UpdatePassword(shopAdminID, passwordHash); err != nil {
+			return err
+		}
+
+		return refreshRepo.RevokeAllByUserID(shopAdminID, "password_reset")
+	})
 }
 
 // DeleteShopAdmin 删除店铺管理员（系统管理员调用）
@@ -530,7 +584,19 @@ func (s *UserService) UpdateStaffStatus(staffID uint, status string, ownerID uin
 		return ErrStaffNotBelongToYou
 	}
 
-	return s.userRepo.UpdateStatus(staffID, status)
+	return s.userRepo.DB().Transaction(func(tx *gorm.DB) error {
+		userRepo := repository.NewUserRepository(tx)
+		refreshRepo := repository.NewRefreshTokenRepository(tx)
+
+		if err := userRepo.UpdateStatus(staffID, status); err != nil {
+			return err
+		}
+		if status != "disabled" {
+			return nil
+		}
+
+		return refreshRepo.RevokeAllByUserID(staffID, "user_disabled")
+	})
 }
 
 // ResetStaffPassword 重置员工密码（店铺管理员调用）
@@ -550,7 +616,16 @@ func (s *UserService) ResetStaffPassword(staffID uint, newPassword string, owner
 		return err
 	}
 
-	return s.userRepo.UpdatePassword(staffID, passwordHash)
+	return s.userRepo.DB().Transaction(func(tx *gorm.DB) error {
+		userRepo := repository.NewUserRepository(tx)
+		refreshRepo := repository.NewRefreshTokenRepository(tx)
+
+		if err := userRepo.UpdatePassword(staffID, passwordHash); err != nil {
+			return err
+		}
+
+		return refreshRepo.RevokeAllByUserID(staffID, "password_reset")
+	})
 }
 
 // UpdateStaffShops 更新员工可访问的店铺（店铺管理员调用）

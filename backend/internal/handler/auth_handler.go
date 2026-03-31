@@ -2,8 +2,10 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"ozon-manager/internal/config"
 	"ozon-manager/internal/dto"
 	"ozon-manager/internal/middleware"
 	"ozon-manager/internal/service"
@@ -29,12 +31,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.authService.Login(&req)
+	session, err := h.authService.Login(&req, buildAuthSessionMeta(c))
 	if err != nil {
-		statusCode := http.StatusUnauthorized
-		if err == service.ErrUserDisabled {
-			statusCode = http.StatusForbidden
-		}
+		statusCode := authErrorStatus(err)
 		c.JSON(statusCode, dto.Response{
 			Code:    statusCode,
 			Message: err.Error(),
@@ -42,21 +41,63 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	setRefreshTokenCookie(c, session.RefreshToken)
+
 	c.JSON(http.StatusOK, dto.Response{
 		Code:    200,
 		Message: "登录成功",
-		Data:    resp,
+		Data:    session.Response,
 	})
 }
 
 // Logout 用户登出
 // POST /api/v1/auth/logout
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// JWT是无状态的，登出只需要前端删除token即可
-	// 如果需要实现token黑名单，可以在这里添加逻辑
+	refreshToken, _ := c.Cookie(refreshCookieName())
+	if err := h.authService.Logout(refreshToken); err != nil {
+		c.JSON(http.StatusInternalServerError, dto.Response{
+			Code:    500,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	clearRefreshTokenCookie(c)
+
 	c.JSON(http.StatusOK, dto.Response{
 		Code:    200,
 		Message: "登出成功",
+	})
+}
+
+// Refresh 刷新 access token
+// POST /api/v1/auth/refresh
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	refreshToken, err := c.Cookie(refreshCookieName())
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, dto.Response{
+			Code:    401,
+			Message: service.ErrRefreshTokenRequired.Error(),
+		})
+		return
+	}
+
+	session, err := h.authService.Refresh(refreshToken, buildAuthSessionMeta(c))
+	if err != nil {
+		statusCode := authErrorStatus(err)
+		c.JSON(statusCode, dto.Response{
+			Code:    statusCode,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	setRefreshTokenCookie(c, session.RefreshToken)
+
+	c.JSON(http.StatusOK, dto.Response{
+		Code:    200,
+		Message: "刷新成功",
+		Data:    session.Response,
 	})
 }
 
@@ -86,4 +127,53 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 		Message: "success",
 		Data:    userInfo,
 	})
+}
+
+func buildAuthSessionMeta(c *gin.Context) service.AuthSessionMeta {
+	return service.AuthSessionMeta{
+		UserAgent: c.GetHeader("User-Agent"),
+		IPAddress: c.ClientIP(),
+	}
+}
+
+func authErrorStatus(err error) int {
+	switch err {
+	case service.ErrInvalidCredentials, service.ErrRefreshTokenRequired, service.ErrInvalidRefreshToken:
+		return http.StatusUnauthorized
+	case service.ErrUserDisabled:
+		return http.StatusForbidden
+	default:
+		return http.StatusInternalServerError
+	}
+}
+
+func setRefreshTokenCookie(c *gin.Context, token string) {
+	cfg := config.GetConfig()
+	maxAge := int(refreshCookieTTL(cfg.JWT).Seconds())
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(cfg.JWT.RefreshCookieName, token, maxAge, "/api/v1/auth", "", cfg.JWT.RefreshCookieSecure, true)
+}
+
+func clearRefreshTokenCookie(c *gin.Context) {
+	cfg := config.GetConfig()
+	c.SetSameSite(http.SameSiteLaxMode)
+	c.SetCookie(cfg.JWT.RefreshCookieName, "", -1, "/api/v1/auth", "", cfg.JWT.RefreshCookieSecure, true)
+}
+
+func refreshCookieName() string {
+	cfg := config.GetConfig()
+	if cfg.JWT.RefreshCookieName != "" {
+		return cfg.JWT.RefreshCookieName
+	}
+	return "refresh_token"
+}
+
+func refreshCookieTTL(cfg config.JWTConfig) time.Duration {
+	if cfg.RefreshExpireHours > 0 {
+		return time.Duration(cfg.RefreshExpireHours) * time.Hour
+	}
+	if cfg.ExpireHours > 0 {
+		return time.Duration(cfg.ExpireHours) * time.Hour
+	}
+	return 7 * 24 * time.Hour
 }
