@@ -2,6 +2,7 @@ package ozon
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -68,6 +69,58 @@ func TestGetActionProductsUsesLastIDAndLanguageHeader(t *testing.T) {
 	}
 	if resp.Result.Products[0].ID != 28745 {
 		t.Fatalf("product id = %d, want 28745", resp.Result.Products[0].ID)
+	}
+}
+
+func TestGetActionsTrimsAPIKeyHeader(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("100", "  test-api-key-123  \r\n")
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got := req.Header.Get("Api-Key"); got != "test-api-key-123" {
+				t.Fatalf("Api-Key header = %q, want %q", got, "test-api-key-123")
+			}
+
+			resp := `{"result":[]}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(resp)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	resp, err := client.GetActions()
+	if err != nil {
+		t.Fatalf("GetActions returned error: %v", err)
+	}
+	if len(resp.Result) != 0 {
+		t.Fatalf("result len = %d, want 0", len(resp.Result))
+	}
+}
+
+func TestGetActionsMapsInvalidAPIKeyResponse(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient("100", "wrong-key")
+	client.httpClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			resp := `{"code":3,"message":"Invalid Api-Key, please check the key and try again"}`
+			return &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Body:       io.NopCloser(strings.NewReader(resp)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+
+	_, err := client.GetActions()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrInvalidAPIKey) {
+		t.Fatalf("expected ErrInvalidAPIKey, got %v", err)
 	}
 }
 

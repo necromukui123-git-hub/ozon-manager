@@ -111,7 +111,7 @@ func (h *ShopHandler) CreateShop(c *gin.Context) {
 		statusCode := http.StatusInternalServerError
 		if err == service.ErrClientIDExists {
 			statusCode = http.StatusConflict
-		} else if err == service.ErrInvalidClientID {
+		} else if err == service.ErrInvalidClientID || err == service.ErrInvalidAPIKey {
 			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, dto.Response{
@@ -155,7 +155,7 @@ func (h *ShopHandler) UpdateShop(c *gin.Context) {
 			statusCode = http.StatusNotFound
 		} else if err == service.ErrClientIDExists {
 			statusCode = http.StatusConflict
-		} else if err == service.ErrInvalidClientID {
+		} else if err == service.ErrInvalidClientID || err == service.ErrInvalidAPIKey {
 			statusCode = http.StatusBadRequest
 		} else if err == service.ErrInvalidEngineMode {
 			statusCode = http.StatusBadRequest
@@ -243,7 +243,7 @@ func (h *ShopHandler) CreateMyShop(c *gin.Context) {
 		statusCode := http.StatusInternalServerError
 		if err == service.ErrClientIDExists || err == service.ErrActiveClientIDExists {
 			statusCode = http.StatusConflict
-		} else if err == service.ErrInvalidClientID {
+		} else if err == service.ErrInvalidClientID || err == service.ErrInvalidAPIKey {
 			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, dto.Response{
@@ -290,7 +290,7 @@ func (h *ShopHandler) UpdateMyShop(c *gin.Context) {
 			statusCode = http.StatusForbidden
 		} else if err == service.ErrClientIDExists {
 			statusCode = http.StatusConflict
-		} else if err == service.ErrInvalidClientID {
+		} else if err == service.ErrInvalidClientID || err == service.ErrInvalidAPIKey {
 			statusCode = http.StatusBadRequest
 		} else if err == service.ErrInvalidEngineMode {
 			statusCode = http.StatusBadRequest

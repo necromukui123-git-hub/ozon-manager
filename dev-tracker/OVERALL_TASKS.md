@@ -77,11 +77,9 @@
 30. 已新增 Windows 单机发布链路：仓库根目录可执行 `build-windows-release.ps1` 统一构建后端、前端和插件，并产出 `release/ozon-manager-win-x64` 目录与同名 zip；发布包内同时包含 `server/start-ozon-manager.bat`、`server/database/init_database.sql`、部署说明和可直接加载的插件目录。
 31. 已修正空库默认超级管理员账号基线：`init_database.sql` 中的 `super_admin/admin123` 哈希现与当前登录流程一致；登录接口返回 `401` 时，登录页不再一律误提示成“登录已过期”。
 32. 已补齐店铺管理员/员工上下级字段基线：`users` 表现已纳入 `owner_id` 列与索引，并新增 `upgrade_20260325_users_owner_id.sql` 供旧库修复；Windows 发布包同时开始携带全部 `upgrade_*.sql`，目标机可直接执行增量脚本解决 `SQLSTATE 42703`。
+33. 已收口店铺凭证录入与促销同步错误语义：店铺创建/更新与 Ozon client 出站前都会清理 `Api-Key` 前后空白，`sync-actions` 命中官方 `Invalid Api-Key` 时会回退成明确中文提示，目标机可直接回到“我的店铺”修正凭证。
 ## 阶段完成标准
 1. 官方与店铺促销在统一 UX 下稳定可用。
 2. 常规场景店铺任务静默执行，不打断用户主流程。
 3. 登录兜底仅在未登录 Seller 时触发。
 4. 异步任务全链路可追踪，失败可定位。
-
-
-

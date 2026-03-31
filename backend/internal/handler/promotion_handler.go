@@ -354,6 +354,13 @@ func (h *PromotionHandler) SyncActions(c *gin.Context) {
 			})
 			return
 		}
+		if errors.Is(err, ozon.ErrInvalidAPIKey) {
+			c.JSON(http.StatusBadRequest, dto.Response{
+				Code:    400,
+				Message: "店铺API Key配置无效，请在“我的店铺”中重新填写Ozon控制台提供的正确API Key",
+			})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, dto.Response{
 			Code:    500,
 			Message: "同步促销活动失败: " + err.Error(),

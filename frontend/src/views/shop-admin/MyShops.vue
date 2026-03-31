@@ -193,8 +193,8 @@ function showEditDialog(shop) {
   isEdit.value = true
   editingId.value = shop.id
   form.name = shop.name
-  form.client_id = shop.client_id
-  form.api_key = shop.api_key
+  form.client_id = shop.client_id || ''
+  form.api_key = shop.api_key || ''
   form.execution_engine_mode = shop.execution_engine_mode || 'auto'
   dialogVisible.value = true
 }
@@ -207,10 +207,25 @@ async function handleSubmit() {
 
     saving.value = true
     try {
+      const trimmedClientID = String(form.client_id ?? '').trim()
+      const trimmedAPIKey = String(form.api_key ?? '').trim()
       const payload = {
-        ...form,
-        client_id: String(form.client_id).trim()
+        name: form.name,
+        execution_engine_mode: form.execution_engine_mode
       }
+
+      if (isEdit.value) {
+        if (trimmedClientID) {
+          payload.client_id = trimmedClientID
+        }
+        if (trimmedAPIKey) {
+          payload.api_key = trimmedAPIKey
+        }
+      } else {
+        payload.client_id = trimmedClientID
+        payload.api_key = trimmedAPIKey
+      }
+
       if (isEdit.value) {
         await updateMyShop(editingId.value, payload)
         ElMessage.success('更新成功')

@@ -2,7 +2,7 @@
 
 ## 2026-03-25
 ### 主题
-修复 Windows 单机发布包在目标机上的两类部署阻塞：空库默认管理员登录异常，以及旧库缺少 `users.owner_id` 导致无法创建店铺管理员。
+修复 Windows 单机发布包在目标机上的三类部署阻塞：空库默认管理员登录异常、旧库缺少 `users.owner_id` 导致无法创建店铺管理员，以及店铺 API Key 脏值/错误提示不清导致促销活动同步失败。
 
 ### 关键变更
 1. `backend/migrations/init_database.sql`：
@@ -17,17 +17,20 @@
    - 补充默认管理员账号说明，并明确 2026-03-25 之前的旧发布包初始化空库后，若出现默认账号无法登录，最简单的处理方式是重新用新基线初始化。
 6. `backend/migrations/upgrade_20260325_users_owner_id.sql`、`build-windows-release.ps1`：
    - 为旧库补齐 `users.owner_id` 字段、外键和索引，并让发布包把所有 `upgrade_*.sql` 一并带上；目标机遇到 `SQLSTATE 42703` 时可直接执行增量脚本修复。
+7. `backend/internal/service/shop_service.go`、`backend/pkg/ozon/client.go`、`backend/internal/handler/promotion_handler.go`、`frontend/src/views/shop-admin/MyShops.vue`：
+   - 店铺保存与实际出站请求都会清理 `Api-Key` 前后空白，`sync-actions` 会把官方 `Invalid Api-Key` 映射成明确中文提示；前端编辑店铺时也避免把未返回的凭证字段误写成空值或 `undefined`。
 
 ### 影响范围
 1. 新生成的 Windows 发布包在空库环境下可直接使用 `super_admin / admin123` 登录。
 2. 已经用旧基线初始化过的数据库不会自动修复；需要重新初始化空库，或手工更新 `super_admin` 的 `password_hash`。
 3. 已按版本规则新增 `upgrade_20260325_users_owner_id.sql`，旧库可在不重建数据的前提下补齐员工归属字段并恢复店铺管理员/员工管理链路。
+4. 新生成的发布包与后端代码对店铺 `Api-Key` 的空白字符更宽容，且当 Ozon 明确返回 `Invalid Api-Key` 时，页面会直接提示用户回到“我的店铺”修正凭证。
 
 ### 验证
 1. `cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./migrations` 通过。
 2. `cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./...` 通过。
 3. `cd frontend && cmd /c npm run build` 通过。
-4. `powershell -ExecutionPolicy Bypass -File .\build-windows-release.ps1` 已重新产出包含升级脚本的 Windows 发布包。
+4. `powershell -ExecutionPolicy Bypass -File .\build-windows-release.ps1` 已重新产出包含升级脚本与 API Key 修复的 Windows 发布包。
 
 
 ## 2026-03-23
@@ -1053,8 +1056,3 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 ### 验证
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
-
-
-
-
-

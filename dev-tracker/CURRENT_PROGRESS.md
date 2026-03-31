@@ -1,12 +1,18 @@
 # Ozon Manager 当前进度
 
 最后更新时间：2026-03-25
-状态：进行中（已补齐 `users.owner_id` 基线与旧库升级脚本，待目标机执行 `upgrade_20260325_users_owner_id.sql` 并验证创建店铺管理员）
+状态：进行中（已补齐 `users.owner_id` 基线与旧库升级脚本，并新增店铺 API Key 清洗与同步活动错误前移；待目标机验证促销活动同步）
 
 ## 本次交付单元
-本次目标：修复另一台 Windows 目标机创建店铺管理员时报 `users.owner_id` 缺失的问题，并把该字段的基线、旧库升级脚本和发布包内容统一补齐。
+本次目标：收口另一台 Windows 目标机的部署阻塞，既修复 `users.owner_id` 缺失导致的建账号报错，也修复店铺 API Key 录入/使用过于脆弱导致的促销活动同步失败。
 
 ## 已完成（含关键文件）
+0. 店铺 API Key 清洗与同步活动错误前移：
+   - `backend/internal/service/shop_service.go`、`backend/internal/service/shop_service_test.go`：店铺创建/更新新增 `normalizeShopAPIKey`，统一清理前后空白并拒绝空白 API Key；补了对应单测，避免脏值继续落库。
+   - `backend/pkg/ozon/client.go`、`backend/pkg/ozon/actions_test.go`：Ozon client 发请求前会再次 `TrimSpace(Api-Key)`，并把官方 400 `Invalid Api-Key` 识别成 `ErrInvalidAPIKey`；补了 header 清洗和错误映射测试。
+   - `backend/internal/handler/promotion_handler.go`、`backend/internal/handler/shop_handler.go`：`sync-actions` 与店铺保存接口现会把 API Key 问题明确映射成 400 与中文提示，不再把上游报错整段透给用户。
+   - `frontend/src/views/shop-admin/MyShops.vue`：店铺创建时会提交 trim 后的 `client_id/api_key`；编辑时只在用户实际输入新值时才回传，避免把旧接口未返回的凭证字段误写成空值或字符串 `undefined`。
+   - 验证：`cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./internal/service ./pkg/ozon` 通过；`cd backend && $env:GOCACHE="$PWD\.gocache-build"; go test ./...` 通过；`cd frontend && cmd /c npm run build` 通过。
 0. `users.owner_id` 基线缺口修复：
    - `backend/migrations/init_database.sql`：`users` 表已补齐 `owner_id` 字段和 `idx_users_owner_id` 索引，新库初始化后可直接创建店铺管理员、员工并查询上下级关系。
    - `backend/migrations/upgrade_20260325_users_owner_id.sql`：新增旧库增量脚本，可幂等补齐 `owner_id` 字段、外键和索引，直接修复目标机现有数据库的 `SQLSTATE 42703`。
@@ -420,6 +426,3 @@
 ## 下一步（最多 3 项）`r`n1. 在另一台 Windows 电脑上按 `README-windows-deploy.md` 做一次空库 smoke test，重点确认 `super_admin/admin123` 可首次登录，且登录失败时不会再误提示“登录已过期”。
 2. 如需支持局域网其它电脑访问，再单独补固定域名/局域网地址下的前端托管、插件权限和 CORS 口径，不混入本轮单机发布包。
 3. 继续推进 Search CPO 自动化的真实 Seller 回归，补齐 T18 剩余的 live 联调验证。
-
-
-

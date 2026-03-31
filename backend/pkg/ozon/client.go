@@ -18,6 +18,7 @@ const (
 )
 
 var ErrInvalidClientID = errors.New("client_id must be a positive integer")
+var ErrInvalidAPIKey = errors.New("api_key must not be empty")
 
 // Client Ozon API客户端
 type Client struct {
@@ -57,10 +58,14 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	if err != nil {
 		return nil, fmt.Errorf("invalid client_id: %w", err)
 	}
+	normalizedAPIKey, err := normalizeAPIKey(c.apiKey)
+	if err != nil {
+		return nil, fmt.Errorf("invalid api_key: %w", err)
+	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Client-Id", normalizedClientID)
-	req.Header.Set("Api-Key", c.apiKey)
+	req.Header.Set("Api-Key", normalizedAPIKey)
 	req.Header.Set("Language", DefaultAPILanguage)
 
 	resp, err := c.httpClient.Do(req)
@@ -75,6 +80,9 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	}
 
 	if resp.StatusCode >= 400 {
+		if isInvalidAPIKeyResponse(resp.StatusCode, respBody) {
+			return nil, fmt.Errorf("API error (status %d): %w: %s", resp.StatusCode, ErrInvalidAPIKey, string(respBody))
+		}
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
@@ -93,6 +101,21 @@ func normalizeClientID(clientID string) (string, error) {
 	}
 
 	return strconv.FormatUint(parsed, 10), nil
+}
+
+func normalizeAPIKey(apiKey string) (string, error) {
+	trimmed := strings.TrimSpace(apiKey)
+	if trimmed == "" {
+		return "", ErrInvalidAPIKey
+	}
+	return trimmed, nil
+}
+
+func isInvalidAPIKeyResponse(statusCode int, body []byte) bool {
+	if statusCode != http.StatusBadRequest {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(body)), "invalid api-key")
 }
 
 // Product 商品信息

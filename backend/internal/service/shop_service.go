@@ -17,6 +17,7 @@ var (
 	ErrShopNotBelongToYou   = errors.New("该店铺不属于您")
 	ErrActiveClientIDExists = errors.New("已存在使用该 Client ID 的可用店铺")
 	ErrInvalidClientID      = errors.New("Client ID必须是正整数")
+	ErrInvalidAPIKey        = errors.New("API Key不能为空")
 	ErrInvalidEngineMode    = errors.New("执行引擎模式无效")
 )
 
@@ -66,6 +67,10 @@ func (s *ShopService) CreateShop(req *dto.CreateShopRequest) (*dto.ShopInfo, err
 	if err != nil {
 		return nil, err
 	}
+	normalizedAPIKey, err := normalizeShopAPIKey(req.ApiKey)
+	if err != nil {
+		return nil, err
+	}
 
 	// 检查ClientID是否已存在
 	existing, _ := s.shopRepo.FindByClientID(normalizedClientID)
@@ -76,7 +81,7 @@ func (s *ShopService) CreateShop(req *dto.CreateShopRequest) (*dto.ShopInfo, err
 	shop := &model.Shop{
 		Name:                req.Name,
 		ClientID:            normalizedClientID,
-		ApiKey:              req.ApiKey,
+		ApiKey:              normalizedAPIKey,
 		IsActive:            true,
 		ExecutionEngineMode: model.ShopExecutionEngineAuto,
 	}
@@ -116,7 +121,11 @@ func (s *ShopService) UpdateShop(shopID uint, req *dto.UpdateShopRequest) error 
 		shop.ClientID = normalizedClientID
 	}
 	if req.ApiKey != "" {
-		shop.ApiKey = req.ApiKey
+		normalizedAPIKey, normalizeErr := normalizeShopAPIKey(req.ApiKey)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+		shop.ApiKey = normalizedAPIKey
 	}
 	if req.IsActive != nil {
 		shop.IsActive = *req.IsActive
@@ -159,6 +168,10 @@ func (s *ShopService) CreateMyShop(req *dto.CreateShopRequest, ownerID uint) (*d
 	if err != nil {
 		return nil, err
 	}
+	normalizedAPIKey, err := normalizeShopAPIKey(req.ApiKey)
+	if err != nil {
+		return nil, err
+	}
 
 	// 检查是否存在同 ClientID 且为可用的店铺
 	activeShop, _ := s.shopRepo.FindActiveByClientID(normalizedClientID)
@@ -169,7 +182,7 @@ func (s *ShopService) CreateMyShop(req *dto.CreateShopRequest, ownerID uint) (*d
 	shop := &model.Shop{
 		Name:                req.Name,
 		ClientID:            normalizedClientID,
-		ApiKey:              req.ApiKey,
+		ApiKey:              normalizedAPIKey,
 		IsActive:            true,
 		ExecutionEngineMode: model.ShopExecutionEngineAuto,
 		OwnerID:             ownerID,
@@ -236,7 +249,11 @@ func (s *ShopService) UpdateMyShop(shopID uint, req *dto.UpdateShopRequest, owne
 		shop.ClientID = normalizedClientID
 	}
 	if req.ApiKey != "" {
-		shop.ApiKey = req.ApiKey
+		normalizedAPIKey, normalizeErr := normalizeShopAPIKey(req.ApiKey)
+		if normalizeErr != nil {
+			return normalizeErr
+		}
+		shop.ApiKey = normalizedAPIKey
 	}
 	if req.IsActive != nil {
 		shop.IsActive = *req.IsActive
@@ -399,6 +416,14 @@ func normalizeShopClientID(clientID string) (string, error) {
 	}
 
 	return strconv.FormatUint(parsed, 10), nil
+}
+
+func normalizeShopAPIKey(apiKey string) (string, error) {
+	trimmed := strings.TrimSpace(apiKey)
+	if trimmed == "" {
+		return "", ErrInvalidAPIKey
+	}
+	return trimmed, nil
 }
 
 func normalizeExecutionEngineMode(mode string) (string, error) {
