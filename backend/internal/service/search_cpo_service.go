@@ -97,12 +97,14 @@ func (s *SearchCPOService) GetConfig(shopID uint) (*dto.SearchCPOConfigResponse,
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return &dto.SearchCPOConfigResponse{
-				ShopID:            shopID,
-				OfficialActionIDs: []uint{},
-				ShopActionIDs:     []uint{},
-				AutoEnabled:       false,
-				ScheduleTime:      searchCPODefaultScheduleTime,
-				EnableStep:        true,
+				ShopID:                shopID,
+				OfficialActionIDs:     []uint{},
+				ShopActionIDs:         []uint{},
+				ExitOfficialActionIDs: []uint{},
+				ExitShopActionIDs:     []uint{},
+				AutoEnabled:           false,
+				ScheduleTime:          searchCPODefaultScheduleTime,
+				EnableStep:            true,
 			}, nil
 		}
 		return nil, err
@@ -113,8 +115,15 @@ func (s *SearchCPOService) GetConfig(shopID uint) (*dto.SearchCPOConfigResponse,
 func (s *SearchCPOService) UpdateConfig(req *dto.SearchCPOConfigRequest) (*dto.SearchCPOConfigResponse, error) {
 	officialIDs := uniqueUints(req.OfficialActionIDs)
 	shopIDs := uniqueUints(req.ShopActionIDs)
+	exitOfficialIDs := uniqueUints(req.ExitOfficialActionIDs)
+	exitShopIDs := uniqueUints(req.ExitShopActionIDs)
 	if len(officialIDs)+len(shopIDs) > 0 {
 		if err := s.validateSelectedActions(req.ShopID, officialIDs, shopIDs); err != nil {
+			return nil, err
+		}
+	}
+	if len(exitOfficialIDs)+len(exitShopIDs) > 0 {
+		if err := s.validateSelectedActions(req.ShopID, exitOfficialIDs, exitShopIDs); err != nil {
 			return nil, err
 		}
 	}
@@ -143,13 +152,17 @@ func (s *SearchCPOService) UpdateConfig(req *dto.SearchCPOConfigRequest) (*dto.S
 
 	officialBytes, _ := json.Marshal(officialIDs)
 	shopBytes, _ := json.Marshal(shopIDs)
+	exitOfficialBytes, _ := json.Marshal(exitOfficialIDs)
+	exitShopBytes, _ := json.Marshal(exitShopIDs)
 	config := &model.SearchCPOConfig{
-		ShopID:            req.ShopID,
-		OfficialActionIDs: officialBytes,
-		ShopActionIDs:     shopBytes,
-		AutoEnabled:       autoEnabled,
-		ScheduleTime:      scheduleTime,
-		EnableStep:        true,
+		ShopID:                req.ShopID,
+		OfficialActionIDs:     officialBytes,
+		ShopActionIDs:         shopBytes,
+		ExitOfficialActionIDs: exitOfficialBytes,
+		ExitShopActionIDs:     exitShopBytes,
+		AutoEnabled:           autoEnabled,
+		ScheduleTime:          scheduleTime,
+		EnableStep:            true,
 	}
 	if err := s.repo.UpsertConfig(config); err != nil {
 		return nil, err
@@ -810,14 +823,16 @@ func toSearchCPOConfigDTO(config *model.SearchCPOConfig) *dto.SearchCPOConfigRes
 		return nil
 	}
 	return &dto.SearchCPOConfigResponse{
-		ID:                config.ID,
-		ShopID:            config.ShopID,
-		OfficialActionIDs: decodeUintSlice(config.OfficialActionIDs),
-		ShopActionIDs:     decodeUintSlice(config.ShopActionIDs),
-		AutoEnabled:       config.AutoEnabled,
-		ScheduleTime:      firstNonEmptyServiceTrimmed(config.ScheduleTime, searchCPODefaultScheduleTime),
-		EnableStep:        true,
-		UpdatedAt:         config.UpdatedAt.Format("2006-01-02 15:04:05"),
+		ID:                    config.ID,
+		ShopID:                config.ShopID,
+		OfficialActionIDs:     decodeUintSlice(config.OfficialActionIDs),
+		ShopActionIDs:         decodeUintSlice(config.ShopActionIDs),
+		ExitOfficialActionIDs: decodeUintSlice(config.ExitOfficialActionIDs),
+		ExitShopActionIDs:     decodeUintSlice(config.ExitShopActionIDs),
+		AutoEnabled:           config.AutoEnabled,
+		ScheduleTime:          firstNonEmptyServiceTrimmed(config.ScheduleTime, searchCPODefaultScheduleTime),
+		EnableStep:            true,
+		UpdatedAt:             config.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 }
 

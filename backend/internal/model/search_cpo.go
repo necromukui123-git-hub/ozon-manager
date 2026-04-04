@@ -30,15 +30,17 @@ const (
 )
 
 type SearchCPOConfig struct {
-	ID                uint           `gorm:"primaryKey" json:"id"`
-	ShopID            uint           `gorm:"not null;uniqueIndex" json:"shop_id"`
-	OfficialActionIDs datatypes.JSON `gorm:"type:jsonb;not null" json:"official_action_ids"`
-	ShopActionIDs     datatypes.JSON `gorm:"type:jsonb;not null" json:"shop_action_ids"`
-	AutoEnabled       bool           `gorm:"not null;default:false" json:"auto_enabled"`
-	ScheduleTime      string         `gorm:"size:5;not null;default:09:05" json:"schedule_time"`
-	EnableStep        bool           `gorm:"not null;default:true" json:"enable_step"`
-	CreatedAt         time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt         time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	ID                    uint           `gorm:"primaryKey" json:"id"`
+	ShopID                uint           `gorm:"not null;uniqueIndex" json:"shop_id"`
+	OfficialActionIDs     datatypes.JSON `gorm:"type:jsonb;not null" json:"official_action_ids"`
+	ShopActionIDs         datatypes.JSON `gorm:"type:jsonb;not null" json:"shop_action_ids"`
+	ExitOfficialActionIDs datatypes.JSON `gorm:"type:jsonb;not null" json:"exit_official_action_ids"`
+	ExitShopActionIDs     datatypes.JSON `gorm:"type:jsonb;not null" json:"exit_shop_action_ids"`
+	AutoEnabled           bool           `gorm:"not null;default:false" json:"auto_enabled"`
+	ScheduleTime          string         `gorm:"size:5;not null;default:09:05" json:"schedule_time"`
+	EnableStep            bool           `gorm:"not null;default:true" json:"enable_step"`
+	CreatedAt             time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt             time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 func (SearchCPOConfig) TableName() string {

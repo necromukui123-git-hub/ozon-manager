@@ -285,6 +285,8 @@ CREATE TABLE IF NOT EXISTS search_cpo_configs (
     shop_id             INTEGER NOT NULL REFERENCES shops(id) ON DELETE CASCADE,
     official_action_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
     shop_action_ids     JSONB NOT NULL DEFAULT '[]'::jsonb,
+    exit_official_action_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    exit_shop_action_ids     JSONB NOT NULL DEFAULT '[]'::jsonb,
     auto_enabled        BOOLEAN NOT NULL DEFAULT FALSE,
     schedule_time       VARCHAR(5) NOT NULL DEFAULT '09:05',
     enable_step         BOOLEAN NOT NULL DEFAULT TRUE,

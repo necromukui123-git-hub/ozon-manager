@@ -1,11 +1,47 @@
 package service
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 
 	"ozon-manager/internal/dto"
 	"ozon-manager/internal/model"
 )
+
+func mustJSON[T any](t *testing.T, value T) []byte {
+	t.Helper()
+
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return raw
+}
+
+func TestToSearchCPOConfigDTOIncludesExitActionIDs(t *testing.T) {
+	t.Parallel()
+
+	config := &model.SearchCPOConfig{
+		OfficialActionIDs:     mustJSON(t, []uint{11}),
+		ShopActionIDs:         mustJSON(t, []uint{22}),
+		ExitOfficialActionIDs: mustJSON(t, []uint{33}),
+		ExitShopActionIDs:     mustJSON(t, []uint{44}),
+		AutoEnabled:           true,
+		ScheduleTime:          "09:05",
+	}
+
+	dto := toSearchCPOConfigDTO(config)
+	if dto == nil {
+		t.Fatal("toSearchCPOConfigDTO() = nil")
+	}
+	if !reflect.DeepEqual(dto.ExitOfficialActionIDs, []uint{33}) {
+		t.Fatalf("ExitOfficialActionIDs = %#v", dto.ExitOfficialActionIDs)
+	}
+	if !reflect.DeepEqual(dto.ExitShopActionIDs, []uint{44}) {
+		t.Fatalf("ExitShopActionIDs = %#v", dto.ExitShopActionIDs)
+	}
+}
 
 func TestResolveSearchCPOCatalogItem(t *testing.T) {
 	t.Parallel()

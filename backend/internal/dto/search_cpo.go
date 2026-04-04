@@ -1,23 +1,27 @@
 package dto
 
 type SearchCPOConfigRequest struct {
-	ShopID            uint   `json:"shop_id" binding:"required"`
-	OfficialActionIDs []uint `json:"official_action_ids"`
-	ShopActionIDs     []uint `json:"shop_action_ids"`
-	AutoEnabled       *bool  `json:"auto_enabled"`
-	ScheduleTime      string `json:"schedule_time"`
-	EnableStep        *bool  `json:"enable_step"`
+	ShopID                uint   `json:"shop_id" binding:"required"`
+	OfficialActionIDs     []uint `json:"official_action_ids"`
+	ShopActionIDs         []uint `json:"shop_action_ids"`
+	ExitOfficialActionIDs []uint `json:"exit_official_action_ids"`
+	ExitShopActionIDs     []uint `json:"exit_shop_action_ids"`
+	AutoEnabled           *bool  `json:"auto_enabled"`
+	ScheduleTime          string `json:"schedule_time"`
+	EnableStep            *bool  `json:"enable_step"`
 }
 
 type SearchCPOConfigResponse struct {
-	ID                uint   `json:"id,omitempty"`
-	ShopID            uint   `json:"shop_id"`
-	OfficialActionIDs []uint `json:"official_action_ids"`
-	ShopActionIDs     []uint `json:"shop_action_ids"`
-	AutoEnabled       bool   `json:"auto_enabled"`
-	ScheduleTime      string `json:"schedule_time"`
-	EnableStep        bool   `json:"enable_step"`
-	UpdatedAt         string `json:"updated_at,omitempty"`
+	ID                    uint   `json:"id,omitempty"`
+	ShopID                uint   `json:"shop_id"`
+	OfficialActionIDs     []uint `json:"official_action_ids"`
+	ShopActionIDs         []uint `json:"shop_action_ids"`
+	ExitOfficialActionIDs []uint `json:"exit_official_action_ids"`
+	ExitShopActionIDs     []uint `json:"exit_shop_action_ids"`
+	AutoEnabled           bool   `json:"auto_enabled"`
+	ScheduleTime          string `json:"schedule_time"`
+	EnableStep            bool   `json:"enable_step"`
+	UpdatedAt             string `json:"updated_at,omitempty"`
 }
 
 type SearchCPOProductsResponse struct {

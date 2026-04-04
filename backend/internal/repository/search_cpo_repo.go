@@ -41,6 +41,8 @@ func (r *SearchCPORepository) UpsertConfig(config *model.SearchCPOConfig) error 
 		DoUpdates: clause.AssignmentColumns([]string{
 			"official_action_ids",
 			"shop_action_ids",
+			"exit_official_action_ids",
+			"exit_shop_action_ids",
 			"auto_enabled",
 			"schedule_time",
 			"enable_step",
