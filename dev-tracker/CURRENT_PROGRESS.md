@@ -7,6 +7,10 @@
 本次目标：同步收敛仓库协作文档，并修复 `start-dev.bat` 中两类开发启动问题：一是后端错误的 Go 单文件启动命令，二是重复执行时前后端端口已被占用却仍继续拉起新实例。
 
 ## 已完成（含关键文件）
+0. Search CPO 单一自动化流程的设计与实现计划已确认：
+   - `docs/superpowers/specs/2026-04-04-search-cpo-automation-single-flow-design.md`：已确认 Search CPO 将从“商品池与手动报名 + 状态迁移自动化”双标签收口为单一自动化页面；保留“默认活动 + 退出活动”两组固定配置；状态定义重收口为状态1/2/3/4；退出失败时该商品后续动作必须显式跳过并在详情展示“退出促销活动失败，跳过后续动作”。
+   - `docs/superpowers/plans/2026-04-04-search-cpo-automation-single-flow.md`：已拆出后端配置扩展、状态重命名、退出逻辑改造、前端单页重构、统一历史展示、`dev-tracker` 与验证收尾六个实施任务；当前尚未开始代码实现。
+   - 计划中的数据库脚本：`backend/migrations/upgrade_20260404_search_cpo_automation_single_flow.sql`，用途为补充 `exit_official_action_ids/exit_shop_action_ids`、收口旧 `rule_state` 值并扩展自动化状态统计；当前状态：仅在 spec/plan 中确定，尚未创建、尚未执行。
 0. 开发启动命令收敛修复：
    - `start-dev.bat` 已将后端启动命令从 `go run cmd/server/main.go` 改为 `go run ./cmd/server`，`frontend_static.go` 等同包文件会随包一起编译，不再出现 `isAllowedOrigin`、`detectFrontendWebRoot`、`configureFrontendStatic` 未定义。
    - `AGENTS.md`、`CLAUDE.md` 已同步修正后端运行/构建示例，避免后续协作和手工命令继续按单文件方式启动或构建 `cmd/server`。

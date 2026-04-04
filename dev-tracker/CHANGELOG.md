@@ -1,5 +1,18 @@
 # Ozon Manager 变更日志
 
+## 2026-04-04（补充三）
+### 主题
+规划 Search CPO 的下一轮目标：取消“商品池与手动报名”工作面，收口为单一自动化流程，并在执行前补齐正式 spec 与 implementation plan。
+
+### 关键变更
+1. `docs/superpowers/specs/2026-04-04-search-cpo-automation-single-flow-design.md`：
+   - 明确 Search CPO 将改为单一自动化页面，保留“默认活动 + 退出活动”两组固定配置。
+   - 状态定义收口为状态1=推广已关闭、状态2=可加入推广、状态3=已加入推广未加入 Morkovsk、状态4=已加入推广且已加入 Morkovsk。
+   - 退出逻辑改为只处理用户显式配置的退出活动；状态2/3/4一旦退出失败，该商品后续步骤显式跳过，并在详情记录“退出促销活动失败，跳过后续动作”。
+2. `docs/superpowers/plans/2026-04-04-search-cpo-automation-single-flow.md`：
+   - 已把后端配置扩展、状态常量/历史统计重命名、退出逻辑重写、前端单页化、验证与 `dev-tracker` 更新拆成六个可执行任务。
+   - 当前仅完成设计与计划，尚未进入代码实现。
+
 ## 2026-04-04（补充二）
 ### 主题
 修复 `start-dev.bat` 在前后端已运行时仍重复拉起实例的问题，避免 Vite 因 5173 端口占用直接报错退出。
