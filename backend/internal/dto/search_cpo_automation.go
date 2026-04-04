@@ -105,12 +105,14 @@ type SearchCPOAutomationRunListResponse struct {
 
 type SearchCPOAutomationRunDetailResponse struct {
 	SearchCPOAutomationRunSummaryResponse
-	ShopID            uint                                 `json:"shop_id"`
-	ConfigID          *uint                                `json:"config_id,omitempty"`
-	TriggeredBy       *uint                                `json:"triggered_by,omitempty"`
-	ScheduleTime      string                               `json:"schedule_time,omitempty"`
-	EnableStep        bool                                 `json:"enable_step"`
-	OfficialActionIDs []uint                               `json:"official_action_ids"`
-	ShopActionIDs     []uint                               `json:"shop_action_ids"`
-	Items             []SearchCPOAutomationRunItemResponse `json:"items"`
+	ShopID                uint                                 `json:"shop_id"`
+	ConfigID              *uint                                `json:"config_id,omitempty"`
+	TriggeredBy           *uint                                `json:"triggered_by,omitempty"`
+	ScheduleTime          string                               `json:"schedule_time,omitempty"`
+	EnableStep            bool                                 `json:"enable_step"`
+	OfficialActionIDs     []uint                               `json:"official_action_ids"`
+	ShopActionIDs         []uint                               `json:"shop_action_ids"`
+	ExitOfficialActionIDs []uint                               `json:"exit_official_action_ids"`
+	ExitShopActionIDs     []uint                               `json:"exit_shop_action_ids"`
+	Items                 []SearchCPOAutomationRunItemResponse `json:"items"`
 }

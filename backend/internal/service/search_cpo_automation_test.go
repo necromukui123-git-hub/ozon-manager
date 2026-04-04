@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -228,6 +229,105 @@ func TestToSearchCPOAutomationRunSummaryDTOUsesState3AndState4Totals(t *testing.
 	}
 	if dto.TotalState4 != 4 {
 		t.Fatalf("TotalState4 = %d, want 4", dto.TotalState4)
+	}
+}
+
+func TestFilterSearchCPOConfiguredExitActionsUsesConfiguredIDsOnly(t *testing.T) {
+	t.Parallel()
+
+	actions := []model.PromotionAction{
+		{ID: 11, Source: "official", Title: "official-selected"},
+		{ID: 12, Source: "official", Title: "official-unselected"},
+		{ID: 21, Source: "shop", Title: "shop-unselected"},
+		{ID: 22, Source: "shop", Title: "shop-selected"},
+	}
+
+	filtered := filterSearchCPOConfiguredExitActions(actions, []uint{11}, []uint{22})
+	if len(filtered) != 2 {
+		t.Fatalf("len(filtered) = %d, want 2", len(filtered))
+	}
+	if filtered[0].ID != 11 || filtered[1].ID != 22 {
+		t.Fatalf("filtered IDs = [%d %d], want [11 22]", filtered[0].ID, filtered[1].ID)
+	}
+}
+
+func TestMarkSearchCPOExitFailureSkipsFollowupAfterExitFailure(t *testing.T) {
+	t.Parallel()
+
+	t.Run("state3 skips enable and morkovsk with fixed message", func(t *testing.T) {
+		t.Parallel()
+
+		state := &searchCPOAutomationItemState{
+			RuleStateAfter: model.SearchCPORuleStateState3,
+			Message:        "店铺接口超时",
+		}
+
+		markSearchCPOExitFailureFollowup(state, false)
+
+		if state.EnableStatus != model.SearchCPOItemStatusSkipped {
+			t.Fatalf("EnableStatus = %q", state.EnableStatus)
+		}
+		if state.MorkovskStatus != model.SearchCPOItemStatusSkipped {
+			t.Fatalf("MorkovskStatus = %q", state.MorkovskStatus)
+		}
+		if state.EnableResult.Status != model.SearchCPOItemStatusSkipped {
+			t.Fatalf("EnableResult.Status = %q", state.EnableResult.Status)
+		}
+		if state.MorkovskResult.Status != model.SearchCPOItemStatusSkipped {
+			t.Fatalf("MorkovskResult.Status = %q", state.MorkovskResult.Status)
+		}
+		if !strings.Contains(state.Message, "退出促销活动失败，跳过后续动作") {
+			t.Fatalf("Message = %q, want fixed skip message", state.Message)
+		}
+	})
+
+	t.Run("state4 keeps repeated steps skipped and records fixed message", func(t *testing.T) {
+		t.Parallel()
+
+		state := &searchCPOAutomationItemState{
+			RuleStateAfter: model.SearchCPORuleStateState4,
+		}
+
+		markSearchCPOExitFailureFollowup(state, true)
+
+		if state.EnableStatus != model.SearchCPOItemStatusSkipped {
+			t.Fatalf("EnableStatus = %q", state.EnableStatus)
+		}
+		if state.MorkovskStatus != model.SearchCPOItemStatusSkipped {
+			t.Fatalf("MorkovskStatus = %q", state.MorkovskStatus)
+		}
+		if !strings.Contains(state.Message, "退出促销活动失败，跳过后续动作") {
+			t.Fatalf("Message = %q, want fixed skip message", state.Message)
+		}
+	})
+}
+
+func TestDecodeSearchCPOAutomationConfigSnapshotIncludesExitActions(t *testing.T) {
+	t.Parallel()
+
+	raw, err := json.Marshal(searchCPOAutomationConfigSnapshot{
+		ScheduleTime:          "09:05",
+		OfficialActionIDs:     []uint{11, 11},
+		ShopActionIDs:         []uint{22, 22},
+		ExitOfficialActionIDs: []uint{33, 33},
+		ExitShopActionIDs:     []uint{44, 44},
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	snapshot := decodeSearchCPOAutomationConfigSnapshot(datatypes.JSON(raw))
+	if !reflect.DeepEqual(snapshot.OfficialActionIDs, []uint{11}) {
+		t.Fatalf("OfficialActionIDs = %#v", snapshot.OfficialActionIDs)
+	}
+	if !reflect.DeepEqual(snapshot.ShopActionIDs, []uint{22}) {
+		t.Fatalf("ShopActionIDs = %#v", snapshot.ShopActionIDs)
+	}
+	if !reflect.DeepEqual(snapshot.ExitOfficialActionIDs, []uint{33}) {
+		t.Fatalf("ExitOfficialActionIDs = %#v", snapshot.ExitOfficialActionIDs)
+	}
+	if !reflect.DeepEqual(snapshot.ExitShopActionIDs, []uint{44}) {
+		t.Fatalf("ExitShopActionIDs = %#v", snapshot.ExitShopActionIDs)
 	}
 }
 

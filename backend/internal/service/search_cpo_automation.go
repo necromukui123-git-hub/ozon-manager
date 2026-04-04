@@ -27,23 +27,27 @@ const (
 )
 
 type searchCPOAutomationConfigSnapshot struct {
-	ScheduleTime      string `json:"schedule_time,omitempty"`
-	EnableStep        bool   `json:"enable_step"`
-	OfficialActionIDs []uint `json:"official_action_ids"`
-	ShopActionIDs     []uint `json:"shop_action_ids"`
+	ScheduleTime          string `json:"schedule_time,omitempty"`
+	EnableStep            bool   `json:"enable_step"`
+	OfficialActionIDs     []uint `json:"official_action_ids"`
+	ShopActionIDs         []uint `json:"shop_action_ids"`
+	ExitOfficialActionIDs []uint `json:"exit_official_action_ids"`
+	ExitShopActionIDs     []uint `json:"exit_shop_action_ids"`
 }
 
 type searchCPOAutomationRunInput struct {
-	RunID             uint
-	ConfigID          *uint
-	ShopID            uint
-	TriggeredBy       *uint
-	TriggerMode       string
-	TriggerDate       time.Time
-	ScheduleTime      string
-	EnableStep        bool
-	OfficialActionIDs []uint
-	ShopActionIDs     []uint
+	RunID                 uint
+	ConfigID              *uint
+	ShopID                uint
+	TriggeredBy           *uint
+	TriggerMode           string
+	TriggerDate           time.Time
+	ScheduleTime          string
+	EnableStep            bool
+	OfficialActionIDs     []uint
+	ShopActionIDs         []uint
+	ExitOfficialActionIDs []uint
+	ExitShopActionIDs     []uint
 }
 
 type searchCPOAvailabilityArtifact struct {
@@ -140,6 +144,27 @@ func markSearchCPOJoinedRepairSkippedSteps(state *searchCPOAutomationItemState) 
 	}
 }
 
+func markSearchCPOExitFailureFollowup(state *searchCPOAutomationItemState, joinedRepair bool) {
+	if state == nil {
+		return
+	}
+	state.Message = appendSearchCPOItemMessage(state.Message, "退出促销活动失败，跳过后续动作")
+	if joinedRepair {
+		markSearchCPOJoinedRepairSkippedSteps(state)
+		return
+	}
+	state.EnableStatus = model.SearchCPOItemStatusSkipped
+	state.EnableResult = dto.SearchCPOAutomationStepResult{
+		Status:  model.SearchCPOItemStatusSkipped,
+		Message: "退出促销活动失败，跳过后续动作",
+	}
+	state.MorkovskStatus = model.SearchCPOItemStatusSkipped
+	state.MorkovskResult = dto.SearchCPOAutomationStepResult{
+		Status:  model.SearchCPOItemStatusSkipped,
+		Message: "退出促销活动失败，跳过后续动作",
+	}
+}
+
 func appendSearchCPOItemMessage(current string, addition string) string {
 	current = strings.TrimSpace(current)
 	addition = strings.TrimSpace(addition)
@@ -153,6 +178,32 @@ func appendSearchCPOItemMessage(current string, addition string) string {
 	default:
 		return current + "；" + addition
 	}
+}
+
+func filterSearchCPOConfiguredExitActions(actions []model.PromotionAction, officialIDs []uint, shopIDs []uint) []model.PromotionAction {
+	officialSet := make(map[uint]struct{}, len(officialIDs))
+	for _, id := range uniqueUints(officialIDs) {
+		officialSet[id] = struct{}{}
+	}
+	shopSet := make(map[uint]struct{}, len(shopIDs))
+	for _, id := range uniqueUints(shopIDs) {
+		shopSet[id] = struct{}{}
+	}
+
+	filtered := make([]model.PromotionAction, 0, len(actions))
+	for _, action := range actions {
+		switch action.Source {
+		case "official":
+			if _, ok := officialSet[action.ID]; ok {
+				filtered = append(filtered, action)
+			}
+		case "shop":
+			if _, ok := shopSet[action.ID]; ok {
+				filtered = append(filtered, action)
+			}
+		}
+	}
+	return filtered
 }
 
 func normalizeSearchCPORuleState(state string) string {
@@ -266,14 +317,16 @@ func (s *SearchCPOService) StartAutomationRun(userID uint, req *dto.SearchCPOAut
 
 	now := time.Now()
 	input := searchCPOAutomationRunInput{
-		ShopID:            req.ShopID,
-		TriggeredBy:       &userID,
-		TriggerMode:       model.SearchCPOAutoTriggerModeManual,
-		TriggerDate:       dateOnlyValue(now),
-		ScheduleTime:      cfg.ScheduleTime,
-		EnableStep:        true,
-		OfficialActionIDs: uniqueUints(cfg.OfficialActionIDs),
-		ShopActionIDs:     uniqueUints(cfg.ShopActionIDs),
+		ShopID:                req.ShopID,
+		TriggeredBy:           &userID,
+		TriggerMode:           model.SearchCPOAutoTriggerModeManual,
+		TriggerDate:           dateOnlyValue(now),
+		ScheduleTime:          cfg.ScheduleTime,
+		EnableStep:            true,
+		OfficialActionIDs:     uniqueUints(cfg.OfficialActionIDs),
+		ShopActionIDs:         uniqueUints(cfg.ShopActionIDs),
+		ExitOfficialActionIDs: uniqueUints(cfg.ExitOfficialActionIDs),
+		ExitShopActionIDs:     uniqueUints(cfg.ExitShopActionIDs),
 	}
 	if strings.TrimSpace(input.ScheduleTime) == "" {
 		input.ScheduleTime = searchCPODefaultScheduleTime
@@ -348,6 +401,8 @@ func (s *SearchCPOService) GetAutomationRunDetail(shopID, runID uint) (*dto.Sear
 		EnableStep:                            snapshot.EnableStep,
 		OfficialActionIDs:                     snapshot.OfficialActionIDs,
 		ShopActionIDs:                         snapshot.ShopActionIDs,
+		ExitOfficialActionIDs:                 snapshot.ExitOfficialActionIDs,
+		ExitShopActionIDs:                     snapshot.ExitShopActionIDs,
 		Items:                                 items,
 	}, nil
 }
@@ -398,15 +453,17 @@ func (s *SearchCPOService) scanDueAutomationConfigs(now time.Time) {
 		}
 		triggeredBy := s.resolveSearchCPOAutomationOwner(config.ShopID)
 		input := searchCPOAutomationRunInput{
-			ConfigID:          &config.ID,
-			ShopID:            config.ShopID,
-			TriggeredBy:       triggeredBy,
-			TriggerMode:       model.SearchCPOAutoTriggerModeScheduled,
-			TriggerDate:       dateOnlyValue(now),
-			ScheduleTime:      scheduleTime,
-			EnableStep:        true,
-			OfficialActionIDs: decodeUintSlice(config.OfficialActionIDs),
-			ShopActionIDs:     decodeUintSlice(config.ShopActionIDs),
+			ConfigID:              &config.ID,
+			ShopID:                config.ShopID,
+			TriggeredBy:           triggeredBy,
+			TriggerMode:           model.SearchCPOAutoTriggerModeScheduled,
+			TriggerDate:           dateOnlyValue(now),
+			ScheduleTime:          scheduleTime,
+			EnableStep:            true,
+			OfficialActionIDs:     decodeUintSlice(config.OfficialActionIDs),
+			ShopActionIDs:         decodeUintSlice(config.ShopActionIDs),
+			ExitOfficialActionIDs: decodeUintSlice(config.ExitOfficialActionIDs),
+			ExitShopActionIDs:     decodeUintSlice(config.ExitShopActionIDs),
 		}
 		run, createErr := s.createAutomationRun(input)
 		if createErr != nil {
@@ -432,10 +489,12 @@ func (s *SearchCPOService) createAutomationRun(input searchCPOAutomationRunInput
 		scheduleTime = searchCPODefaultScheduleTime
 	}
 	snapshotBytes, _ := json.Marshal(searchCPOAutomationConfigSnapshot{
-		ScheduleTime:      scheduleTime,
-		EnableStep:        input.EnableStep,
-		OfficialActionIDs: input.OfficialActionIDs,
-		ShopActionIDs:     input.ShopActionIDs,
+		ScheduleTime:          scheduleTime,
+		EnableStep:            input.EnableStep,
+		OfficialActionIDs:     input.OfficialActionIDs,
+		ShopActionIDs:         input.ShopActionIDs,
+		ExitOfficialActionIDs: input.ExitOfficialActionIDs,
+		ExitShopActionIDs:     input.ExitShopActionIDs,
 	})
 	run := &model.SearchCPOAutoRun{
 		ConfigID:       input.ConfigID,
@@ -745,25 +804,13 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 		triggerUserID = resolveSearchCPOTriggerUserID(input.TriggeredBy)
 	}
 
-	actions, err := s.syncActionsForMigration(input.ShopID, triggerUserID)
+	configuredExitActions, err := s.resolveConfiguredSearchCPOExitActions(input.ShopID, input.ExitOfficialActionIDs, input.ExitShopActionIDs)
 	if err != nil {
 		markSearchCPOMigrationSetupFailed(sourceSKUs, itemStates, err.Error(), nil)
 		return nil
 	}
-	loadResult, err := s.loadActiveMigrationActions(input.ShopID, triggerUserID, sourceSKUs, actions)
-	var grouped map[string][]model.PromotionAction
-	precheckResults := []dto.SearchCPORunActionResult(nil)
-	if loadResult != nil {
-		grouped = loadResult.Grouped
-		precheckResults = cloneSearchCPORunActionResults(loadResult.IssueResults)
-	}
-	if err != nil {
-		markSearchCPOMigrationSetupFailed(sourceSKUs, itemStates, err.Error(), precheckResults)
-		return nil
-	}
-	if grouped == nil {
-		grouped = make(map[string][]model.PromotionAction)
-	}
+	officialExitActions, shopExitActions := splitActionsBySource(configuredExitActions)
+	exitConfigured := len(officialExitActions) > 0 || len(shopExitActions) > 0
 
 	eligibleForEnable := make([]string, 0, len(sourceSKUs))
 	for _, sku := range sourceSKUs {
@@ -772,10 +819,8 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 			continue
 		}
 		joinedRepair := isSearchCPOJoinedRepairState(state)
-		exitResults := cloneSearchCPORunActionResults(precheckResults)
-		matchedActions := grouped[sku]
-		if len(matchedActions) == 0 {
-			state.ExitResults = exitResults
+		if !exitConfigured {
+			state.ExitResults = nil
 			state.ExitStatus = model.SearchCPOItemStatusSkipped
 			if joinedRepair {
 				markSearchCPOJoinedRepairSkippedSteps(state)
@@ -784,12 +829,11 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 			eligibleForEnable = append(eligibleForEnable, sku)
 			continue
 		}
-		officialActions, shopActions := splitActionsBySource(matchedActions)
-		actionResults := make([]dto.SearchCPORunActionResult, 0, len(matchedActions))
+		actionResults := make([]dto.SearchCPORunActionResult, 0, len(officialExitActions)+len(shopExitActions))
 		exitFailed := false
 
-		if len(officialActions) > 0 {
-			for _, action := range officialActions {
+		if len(officialExitActions) > 0 {
+			for _, action := range officialExitActions {
 				resp, removeErr := s.promotionService.removeFromOfficialActions(input.ShopID, []model.PromotionAction{action}, []string{sku})
 				result := dto.SearchCPORunActionResult{
 					PromotionActionID: action.ID,
@@ -799,21 +843,25 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 					Status:            model.SearchCPOItemStatusSuccess,
 				}
 				if removeErr != nil || resp == nil || !resp.Success {
-					result.Status = model.SearchCPOItemStatusFailed
 					result.Error = firstNonEmptyServiceTrimmed(errorText(removeErr), officialRemoveError(resp), "官方活动退出失败")
-					exitFailed = true
+					if isSkippableSearchCPOExitMessage(result.Error) {
+						result.Status = model.SearchCPOItemStatusSkipped
+					} else {
+						result.Status = model.SearchCPOItemStatusFailed
+						exitFailed = true
+					}
 				}
 				actionResults = append(actionResults, result)
 			}
 		}
 
-		if len(shopActions) > 0 {
+		if len(shopExitActions) > 0 {
 			shopExitMeta := buildSearchCPOSKUMetaFromStates([]string{sku}, itemStates)
 			requestSKU := normalizeSearchCPOTargetSKU(sku, state.Product.SKU)
 			if requestSKU == "" {
 				requestSKU = sku
 			}
-			for _, action := range shopActions {
+			for _, action := range shopExitActions {
 				result := dto.SearchCPORunActionResult{
 					PromotionActionID: action.ID,
 					SourceActionID:    action.SourceActionID,
@@ -868,18 +916,10 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 			}
 		}
 
-		exitResults = append(exitResults, actionResults...)
-		state.ExitResults = exitResults
+		state.ExitResults = actionResults
 		if exitFailed {
 			state.ExitStatus = model.SearchCPOItemStatusFailed
-			if joinedRepair {
-				markSearchCPOJoinedRepairSkippedSteps(state)
-			} else {
-				state.EnableStatus = model.SearchCPOItemStatusSkipped
-				state.EnableResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未执行 enable"}
-				state.MorkovskStatus = model.SearchCPOItemStatusSkipped
-				state.MorkovskResult = dto.SearchCPOAutomationStepResult{Status: model.SearchCPOItemStatusSkipped, Message: "前置退出失败，未加入 Morkovsk"}
-			}
+			markSearchCPOExitFailureFollowup(state, joinedRepair)
 			continue
 		}
 		state.ExitStatus = summarizeSearchCPOActionResultsStatus(actionResults)
@@ -1019,6 +1059,17 @@ func (s *SearchCPOService) syncActionsForMigration(shopID, triggerUserID uint) (
 		return nil, err
 	}
 	return actions, nil
+}
+
+func (s *SearchCPOService) resolveConfiguredSearchCPOExitActions(shopID uint, officialIDs []uint, shopIDs []uint) ([]model.PromotionAction, error) {
+	if len(officialIDs)+len(shopIDs) == 0 {
+		return nil, nil
+	}
+	actions, err := s.resolveActions(shopID, officialIDs, shopIDs)
+	if err != nil {
+		return nil, fmt.Errorf("退出活动配置无效: %w", err)
+	}
+	return filterSearchCPOConfiguredExitActions(actions, officialIDs, shopIDs), nil
 }
 
 func (s *SearchCPOService) loadActiveMigrationActions(shopID, triggerUserID uint, sourceSKUs []string, actions []model.PromotionAction) (*searchCPOMigrationLoadResult, error) {
@@ -1448,13 +1499,21 @@ func toSearchCPOAutomationRunSummaryDTO(run *model.SearchCPOAutoRun) *dto.Search
 }
 
 func decodeSearchCPOAutomationConfigSnapshot(raw datatypes.JSON) searchCPOAutomationConfigSnapshot {
-	snapshot := searchCPOAutomationConfigSnapshot{EnableStep: true, OfficialActionIDs: []uint{}, ShopActionIDs: []uint{}}
+	snapshot := searchCPOAutomationConfigSnapshot{
+		EnableStep:            true,
+		OfficialActionIDs:     []uint{},
+		ShopActionIDs:         []uint{},
+		ExitOfficialActionIDs: []uint{},
+		ExitShopActionIDs:     []uint{},
+	}
 	if len(raw) == 0 {
 		return snapshot
 	}
 	_ = json.Unmarshal(raw, &snapshot)
 	snapshot.OfficialActionIDs = uniqueUints(snapshot.OfficialActionIDs)
 	snapshot.ShopActionIDs = uniqueUints(snapshot.ShopActionIDs)
+	snapshot.ExitOfficialActionIDs = uniqueUints(snapshot.ExitOfficialActionIDs)
+	snapshot.ExitShopActionIDs = uniqueUints(snapshot.ExitShopActionIDs)
 	return snapshot
 }
 
