@@ -24,10 +24,10 @@ Ozon店铺管理系统 - 用于管理Ozon电商平台的商品促销活动。主
 cd backend
 
 # 运行后端服务（需先配置 config/config.yaml）
-go run cmd/server/main.go
+go run ./cmd/server
 
 # 构建
-go build -o server cmd/server/main.go
+go build -o server ./cmd/server
 
 # 重置密码工具
 go run cmd/reset-password/main.go
@@ -53,7 +53,7 @@ npm run build
 **Windows 一键启动**：双击项目根目录的 `start-dev.bat`
 
 或手动启动：
-1. 终端1: `cd backend && go run cmd/server/main.go`
+1. 终端1: `cd backend && go run ./cmd/server`
 2. 终端2: `cd frontend && npm run dev`
 3. 访问 http://localhost:5173
 

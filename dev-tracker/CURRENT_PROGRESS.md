@@ -1,12 +1,24 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-03-31
-状态：进行中（已完成 access token + refresh token 代码实现与验证；待观察真实环境隔夜续期表现）
+最后更新时间：2026-04-04
+状态：进行中（已完成协作文档对齐、开发启动命令与端口守卫收敛；业务主线继续推进真实环境回归、Search CPO 自动化收敛与 Chrome 商店上架准备）
 
 ## 本次交付单元
-本次目标：完成 access token + refresh token 认证升级，实现 Web 端自动续期与会话撤销，优先解决隔夜重新打开后的掉线问题，并保持现有 Chrome 插件 token 自动同步链路兼容。
+本次目标：同步收敛仓库协作文档，并修复 `start-dev.bat` 中两类开发启动问题：一是后端错误的 Go 单文件启动命令，二是重复执行时前后端端口已被占用却仍继续拉起新实例。
 
 ## 已完成（含关键文件）
+0. 开发启动命令收敛修复：
+   - `start-dev.bat` 已将后端启动命令从 `go run cmd/server/main.go` 改为 `go run ./cmd/server`，`frontend_static.go` 等同包文件会随包一起编译，不再出现 `isAllowedOrigin`、`detectFrontendWebRoot`、`configureFrontendStatic` 未定义。
+   - `AGENTS.md`、`CLAUDE.md` 已同步修正后端运行/构建示例，避免后续协作和手工命令继续按单文件方式启动或构建 `cmd/server`。
+   - 新增 `scripts/check-go-package-entry.ps1` 作为轻量回归校验，约束 `start-dev.bat`、`AGENTS.md`、`CLAUDE.md` 必须使用 `./cmd/server` 包路径。
+0. 开发启动端口守卫修复：
+   - `start-dev.bat` 已新增 8080/5173 监听检测；若后端或前端已在运行，会直接提示 `already listening ... skipping start`，不再重复拉起新窗口并触发 Vite `Port 5173 is already in use`。
+   - 新增 `scripts/check-start-dev-port-guards.ps1` 作为轻量回归校验，约束 `start-dev.bat` 必须保留端口守卫逻辑与提示文案。
+   - 已用单进程临时 `TcpListener` 占住 8080/5173 现场验证 `start-dev.bat`，确认脚本会跳过重复启动而不是继续撞端口。
+0. 协作文档与仓库现状对齐：
+   - `AGENTS.md` 已补充当前有效的插件打包入口 `package-browser-extension.ps1`、Windows 发布脚本 `build-windows-release.ps1`、插件 service worker 实际入口 `background_search_cpo_bootstrap.js` 与 patch 加载链说明。
+   - `AGENTS.md` 已同步补充 access token + refresh token 会话约束、`user_refresh_tokens` 基线说明、店铺 `execution_engine_mode` 约束，以及当前阶段重点从“待实现的插件接入能力”改为“商店上架、真实环境回归、执行引擎监控与 Search CPO live 收敛”。
+   - `dev-tracker/CURRENT_PROGRESS.md`、`dev-tracker/CHANGELOG.md` 已同步记录本次文档收敛；本次无数据库结构变更，无新增 migration 脚本。
 0. access token + refresh token 认证升级已完成代码实现与验证：
    - 设计与实施文档：`docs/superpowers/specs/2026-03-31-auth-refresh-token-design.md`、`docs/superpowers/plans/2026-03-31-auth-refresh-token-implementation.md` 已作为本轮实现基线保留。
    - 后端认证链路：`backend/pkg/jwt/jwt.go`、`backend/internal/service/auth_service.go`、`backend/internal/handler/auth_handler.go`、`backend/cmd/server/main.go` 已切到短期 access token + `HttpOnly` refresh cookie；新增公开 `POST /api/v1/auth/refresh` 与公开 `POST /api/v1/auth/logout`，refresh 成功会轮换 refresh token 并返回新的 `token_expires_at`。
@@ -425,6 +437,8 @@
 40. 用途：为自动加促销配置和运行历史补充 `target_date_mode`，并允许配置表在“昨天/今天”模式下不保存固定 `target_date`。
 41. 执行条件：目标库已存在 `auto_promotion_configs` 与 `auto_promotion_runs`；脚本支持幂等重复执行。
 42. 执行结果：脚本已编写，`init_database.sql` 已同步回写；本轮未在当前会话直接执行数据库升级。
+43. 本次（开发启动脚本按包运行修复）无新增迁移脚本：仅调整 `start-dev.bat`、协作文档中的 Go 命令示例与一条轻量回归脚本，不涉及数据库结构变更。
+44. 本次（开发启动脚本端口守卫修复）无新增迁移脚本：仅调整 `start-dev.bat` 与一条轻量回归脚本，不涉及数据库结构变更。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。
@@ -432,7 +446,7 @@
 3. 执行引擎路由监控指标尚未落地。
 
 ## 下一步（最多 3 项）
-1. 先实现后端认证链路：补 `user_refresh_tokens` 表、refresh token 仓储与轮换逻辑，新增 `/api/v1/auth/refresh`，并把 `/api/v1/auth/logout` 改成可在 access token 过期后仍可撤销 refresh token 的公开接口。
-2. 再实现前端静默续期：应用启动先做 refresh 初始化，Axios `401` 改成单飞刷新并重放原请求，同时把 `token_expires_at` 纳入本地状态。
-3. 完成 Web 端后做插件兼容 smoke：确认管理端 refresh 成功后，`content-auth-sync.js` 能把新 access token 继续同步给插件；插件独立 refresh 能力另开后续任务，不混入本轮。
+1. 完成真实环境混合在线回归：重点覆盖多店铺、extension/agent 并存、隔夜 access token 静默续期与插件自动连接稳定性。
+2. 补执行引擎路由监控指标，并继续收集 Search CPO live 样本与自动化详情诊断，收敛 `enable` / `carrots/batch_enable` 的剩余现场差异。
+3. 继续准备 Chrome 商店上架材料：权限说明、隐私政策、审核说明与安装引导文案。
 

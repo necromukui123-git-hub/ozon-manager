@@ -6,19 +6,25 @@
 - `backend/pkg/`：通用能力（如 `ozon/`、`excel/`、`jwt/`）。
 - `backend/migrations/init_database.sql`：数据库初始化与全量结构基线。
 - `frontend/`：Vue 3 + Vite 前端，主代码在 `frontend/src/`（`views/`、`api/`、`stores/`、`router/`、`styles/`）。
-- `browser-extension/ozon-shop-bridge/`：Chrome 插件执行通道（店铺促销任务执行，MV3）。
+- `browser-extension/ozon-shop-bridge/`：Chrome 插件执行通道（店铺促销任务执行，MV3）；当前 service worker 入口由 `manifest.json -> background_search_cpo_bootstrap.js`，再加载 `background_search_cpo*.js/patch` 链。
+- `agent/`：旧本机 Agent 执行通道（`mock` / `playwright`），当前主要用于兼容链路与对照调试。
 - `dev-tracker/`：开发追踪文档目录（`OVERALL_TASKS.md`、`CURRENT_PROGRESS.md`、`CHANGELOG.md`）。
+- `docs/`：实现设计、计划等补充文档，当前 `docs/superpowers/` 下保留近期方案基线。
+- `release/`：Windows 发布产物目录，由根目录发布脚本生成，默认不手工编辑。
 - 根目录 `start-dev.bat`：Windows 下一键启动前后端。
 
 ## 构建、测试与开发命令
-- 后端运行：`cd backend && go run cmd/server/main.go`
-- 后端构建：`cd backend && go build -o server cmd/server/main.go`
+- 后端运行：`cd backend && go run ./cmd/server`
+- 后端构建：`cd backend && go build -o server ./cmd/server`
 - 密码重置工具：`cd backend && go run cmd/reset-password/main.go`
+- 密码迁移工具：`cd backend && go run cmd/migrate-passwords/main.go`
 - 前端开发：`cd frontend && npm run dev`
 - 前端构建：`cd frontend && npm run build`
 - 前端预览：`cd frontend && npm run preview`
-- 插件打包（测试包）：`cd browser-extension/ozon-shop-bridge/scripts && .\package.ps1`
+- 插件打包（当前默认入口）：`powershell -ExecutionPolicy Bypass -File .\package-browser-extension.ps1`
+- 插件目录内 `scripts/package.ps1`：旧打包脚本，仅保留历史结构对照，不作为当前主入口。
 - 插件加载（测试）：打开 `chrome://extensions/`，开启开发者模式，加载 `browser-extension/ozon-shop-bridge` 目录
+- Windows 发布包构建：`powershell -ExecutionPolicy Bypass -File .\build-windows-release.ps1`
 - 一键启动：双击根目录 `start-dev.bat`
 
 ## 代码风格与命名规范
@@ -73,14 +79,29 @@
   - 本次增量脚本已记录在 `dev-tracker/CURRENT_PROGRESS.md`。
   - 相关目标状态已同步到 `dev-tracker/OVERALL_TASKS.md`。
 
+## Windows 发布约定（当前）
+- 正式 Windows 发布统一使用根目录 `build-windows-release.ps1`；脚本会同时构建前端 `dist`、后端 `server.exe`、插件目录/zip 和数据库脚本到 `release/ozon-manager-win-x64/`。
+- 发布包管理端由后端同源托管；目标机启动 `server/start-ozon-manager.bat` 即可访问 `http://127.0.0.1:8080`，不需要再单独安装 Node/Vite。
+- 发布包必须携带 `server/database/init_database.sql` 与全部 `upgrade_*.sql`；如发布规则调整，需同步更新 `README-windows-deploy.md`。
+
+## 认证与会话约束（当前架构）
+- Web 管理端当前采用短期 access token + `HttpOnly` refresh cookie；认证链路涉及 `POST /api/v1/auth/refresh` 与 `POST /api/v1/auth/logout` 时，必须同时核对前后端兼容性。
+- JWT 配置除 `secret/expire_hours` 外，还需同步关注 `access_expire_minutes`、`refresh_expire_hours`、`refresh_cookie_name`、`refresh_cookie_secure`。
+- Chrome 插件当前仍通过管理端 `localStorage.token/currentShopId` 自动同步登录态；调整 Web 鉴权时必须验证插件兼容，不要默认插件已具备独立 refresh 流程。
+- 涉及 refresh token 持久化时，同时更新 `user_refresh_tokens` 相关 migration、`init_database.sql` 基线与部署说明。
+
 ## 执行通道约束（当前架构）
 - 官方促销：由后端通过官方 API 执行。
 - 店铺促销：优先由浏览器插件执行（静默优先，未登录时触发登录兜底）。
-- 当前旧 `agent` 与插件并存，测试阶段不建议同时启用同类任务领取，以避免任务竞争。
-- 当前插件自动同步 `token/currentShopId` 默认面向 localhost 开发环境；非 localhost 域名需补充插件匹配配置。
+- 每个店铺支持 `execution_engine_mode`：`auto` / `extension` / `agent`；调整任务路由时要同时关注领取防抢、归属校验和系统概览中的插件状态面板。
+- 当前旧 `agent` 与插件并存；测试阶段不建议同时启用同类任务领取，以避免任务竞争。`agent/` 主要作为兼容链路与对照调试入口，不是当前默认主执行器。
+- 当前插件自动同步 `token/currentShopId` 默认直连 localhost/127.0.0.1 管理端；非 localhost 已支持白名单 + 按需授权，手填 `adminOrigin/token/shop_id` 仅作高级兜底。
 
-## 阶段状态（截至当前）
-- 后端 extension 接口已具备：`/api/v1/extension/register`、`/api/v1/extension/poll`、`/api/v1/extension/report`、`/api/v1/extension/reprice`。
+## 阶段状态（截至 2026-04-04）
+- Web 认证已升级为 access token + refresh token；后端已提供公开 `POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`，数据库基线已纳入 `user_refresh_tokens`。
+- 后端 extension 接口已具备：`/api/v1/extension/register`、`/api/v1/extension/poll`、`/api/v1/extension/report`、`/api/v1/extension/reprice`；按店铺执行引擎模式与插件状态面板已落地。
 - 插件当前支持任务：`sync_shop_actions`、`sync_action_candidates`、`sync_search_cpo_products`、`sync_search_cpo_availability`、`search_cpo_enable_products`、`search_cpo_batch_enable_morkovsk`、`sync_action_products`、`shop_action_declare`、`shop_action_remove`、`promo_unified_enroll`、`promo_unified_remove`、`remove_reprice_readd`。
-- 当前后续重点：执行引擎路由开关、前端插件状态面板、非 localhost 自动同步完善、后端测试补充、Chrome 商店上架准备。
+- 插件当前主流程是“自动连接管理端登录态”；普通用户默认不再手填 token，非 localhost 首次按提示授权即可。
+- Windows 单机发布链路已落地：根目录可直接产出 `server.exe + web + database + browser-extension` 发布包，目标机仅需 PostgreSQL 和 Chrome。
+- 当前后续重点：Chrome 商店上架材料与隐私文案、真实环境多店铺混合在线回归、执行引擎路由监控指标，以及 Search CPO 自动化在 live 样本上的持续收敛。
 

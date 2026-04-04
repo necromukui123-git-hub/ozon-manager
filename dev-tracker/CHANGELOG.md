@@ -1,5 +1,71 @@
 # Ozon Manager 变更日志
 
+## 2026-04-04（补充二）
+### 主题
+修复 `start-dev.bat` 在前后端已运行时仍重复拉起实例的问题，避免 Vite 因 5173 端口占用直接报错退出。
+
+### 关键变更
+1. `start-dev.bat`：
+   - 新增 8080 与 5173 监听检测；若端口已被监听，则输出 `already listening ... skipping start` 并跳过对应服务启动。
+   - 保留原有“端口空闲时直接启动”的行为，只对重复启动场景加守卫，不改现有开发端口约定。
+2. `scripts/check-start-dev-port-guards.ps1`：
+   - 新增轻量回归脚本，检查 `start-dev.bat` 必须包含 8080/5173 端口守卫与跳过提示，避免后续再次回退到无条件拉起实例。
+
+### 影响范围
+1. 连续双击或重复执行 `start-dev.bat` 时，已在运行的 Vite / 后端实例不会再被重复拉起。
+2. 用户在已有前端开发服务器占用 5173 的情况下，再次执行启动脚本时会得到明确提示，而不是仅看到 Vite `Port 5173 is already in use` 报错。
+3. 本次不涉及业务逻辑、接口协议或数据库结构变更。
+
+### 验证
+1. `powershell -ExecutionPolicy Bypass -File .\scripts\check-start-dev-port-guards.ps1` 通过。
+2. 使用单进程临时 `TcpListener` 占住 8080/5173 后执行 `cmd /c "echo.| start-dev.bat"`，输出已确认包含：
+   - `Backend already listening on port 8080 ..., skipping start.`
+   - `Frontend already listening on port 5173 ..., skipping start.`
+
+## 2026-04-04（补充）
+### 主题
+修复 `start-dev.bat` 与协作文档中错误的 Go 单文件启动命令，避免 `cmd/server` 同包文件未参与编译导致开发环境无法启动。
+
+### 关键变更
+1. `start-dev.bat`：
+   - 后端启动命令由 `go run cmd/server/main.go` 改为 `go run ./cmd/server`，`frontend_static.go` 中的 `isAllowedOrigin`、`detectFrontendWebRoot`、`configureFrontendStatic` 会随同包一起编译。
+2. `AGENTS.md`、`CLAUDE.md`：
+   - 后端运行与构建示例统一改为 `go run ./cmd/server`、`go build -o server ./cmd/server`，消除手工启动和代理协作时继续复用错误命令的风险。
+3. `scripts/check-go-package-entry.ps1`：
+   - 新增轻量回归脚本，检查 `start-dev.bat`、`AGENTS.md`、`CLAUDE.md` 不得再出现 `cmd/server/main.go` 这种单文件 Go 入口命令。
+
+### 影响范围
+1. Windows 下双击 `start-dev.bat` 时，后端可按包正常编译启动，不再因同目录辅助文件未被纳入构建而直接报错。
+2. 后续手工开发、代理协作与命令复制场景会统一使用正确的 `./cmd/server` 包路径。
+3. 本次不涉及业务逻辑、接口协议或数据库结构变更。
+
+### 验证
+1. `cd backend && go build cmd/server/main.go` 失败，稳定复现与用户一致的 `undefined: isAllowedOrigin/detectFrontendWebRoot/configureFrontendStatic` 报错。
+2. `cd backend && go build ./cmd/server` 通过，确认根因是“按文件构建”而不是“代码缺失”。
+3. `powershell -ExecutionPolicy Bypass -File .\scripts\check-go-package-entry.ps1` 已在修复前失败，修复后应通过。
+
+## 2026-04-04
+### 主题
+收敛仓库协作文档，修正 AGENTS 中已经过时的插件打包、Windows 发布、认证会话与阶段状态说明，避免后续代理按旧约定执行。
+
+### 关键变更
+1. `AGENTS.md`：
+   - 项目结构补充 `agent/`、`docs/`、`release/`，并明确 Chrome 插件当前实际入口是 `manifest.json -> background_search_cpo_bootstrap.js -> background_search_cpo*.js/patch` 加载链。
+   - 构建命令补充 `cmd/migrate-passwords`、根目录 `package-browser-extension.ps1` 与 `build-windows-release.ps1`，同时把扩展目录内旧 `scripts/package.ps1` 标记为历史脚本，不再作为当前默认入口。
+   - 新增 Windows 发布约定、认证与会话约束，写明 access token + refresh token、`user_refresh_tokens` 基线、插件仍依赖管理端 `localStorage.token/currentShopId` 自动同步，以及店铺 `execution_engine_mode` 的当前约束。
+   - 阶段状态更新为当前实际进度：执行引擎模式、插件状态面板、非 localhost 按需授权、Windows 单机发布链路与 Web refresh token 均已落地；后续重点改为 Chrome 商店上架、真实环境回归、执行引擎监控和 Search CPO live 收敛。
+2. `dev-tracker/CURRENT_PROGRESS.md`：
+   - 更新“最后更新时间”“本次目标”“下一步”，并补记本次协作文档收敛，确保与 `OVERALL_TASKS.md` 中的当前待办保持一致。
+
+### 影响范围
+1. 后续协作默认会使用当前有效的插件打包入口与 Windows 发布链路，不再误用旧脚本。
+2. 后续涉及鉴权、插件登录态、执行引擎路由或发布包调整时，优先参考更新后的 AGENTS 约束，减少按过期状态实施变更的风险。
+3. 本次仅涉及文档，不包含业务代码、数据库结构或接口行为变更。
+
+### 验证
+1. 已对照 `browser-extension/ozon-shop-bridge/manifest.json`、`background_search_cpo_bootstrap.js`、`package-browser-extension.ps1`、`build-windows-release.ps1`、`README-windows-deploy.md`、`backend/cmd/server/main.go`、`backend/config/config.yaml.example` 与 `dev-tracker/OVERALL_TASKS.md` 逐项核对。
+2. 本次无代码变更，未执行 Go 测试、前端构建或数据库脚本。
+
 ## 2026-03-31
 ### 主题
 完成 Web 端 access token + refresh token 认证升级，实现 refresh token 轮换、会话撤销与前端静默续期，并保持 Chrome 插件对管理端 token 同步的兼容。
