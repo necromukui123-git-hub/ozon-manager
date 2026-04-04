@@ -22,7 +22,8 @@ const (
 	searchCPOAvailabilityWaitTimeout = 90 * time.Second
 	searchCPOEnableWaitTimeout       = 90 * time.Second
 	searchCPOMorkovskWaitTimeout     = 90 * time.Second
-	searchCPOLiveStateState4         = "state4"
+	searchCPOLegacyRuleStateState3   = "state3_trigger"
+	searchCPOLegacyRuleStateState4   = "morkovsk_joined"
 )
 
 type searchCPOAutomationConfigSnapshot struct {
@@ -120,7 +121,7 @@ func isSearchCPOJoinedRepairState(state *searchCPOAutomationItemState) bool {
 	if state == nil {
 		return false
 	}
-	return state.RuleStateAfter == model.SearchCPORuleStateJoined
+	return normalizeSearchCPORuleState(state.RuleStateAfter) == model.SearchCPORuleStateState4
 }
 
 func markSearchCPOJoinedRepairSkippedSteps(state *searchCPOAutomationItemState) {
@@ -154,13 +155,24 @@ func appendSearchCPOItemMessage(current string, addition string) string {
 	}
 }
 
+func normalizeSearchCPORuleState(state string) string {
+	switch strings.TrimSpace(state) {
+	case searchCPOLegacyRuleStateState3:
+		return model.SearchCPORuleStateState3
+	case searchCPOLegacyRuleStateState4:
+		return model.SearchCPORuleStateState4
+	default:
+		return strings.TrimSpace(state)
+	}
+}
+
 func deriveSearchCPOLiveRuleState(product model.SearchCPOProduct, now time.Time) (string, *time.Time, bool) {
 	searchStatus := strings.TrimSpace(product.SearchPromoStatus)
 	carrotsStatus := strings.TrimSpace(product.CarrotsStatus)
-	if searchStatus == "" || carrotsStatus == "" || product.AvailabilityPromo == nil {
+	if searchStatus == "" || product.AvailabilityPromo == nil {
 		return "", product.State2DetectedAt, false
 	}
-	if searchStatus == "SEARCH_PROMO_STATUS_DISABLED" && carrotsStatus == "CARROTS_STATUS_DISABLED" {
+	if searchStatus == "SEARCH_PROMO_STATUS_DISABLED" {
 		if *product.AvailabilityPromo {
 			if product.State2DetectedAt != nil {
 				return model.SearchCPORuleStateState2, product.State2DetectedAt, true
@@ -170,15 +182,18 @@ func deriveSearchCPOLiveRuleState(product model.SearchCPOProduct, now time.Time)
 		}
 		return model.SearchCPORuleStateState1, product.State2DetectedAt, true
 	}
-	if searchStatus == "SEARCH_PROMO_STATUS_ENABLED" && carrotsStatus == "CARROTS_STATUS_DISABLED" && *product.AvailabilityPromo {
+	if carrotsStatus == "" {
+		return "", product.State2DetectedAt, false
+	}
+	if searchStatus == "SEARCH_PROMO_STATUS_ENABLED" && carrotsStatus == "CARROTS_STATUS_DISABLED" {
 		if product.State2DetectedAt != nil {
-			return model.SearchCPORuleStateState3Trigger, product.State2DetectedAt, true
+			return model.SearchCPORuleStateState3, product.State2DetectedAt, true
 		}
 		detectedAt := now
-		return model.SearchCPORuleStateState3Trigger, &detectedAt, true
+		return model.SearchCPORuleStateState3, &detectedAt, true
 	}
-	if searchStatus == "SEARCH_PROMO_STATUS_ENABLED" && carrotsStatus == "CARROTS_STATUS_ENABLED" && *product.AvailabilityPromo {
-		return searchCPOLiveStateState4, product.State2DetectedAt, true
+	if searchStatus == "SEARCH_PROMO_STATUS_ENABLED" && carrotsStatus == "CARROTS_STATUS_ENABLED" {
+		return model.SearchCPORuleStateState4, product.State2DetectedAt, true
 	}
 	return "", product.State2DetectedAt, false
 }
@@ -187,7 +202,7 @@ func shouldResetSearchCPOJoinedMarker(product model.SearchCPOProduct, liveState 
 	if product.MorkovskJoinedAt == nil || !liveConfirmed {
 		return false
 	}
-	return liveState != searchCPOLiveStateState4
+	return normalizeSearchCPORuleState(liveState) != model.SearchCPORuleStateState4
 }
 
 func (s *SearchCPOService) verifySearchCPOShopActionExit(shopID, triggerUserID uint, action model.PromotionAction, sourceSKU string, status string, message string) (string, string) {
@@ -308,8 +323,8 @@ func (s *SearchCPOService) GetAutomationRunDetail(shopID, runID uint) (*dto.Sear
 			SearchPromoStatus:       item.SearchPromoStatus,
 			CarrotsStatus:           item.CarrotsStatus,
 			AvailabilityPromo:       item.AvailabilityPromo,
-			RuleStateBefore:         item.RuleStateBefore,
-			RuleStateAfter:          item.RuleStateAfter,
+			RuleStateBefore:         normalizeSearchCPORuleState(item.RuleStateBefore),
+			RuleStateAfter:          normalizeSearchCPORuleState(item.RuleStateAfter),
 			OverallStatus:           item.OverallStatus,
 			InitialStatus:           item.InitialStatus,
 			EnableStatus:            item.EnableStatus,
@@ -485,10 +500,10 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 	state1SKUs := make([]string, 0)
 	state2SKUs := make([]string, 0)
 	state3SKUs := make([]string, 0)
-	joinedRepairSKUs := make([]string, 0)
+	state4SKUs := make([]string, 0)
 	now := time.Now()
 	for _, product := range products {
-		before := strings.TrimSpace(product.RuleState)
+		before := normalizeSearchCPORuleState(product.RuleState)
 		liveState, _, liveConfirmed := deriveSearchCPOLiveRuleState(product, now)
 		after, detectedAt := deriveSearchCPORuleState(product, before, now)
 		updateFields := map[string]interface{}{"rule_state": after}
@@ -532,24 +547,24 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 			}
 		}
 		itemStates[product.SourceSKU] = state
-		if isSearchCPOJoinedRepairState(state) {
-			joinedRepairSKUs = append(joinedRepairSKUs, product.SourceSKU)
-		}
 		switch after {
 		case model.SearchCPORuleStateState1:
 			state1SKUs = append(state1SKUs, product.SourceSKU)
 		case model.SearchCPORuleStateState2:
 			state2SKUs = append(state2SKUs, product.SourceSKU)
-		case model.SearchCPORuleStateState3Trigger:
+		case model.SearchCPORuleStateState3:
 			state3SKUs = append(state3SKUs, product.SourceSKU)
+		case model.SearchCPORuleStateState4:
+			state4SKUs = append(state4SKUs, product.SourceSKU)
 		}
 	}
 
 	run.TotalFetched = len(products)
 	run.TotalState1 = len(state1SKUs)
 	run.TotalState2 = len(state2SKUs)
-	run.TotalState3Trigger = len(state3SKUs)
-	run.TotalProcessed = len(state1SKUs) + len(state2SKUs) + len(state3SKUs) + len(joinedRepairSKUs)
+	run.TotalState3 = len(state3SKUs)
+	run.TotalState4 = len(state4SKUs)
+	run.TotalProcessed = len(state1SKUs) + len(state2SKUs) + len(state3SKUs) + len(state4SKUs)
 	if err := s.repo.UpdateAutoRun(run); err != nil {
 		return err
 	}
@@ -559,7 +574,7 @@ func (s *SearchCPOService) runAutomationExecution(run *model.SearchCPOAutoRun, i
 			return err
 		}
 	}
-	migrationSKUs := uniqueSourceSKUs(append(append(append([]string{}, state2SKUs...), state3SKUs...), joinedRepairSKUs...))
+	migrationSKUs := uniqueSourceSKUs(append(append(append([]string{}, state2SKUs...), state3SKUs...), state4SKUs...))
 	if len(migrationSKUs) > 0 {
 		if err := s.processMigrationItems(input, triggerUserID, migrationSKUs, itemStates); err != nil {
 			return err
@@ -930,7 +945,7 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 			}
 			state.Product.SearchPromoStatus = "SEARCH_PROMO_STATUS_ENABLED"
 			if state.RuleStateAfter == model.SearchCPORuleStateState2 {
-				state.RuleStateAfter = model.SearchCPORuleStateState3Trigger
+				state.RuleStateAfter = model.SearchCPORuleStateState3
 			}
 			if err := s.repo.UpdateProductFields(input.ShopID, sku, map[string]interface{}{
 				"search_promo_status": "SEARCH_PROMO_STATUS_ENABLED",
@@ -967,7 +982,7 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 			state.MorkovskResult = step
 			if step.Status == model.SearchCPOItemStatusSuccess {
 				now := time.Now()
-				state.RuleStateAfter = model.SearchCPORuleStateJoined
+				state.RuleStateAfter = model.SearchCPORuleStateState4
 				state.Product.SearchPromoStatus = "SEARCH_PROMO_STATUS_ENABLED"
 				state.Product.CarrotsStatus = "CARROTS_STATUS_ENABLED"
 				state.Product.MorkovskJoinedAt = &now
@@ -975,7 +990,7 @@ func (s *SearchCPOService) processMigrationItems(input searchCPOAutomationRunInp
 					"search_promo_status": "SEARCH_PROMO_STATUS_ENABLED",
 					"carrots_status":      "CARROTS_STATUS_ENABLED",
 					"morkovsk_joined_at":  &now,
-					"rule_state":          model.SearchCPORuleStateJoined,
+					"rule_state":          model.SearchCPORuleStateState4,
 				}); err != nil {
 					return err
 				}
@@ -1246,22 +1261,13 @@ func buildSearchCPOStepResultFromArtifactItem(item searchCPOStepArtifactItem) dt
 		}),
 	}
 }
-func deriveSearchCPORuleState(product model.SearchCPOProduct, previousState string, now time.Time) (string, *time.Time) {
+func deriveSearchCPORuleState(product model.SearchCPOProduct, _ string, now time.Time) (string, *time.Time) {
 	if liveState, detectedAt, ok := deriveSearchCPOLiveRuleState(product, now); ok {
-		if liveState == searchCPOLiveStateState4 {
-			if product.MorkovskJoinedAt != nil {
-				return model.SearchCPORuleStateJoined, detectedAt
-			}
-			return model.SearchCPORuleStateOther, detectedAt
-		}
-		return liveState, detectedAt
-	}
-	if product.MorkovskJoinedAt != nil {
-		return model.SearchCPORuleStateJoined, product.State2DetectedAt
+		return normalizeSearchCPORuleState(liveState), detectedAt
 	}
 	searchStatus := strings.TrimSpace(product.SearchPromoStatus)
 	carrotsStatus := strings.TrimSpace(product.CarrotsStatus)
-	if searchStatus == "SEARCH_PROMO_STATUS_DISABLED" && carrotsStatus == "CARROTS_STATUS_DISABLED" {
+	if searchStatus == "SEARCH_PROMO_STATUS_DISABLED" && product.AvailabilityPromo != nil {
 		if product.AvailabilityPromo != nil && *product.AvailabilityPromo {
 			if product.State2DetectedAt != nil {
 				return model.SearchCPORuleStateState2, product.State2DetectedAt
@@ -1273,13 +1279,16 @@ func deriveSearchCPORuleState(product model.SearchCPOProduct, previousState stri
 			return model.SearchCPORuleStateState1, product.State2DetectedAt
 		}
 	}
-	if searchStatus == "SEARCH_PROMO_STATUS_ENABLED" {
-		if product.State2DetectedAt != nil {
-			return model.SearchCPORuleStateState3Trigger, product.State2DetectedAt
+	if searchStatus == "SEARCH_PROMO_STATUS_ENABLED" && product.AvailabilityPromo != nil {
+		if carrotsStatus == "CARROTS_STATUS_ENABLED" {
+			return model.SearchCPORuleStateState4, product.State2DetectedAt
 		}
-		if carrotsStatus == "CARROTS_STATUS_DISABLED" && product.AvailabilityPromo != nil && *product.AvailabilityPromo {
+		if product.State2DetectedAt != nil && carrotsStatus == "CARROTS_STATUS_DISABLED" {
+			return model.SearchCPORuleStateState3, product.State2DetectedAt
+		}
+		if carrotsStatus == "CARROTS_STATUS_DISABLED" {
 			detectedAt := now
-			return model.SearchCPORuleStateState3Trigger, &detectedAt
+			return model.SearchCPORuleStateState3, &detectedAt
 		}
 	}
 	return model.SearchCPORuleStateOther, product.State2DetectedAt
@@ -1418,22 +1427,23 @@ func toSearchCPOAutomationRunSummaryDTO(run *model.SearchCPOAutoRun) *dto.Search
 		return nil
 	}
 	return &dto.SearchCPOAutomationRunSummaryResponse{
-		ID:                 run.ID,
-		TriggerMode:        run.TriggerMode,
-		TriggerDate:        run.TriggerDate.Format("2006-01-02"),
-		Status:             run.Status,
-		TotalFetched:       run.TotalFetched,
-		TotalState1:        run.TotalState1,
-		TotalState2:        run.TotalState2,
-		TotalState3Trigger: run.TotalState3Trigger,
-		TotalProcessed:     run.TotalProcessed,
-		SuccessItems:       run.SuccessItems,
-		FailedItems:        run.FailedItems,
-		SkippedItems:       run.SkippedItems,
-		ErrorMessage:       strings.TrimSpace(run.ErrorMessage),
-		StartedAt:          formatOptionalTime(run.StartedAt),
-		CompletedAt:        formatOptionalTime(run.CompletedAt),
-		CreatedAt:          run.CreatedAt.Format("2006-01-02 15:04:05"),
+		ID:             run.ID,
+		TriggerMode:    run.TriggerMode,
+		TriggerDate:    run.TriggerDate.Format("2006-01-02"),
+		Status:         run.Status,
+		TotalFetched:   run.TotalFetched,
+		TotalState1:    run.TotalState1,
+		TotalState2:    run.TotalState2,
+		TotalState3:    run.TotalState3,
+		TotalState4:    run.TotalState4,
+		TotalProcessed: run.TotalProcessed,
+		SuccessItems:   run.SuccessItems,
+		FailedItems:    run.FailedItems,
+		SkippedItems:   run.SkippedItems,
+		ErrorMessage:   strings.TrimSpace(run.ErrorMessage),
+		StartedAt:      formatOptionalTime(run.StartedAt),
+		CompletedAt:    formatOptionalTime(run.CompletedAt),
+		CreatedAt:      run.CreatedAt.Format("2006-01-02 15:04:05"),
 	}
 }
 

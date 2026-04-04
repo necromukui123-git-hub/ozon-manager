@@ -65,30 +65,32 @@ func TestDeriveSearchCPORuleState(t *testing.T) {
 		}
 	})
 
-	t.Run("state3 trigger when enabled after state2", func(t *testing.T) {
+	t.Run("state3 when enabled after state2", func(t *testing.T) {
 		t.Parallel()
 		previous := now.Add(-time.Hour)
 		state, detectedAt := deriveSearchCPORuleState(model.SearchCPOProduct{
 			SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
+			CarrotsStatus:     "CARROTS_STATUS_DISABLED",
+			AvailabilityPromo: &trueValue,
 			State2DetectedAt:  &previous,
 		}, model.SearchCPORuleStateState2, now)
-		if state != model.SearchCPORuleStateState3Trigger {
-			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState3Trigger)
+		if state != model.SearchCPORuleStateState3 {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState3)
 		}
 		if detectedAt == nil || !detectedAt.Equal(previous) {
 			t.Fatalf("expected detectedAt to stay %v, got %v", previous, detectedAt)
 		}
 	})
 
-	t.Run("state3 trigger when enabled carrots disabled and availability true without history", func(t *testing.T) {
+	t.Run("state3 when enabled carrots disabled and availability true without history", func(t *testing.T) {
 		t.Parallel()
 		state, detectedAt := deriveSearchCPORuleState(model.SearchCPOProduct{
 			SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
 			CarrotsStatus:     "CARROTS_STATUS_DISABLED",
 			AvailabilityPromo: &trueValue,
 		}, model.SearchCPORuleStateOther, now)
-		if state != model.SearchCPORuleStateState3Trigger {
-			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState3Trigger)
+		if state != model.SearchCPORuleStateState3 {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState3)
 		}
 		if detectedAt == nil || !detectedAt.Equal(now) {
 			t.Fatalf("expected detectedAt to be %v, got %v", now, detectedAt)
@@ -104,7 +106,7 @@ func TestDeriveSearchCPORuleState(t *testing.T) {
 			CarrotsStatus:     "CARROTS_STATUS_DISABLED",
 			AvailabilityPromo: &trueValue,
 			State2DetectedAt:  &joinedAt,
-		}, model.SearchCPORuleStateState3Trigger, now)
+		}, model.SearchCPORuleStateState3, now)
 		if state != model.SearchCPORuleStateState2 {
 			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState2)
 		}
@@ -122,16 +124,16 @@ func TestDeriveSearchCPORuleState(t *testing.T) {
 			CarrotsStatus:     "CARROTS_STATUS_DISABLED",
 			AvailabilityPromo: &trueValue,
 			State2DetectedAt:  &joinedAt,
-		}, model.SearchCPORuleStateJoined, now)
-		if state != model.SearchCPORuleStateState3Trigger {
-			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState3Trigger)
+		}, model.SearchCPORuleStateState4, now)
+		if state != model.SearchCPORuleStateState3 {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState3)
 		}
 		if detectedAt == nil || !detectedAt.Equal(joinedAt) {
 			t.Fatalf("expected detectedAt to stay %v, got %v", joinedAt, detectedAt)
 		}
 	})
 
-	t.Run("joined requires explicit live state4 and local marker", func(t *testing.T) {
+	t.Run("state4 when enabled carrots enabled and availability true", func(t *testing.T) {
 		t.Parallel()
 		joinedAt := now.Add(-30 * time.Minute)
 		state, _ := deriveSearchCPORuleState(model.SearchCPOProduct{
@@ -140,36 +142,93 @@ func TestDeriveSearchCPORuleState(t *testing.T) {
 			CarrotsStatus:     "CARROTS_STATUS_ENABLED",
 			AvailabilityPromo: &trueValue,
 			State2DetectedAt:  &joinedAt,
-		}, model.SearchCPORuleStateState3Trigger, now)
-		if state != model.SearchCPORuleStateJoined {
-			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateJoined)
+		}, model.SearchCPORuleStateState3, now)
+		if state != model.SearchCPORuleStateState4 {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState4)
 		}
 	})
 
-	t.Run("live state4 without local marker stays other", func(t *testing.T) {
+	t.Run("live state4 without local marker is still state4", func(t *testing.T) {
 		t.Parallel()
 		state, _ := deriveSearchCPORuleState(model.SearchCPOProduct{
 			SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
 			CarrotsStatus:     "CARROTS_STATUS_ENABLED",
 			AvailabilityPromo: &trueValue,
-		}, model.SearchCPORuleStateState3Trigger, now)
-		if state != model.SearchCPORuleStateOther {
-			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateOther)
+		}, model.SearchCPORuleStateState3, now)
+		if state != model.SearchCPORuleStateState4 {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateState4)
 		}
 	})
 
-	t.Run("ambiguous live state keeps joined fallback", func(t *testing.T) {
+	t.Run("ambiguous live state stays other even with local marker", func(t *testing.T) {
 		t.Parallel()
 		joinedAt := now.Add(-30 * time.Minute)
 		state, _ := deriveSearchCPORuleState(model.SearchCPOProduct{
 			MorkovskJoinedAt:  &joinedAt,
 			SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
 			CarrotsStatus:     "CARROTS_STATUS_ENABLED",
-		}, model.SearchCPORuleStateJoined, now)
-		if state != model.SearchCPORuleStateJoined {
-			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateJoined)
+		}, model.SearchCPORuleStateState4, now)
+		if state != model.SearchCPORuleStateOther {
+			t.Fatalf("deriveSearchCPORuleState() = %q, want %q", state, model.SearchCPORuleStateOther)
 		}
 	})
+}
+
+func TestNormalizeSearchCPORuleState(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"":                 "",
+		"state1":           model.SearchCPORuleStateState1,
+		"state3_trigger":   model.SearchCPORuleStateState3,
+		"morkovsk_joined":  model.SearchCPORuleStateState4,
+		"state4":           model.SearchCPORuleStateState4,
+		"  state3_trigger": model.SearchCPORuleStateState3,
+	}
+
+	for input, want := range cases {
+		input := input
+		want := want
+		t.Run(input, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeSearchCPORuleState(input); got != want {
+				t.Fatalf("normalizeSearchCPORuleState(%q) = %q, want %q", input, got, want)
+			}
+		})
+	}
+}
+
+func TestToSearchCPOAutomationRunSummaryDTOUsesState3AndState4Totals(t *testing.T) {
+	t.Parallel()
+
+	run := &model.SearchCPOAutoRun{
+		ID:             9,
+		TriggerMode:    model.SearchCPOAutoTriggerModeManual,
+		TriggerDate:    time.Date(2026, 4, 4, 0, 0, 0, 0, time.UTC),
+		Status:         model.SearchCPORunStatusSuccess,
+		TotalFetched:   10,
+		TotalState1:    1,
+		TotalState2:    2,
+		TotalState3:    3,
+		TotalState4:    4,
+		TotalProcessed: 10,
+		SuccessItems:   8,
+		FailedItems:    1,
+		SkippedItems:   1,
+		ErrorMessage:   "  ",
+		CreatedAt:      time.Date(2026, 4, 4, 10, 30, 0, 0, time.UTC),
+	}
+
+	dto := toSearchCPOAutomationRunSummaryDTO(run)
+	if dto == nil {
+		t.Fatal("toSearchCPOAutomationRunSummaryDTO() = nil")
+	}
+	if dto.TotalState3 != 3 {
+		t.Fatalf("TotalState3 = %d, want 3", dto.TotalState3)
+	}
+	if dto.TotalState4 != 4 {
+		t.Fatalf("TotalState4 = %d, want 4", dto.TotalState4)
+	}
 }
 
 func TestBuildSearchCPOActionSyncFailureMessage(t *testing.T) {
@@ -259,7 +318,7 @@ func TestIsSearchCPOJoinedRepairState(t *testing.T) {
 	t.Run("only current joined rule state marks repair state", func(t *testing.T) {
 		t.Parallel()
 		if !isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
-			RuleStateAfter: model.SearchCPORuleStateJoined,
+			RuleStateAfter: model.SearchCPORuleStateState4,
 		}) {
 			t.Fatalf("expected joined target state to require repair evaluation")
 		}
@@ -269,7 +328,7 @@ func TestIsSearchCPOJoinedRepairState(t *testing.T) {
 		t.Parallel()
 		now := time.Date(2026, 3, 22, 8, 0, 0, 0, time.UTC)
 		if isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
-			RuleStateBefore: model.SearchCPORuleStateJoined,
+			RuleStateBefore: model.SearchCPORuleStateState4,
 		}) {
 			t.Fatalf("unexpected repair state for historical joined rule state")
 		}
@@ -283,8 +342,8 @@ func TestIsSearchCPOJoinedRepairState(t *testing.T) {
 	t.Run("non joined state does not trigger repair", func(t *testing.T) {
 		t.Parallel()
 		if isSearchCPOJoinedRepairState(&searchCPOAutomationItemState{
-			RuleStateBefore: model.SearchCPORuleStateState3Trigger,
-			RuleStateAfter:  model.SearchCPORuleStateState3Trigger,
+			RuleStateBefore: model.SearchCPORuleStateState3,
+			RuleStateAfter:  model.SearchCPORuleStateState3,
 			Product: model.SearchCPOProduct{
 				SearchPromoStatus: "SEARCH_PROMO_STATUS_ENABLED",
 				CarrotsStatus:     "CARROTS_STATUS_DISABLED",
@@ -310,14 +369,14 @@ func TestShouldResetSearchCPOJoinedMarker(t *testing.T) {
 
 	t.Run("state3 resets joined marker", func(t *testing.T) {
 		t.Parallel()
-		if !shouldResetSearchCPOJoinedMarker(product, model.SearchCPORuleStateState3Trigger, true) {
+		if !shouldResetSearchCPOJoinedMarker(product, model.SearchCPORuleStateState3, true) {
 			t.Fatalf("expected state3 to reset joined marker")
 		}
 	})
 
 	t.Run("state4 keeps joined marker", func(t *testing.T) {
 		t.Parallel()
-		if shouldResetSearchCPOJoinedMarker(product, searchCPOLiveStateState4, true) {
+		if shouldResetSearchCPOJoinedMarker(product, model.SearchCPORuleStateState4, true) {
 			t.Fatalf("did not expect state4 to reset joined marker")
 		}
 	})

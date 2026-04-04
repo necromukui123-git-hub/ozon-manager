@@ -83,18 +83,19 @@ type SearchCPOAutomationRunSummaryResponse struct {
 	TriggerMode        string `json:"trigger_mode"`
 	TriggerDate        string `json:"trigger_date"`
 	Status             string `json:"status"`
-	TotalFetched       int    `json:"total_fetched"`
-	TotalState1        int    `json:"total_state1"`
-	TotalState2        int    `json:"total_state2"`
-	TotalState3Trigger int    `json:"total_state3_trigger"`
-	TotalProcessed     int    `json:"total_processed"`
-	SuccessItems       int    `json:"success_items"`
-	FailedItems        int    `json:"failed_items"`
-	SkippedItems       int    `json:"skipped_items"`
-	ErrorMessage       string `json:"error_message,omitempty"`
-	StartedAt          string `json:"started_at,omitempty"`
-	CompletedAt        string `json:"completed_at,omitempty"`
-	CreatedAt          string `json:"created_at"`
+	TotalFetched   int    `json:"total_fetched"`
+	TotalState1    int    `json:"total_state1"`
+	TotalState2    int    `json:"total_state2"`
+	TotalState3    int    `json:"total_state3"`
+	TotalState4    int    `json:"total_state4"`
+	TotalProcessed int    `json:"total_processed"`
+	SuccessItems   int    `json:"success_items"`
+	FailedItems    int    `json:"failed_items"`
+	SkippedItems   int    `json:"skipped_items"`
+	ErrorMessage   string `json:"error_message,omitempty"`
+	StartedAt      string `json:"started_at,omitempty"`
+	CompletedAt    string `json:"completed_at,omitempty"`
+	CreatedAt      string `json:"created_at"`
 }
 
 type SearchCPOAutomationRunListResponse struct {

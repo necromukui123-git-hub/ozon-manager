@@ -22,11 +22,11 @@ const (
 	SearchCPOAutoTriggerModeManual    = "manual"
 	SearchCPOAutoTriggerModeScheduled = "scheduled"
 
-	SearchCPORuleStateState1        = "state1"
-	SearchCPORuleStateState2        = "state2"
-	SearchCPORuleStateState3Trigger = "state3_trigger"
-	SearchCPORuleStateOther         = "other"
-	SearchCPORuleStateJoined        = "morkovsk_joined"
+	SearchCPORuleStateState1 = "state1"
+	SearchCPORuleStateState2 = "state2"
+	SearchCPORuleStateState3 = "state3"
+	SearchCPORuleStateState4 = "state4"
+	SearchCPORuleStateOther  = "other"
 )
 
 type SearchCPOConfig struct {
@@ -138,19 +138,20 @@ type SearchCPOAutoRun struct {
 	Status             string         `gorm:"size:30;not null;default:pending;index" json:"status"`
 	FilterSnapshot     datatypes.JSON `gorm:"type:jsonb" json:"filter_snapshot"`
 	ConfigSnapshot     datatypes.JSON `gorm:"type:jsonb" json:"config_snapshot"`
-	TotalFetched       int            `gorm:"default:0" json:"total_fetched"`
-	TotalState1        int            `gorm:"default:0" json:"total_state1"`
-	TotalState2        int            `gorm:"default:0" json:"total_state2"`
-	TotalState3Trigger int            `gorm:"default:0" json:"total_state3_trigger"`
-	TotalProcessed     int            `gorm:"default:0" json:"total_processed"`
-	SuccessItems       int            `gorm:"default:0" json:"success_items"`
-	FailedItems        int            `gorm:"default:0" json:"failed_items"`
-	SkippedItems       int            `gorm:"default:0" json:"skipped_items"`
-	ErrorMessage       string         `gorm:"type:text" json:"error_message"`
-	StartedAt          *time.Time     `json:"started_at"`
-	CompletedAt        *time.Time     `json:"completed_at"`
-	CreatedAt          time.Time      `gorm:"autoCreateTime" json:"created_at"`
-	UpdatedAt          time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
+	TotalFetched   int            `gorm:"default:0" json:"total_fetched"`
+	TotalState1    int            `gorm:"default:0" json:"total_state1"`
+	TotalState2    int            `gorm:"default:0" json:"total_state2"`
+	TotalState3    int            `gorm:"column:total_state3;default:0" json:"total_state3"`
+	TotalState4    int            `gorm:"column:total_state4;default:0" json:"total_state4"`
+	TotalProcessed int            `gorm:"default:0" json:"total_processed"`
+	SuccessItems   int            `gorm:"default:0" json:"success_items"`
+	FailedItems    int            `gorm:"default:0" json:"failed_items"`
+	SkippedItems   int            `gorm:"default:0" json:"skipped_items"`
+	ErrorMessage   string         `gorm:"type:text" json:"error_message"`
+	StartedAt      *time.Time     `json:"started_at"`
+	CompletedAt    *time.Time     `json:"completed_at"`
+	CreatedAt      time.Time      `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt      time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 
 	RunItems []SearchCPOAutoRunItem `gorm:"foreignKey:RunID" json:"run_items,omitempty"`
 }
