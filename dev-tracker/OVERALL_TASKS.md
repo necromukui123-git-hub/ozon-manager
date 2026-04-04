@@ -1,6 +1,6 @@
 # Ozon Manager 开发总任务
 
-最后更新时间：2026-03-31  
+最后更新时间：2026-04-04  
 负责人：团队 + Codex  
 范围：统一官方促销与店铺促销的一套业务流程，并让店铺促销在浏览器登录态下低打扰执行。
 
@@ -38,9 +38,9 @@
 | T13 | `/v3/product/list` 响应字段对齐与目录可见性推导修复 | done | 客户端可解析 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`；目录刷新不再依赖 list 响应 `visibility`，改为优先 `info.visible`，其次 `archived`，最后 `ALL` | 依赖 Seller v3 列表/详情字段稳定 |
 | T14 | 官方促销接口标准说明文档沉淀（`/v1/actions/candidates` + `/v1/actions/products/activate`） | done | 在 `doc/` 产出一份人读版 Markdown 与一份机读版 YAML，覆盖鉴权、分页、请求/响应结构、示例与弃用说明 | 依赖 Ozon 官方文档持续更新，需定期回看 |
 | T15 | 自动添加商品至促销活动（配置 + 调度 + 执行历史） | done | 新增“自动加促销”页面；支持保存昨天/今天/自定义日期规则、手动执行、官方/店铺活动候选刷新、按上架日期筛商品、执行历史与逐商品失败明细 | 依赖 Ozon 目录刷新、官方候选接口与浏览器插件执行链稳定 |
-| T16 | 搜索推广自动化单一工作面 | in_progress | `/promotions/search-cpo` 将从“双标签”收口为单一自动化页面；保留“默认活动 + 退出活动”两组固定配置，支持自动执行与手动触发一次共用同一条自动化链路，统一查看执行历史与详情；菜单名称计划改为“搜索推广自动化” | 依赖现有 Search CPO 商品刷新、availability、enable、Morkovsk job 链路继续稳定 |
+| T16 | 搜索推广自动化单一工作面 | done | `/promotions/search-cpo` 已收口为单一自动化页面；保留“默认活动 + 退出活动”两组固定配置，支持自动执行与手动触发一次共用同一条自动化链路，统一查看执行历史与详情；旧“商品池与手动报名”工作面已移除 | 依赖现有 Search CPO 商品刷新、availability、enable、Morkovsk job 链路继续稳定 |
 | T17 | 插件登录态自动连接主流程收敛 | done | popup 默认展示管理端连接状态，普通用户无需手填 token；非 localhost 首次可按提示授权，手填配置仅保留高级设置兜底 | 依赖管理端 `localStorage.token/currentShopId` 继续稳定 |
-| T18 | Search CPO 单一自动化规则与退出活动配置 | in_progress | 自动化状态定义重收口为：状态1=推广已关闭，状态2=可加入推广，状态3=已加入推广未加入 Morkovsk，状态4=已加入推广且已加入 Morkovsk；状态1 仅加入“默认活动”，状态2/3/4 仅从用户配置的“退出活动”集合里退出，退出失败则该商品后续动作显式跳过并在详情记录“退出促销活动失败，跳过后续动作”；定时执行与手动触发一次统一写入自动化历史 | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` / 店铺活动 `deactivate` 接口结构稳定，以及现有 Search CPO 配置/历史表可平滑扩展退出活动字段与状态统计 |
+| T18 | Search CPO 单一自动化规则与退出活动配置 | done | 自动化状态定义已收口为：状态1=推广已关闭，状态2=可加入推广，状态3=已加入推广未加入 Morkovsk，状态4=已加入推广且已加入 Morkovsk；状态1 仅加入“默认活动”，状态2/3/4 仅从用户配置的“退出活动”集合里退出，退出失败则该商品后续动作显式跳过并在详情记录“退出促销活动失败，跳过后续动作”；定时执行与手动触发一次统一写入自动化历史 | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` / 店铺活动 `deactivate` 接口结构稳定，以及现有 Search CPO 配置/历史表可平滑扩展退出活动字段与状态统计 |
 | T19 | Windows 单机发布包与异机部署 | done | 可在开发机一次性产出 `server.exe + 前端静态文件 + 插件目录/zip + 启动脚本 + 部署说明` 的 Windows 发布包；目标机仅安装 PostgreSQL 和 Chrome 即可启动，空库只需执行 `init_database.sql` | 依赖目标机本机浏览器访问 `127.0.0.1:8080`，暂不覆盖局域网多机访问 |
 | T20 | 登录态升级为 access token + refresh token（Web 先落地，插件兼容） | done | Web 端已支持 access token 短期有效 + refresh token 自动续期；隔夜重新打开系统时优先静默续期，不再因单 JWT 24 小时过期直接掉线；登出、改密、重置密码、禁用账号后会撤销 refresh token；Chrome 插件继续兼容管理端 `localStorage.token/currentShopId` 同步 | 依赖 `user_refresh_tokens` 表、refresh cookie 配置、前端 401 单飞刷新与应用启动初始化；本轮未单独实现插件独立 refresh 流程 |
 
@@ -80,6 +80,8 @@
 32. 已补齐店铺管理员/员工上下级字段基线：`users` 表现已纳入 `owner_id` 列与索引，并新增 `upgrade_20260325_users_owner_id.sql` 供旧库修复；Windows 发布包同时开始携带全部 `upgrade_*.sql`，目标机可直接执行增量脚本解决 `SQLSTATE 42703`。
 33. 已收口店铺凭证录入与促销同步错误语义：店铺创建/更新与 Ozon client 出站前都会清理 `Api-Key` 前后空白，`sync-actions` 命中官方 `Invalid Api-Key` 时会回退成明确中文提示，目标机可直接回到“我的店铺”修正凭证。
 34. 已完成 access token + refresh token 商用化认证改造：后端新增 `user_refresh_tokens` 持久化、`/auth/refresh` 轮换链路与公开 `/auth/logout`，改密/重置密码/禁用账号会同步撤销 refresh token；前端已接入启动静默续期、401 单飞 refresh 与 `token_expires_at` 本地状态恢复，Chrome 插件继续兼容管理端 `localStorage.token/currentShopId`。
+35. Search CPO 已从“双标签”收口为单一自动化页面：前端不再展示商品池筛选、手动报名按钮和旧手动报名历史；页面统一承载自动执行设置、默认活动、退出活动、状态概览和自动化执行历史，并支持“手动执行一次”。
+36. Search CPO 后端规则已按单一自动化口径落地：配置新增退出活动字段；状态值收口为状态1/2/3/4；自动化运行只对用户配置的退出活动执行退出；状态2/3/4退出失败时，后续步骤显式记为 `skipped` 并在详情中记录“退出促销活动失败，跳过后续动作”；自动化历史与详情统一回传默认活动/退出活动配置快照和 `total_state3/total_state4` 新统计字段。
 ## 阶段完成标准
 1. 官方与店铺促销在统一 UX 下稳定可用。
 2. 常规场景店铺任务静默执行，不打断用户主流程。

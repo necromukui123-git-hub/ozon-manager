@@ -1,5 +1,32 @@
 # Ozon Manager 变更日志
 
+## 2026-04-04（补充四）
+### 主题
+完成 Search CPO 单一自动化流程落地：后端补齐退出活动配置、状态1/2/3/4 与退出失败跳过规则，前端从双标签收口为单一自动化页面，并统一执行历史与详情展示。
+
+### 关键变更
+1. 后端配置与迁移：
+   - `backend/internal/model/search_cpo.go`、`backend/internal/dto/search_cpo.go`、`backend/internal/repository/search_cpo_repo.go`、`backend/internal/service/search_cpo_service.go` 支持 `exit_official_action_ids/exit_shop_action_ids`。
+   - `backend/migrations/upgrade_20260404_search_cpo_automation_single_flow.sql` 正式落地，并同步回写 `backend/migrations/init_database.sql`；旧 `rule_state` 会迁移为 `state3/state4`，自动化统计字段收口到 `total_state3/total_state4`。
+2. 后端自动化执行：
+   - `backend/internal/service/search_cpo_automation.go` 把状态口径收口为状态1/2/3/4，并兼容旧 `state3_trigger/morkovsk_joined`。
+   - `processMigrationItems()` 不再按 SKU 扫全量命中活动，而是只对用户配置的退出活动执行退出；状态2/3/4 若退出失败，会显式把后续步骤记为 `skipped`，并在详情消息写入“退出促销活动失败，跳过后续动作”。
+   - 自动化 run 快照与详情已携带默认活动、退出活动和触发时间。
+3. 前端页面收口：
+   - `frontend/src/views/promotions/SearchCPO.vue` 改为单一自动化工作面，不再使用 tabs。
+   - `frontend/src/views/promotions/search-cpo/SearchCPOAutomationTab.vue` 现在同时承载自动执行设置、默认活动、退出活动、状态概览和统一执行历史。
+   - `frontend/src/views/promotions/search-cpo/SearchCPOAutomationDetailDialog.vue` 已按新口径显示 `total_state3/total_state4`，并展示当次默认活动/退出活动快照。
+   - 删除 `frontend/src/views/promotions/search-cpo/SearchCPOManualTab.vue` 与 `frontend/src/views/promotions/search-cpo/SearchCPORunDetailDialog.vue`，页面不再展示旧手动报名工作面与旧历史详情。
+
+### 影响范围
+1. `/promotions/search-cpo` 现在只保留一条自动化链路，手动触发一次与定时执行共用同一张历史表 `search_cpo_auto_runs`。
+2. Search CPO 用户可见状态与详情文案全部改为状态1/2/3/4，不再暴露 `state3_trigger`、`morkovsk_joined` 和“退出其它活动”等旧口径。
+3. 旧手动报名接口与表结构本轮未删除，但前端已不再消费。
+
+### 验证
+1. `cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./internal/service -count=1` 通过。
+2. `cd frontend && cmd /c npm run build` 通过。
+
 ## 2026-04-04（补充三）
 ### 主题
 规划 Search CPO 的下一轮目标：取消“商品池与手动报名”工作面，收口为单一自动化流程，并在执行前补齐正式 spec 与 implementation plan。

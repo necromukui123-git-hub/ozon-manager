@@ -8,8 +8,68 @@
     <div v-if="detail" class="detail-summary detail-summary--wrap">
       <el-tag :type="statusTagType(detail.status)">{{ statusLabel(detail.status) }}</el-tag>
       <span>触发方式 {{ triggerModeLabel(detail.trigger_mode) }}</span>
-      <span>State1 {{ detail.total_state1 }} / State2 迁移 {{ detail.total_state2 }} / State3 兜底 {{ detail.total_state3_trigger }}</span>
+      <span>状态1 {{ detail.total_state1 || 0 }} / 状态2 {{ detail.total_state2 || 0 }} / 状态3 {{ detail.total_state3 || 0 }} / 状态4 {{ detail.total_state4 || 0 }}</span>
       <span>成功 {{ detail.success_items }} / 失败 {{ detail.failed_items }} / 跳过 {{ detail.skipped_items }}</span>
+    </div>
+
+    <div v-if="detail" class="snapshot-panel">
+      <div class="snapshot-title">当次配置快照</div>
+      <div class="snapshot-grid">
+        <div class="snapshot-group">
+          <div class="snapshot-label">默认活动（官方）</div>
+          <div class="snapshot-values">
+            <el-tag v-for="id in normalizeIDs(detail.official_action_ids)" :key="`default-official-${id}`" size="small" effect="plain">
+              {{ resolveActionLabel(id, 'official') }}
+            </el-tag>
+            <span v-if="normalizeIDs(detail.official_action_ids).length === 0" class="result-line-muted">-</span>
+          </div>
+        </div>
+        <div class="snapshot-group">
+          <div class="snapshot-label">默认活动（店铺）</div>
+          <div class="snapshot-values">
+            <el-tag
+              v-for="id in normalizeIDs(detail.shop_action_ids)"
+              :key="`default-shop-${id}`"
+              size="small"
+              effect="plain"
+              type="warning"
+            >
+              {{ resolveActionLabel(id, 'shop') }}
+            </el-tag>
+            <span v-if="normalizeIDs(detail.shop_action_ids).length === 0" class="result-line-muted">-</span>
+          </div>
+        </div>
+        <div class="snapshot-group">
+          <div class="snapshot-label">退出活动（官方）</div>
+          <div class="snapshot-values">
+            <el-tag v-for="id in normalizeIDs(detail.exit_official_action_ids)" :key="`exit-official-${id}`" size="small" effect="plain">
+              {{ resolveActionLabel(id, 'official') }}
+            </el-tag>
+            <span v-if="normalizeIDs(detail.exit_official_action_ids).length === 0" class="result-line-muted">-</span>
+          </div>
+        </div>
+        <div class="snapshot-group">
+          <div class="snapshot-label">退出活动（店铺）</div>
+          <div class="snapshot-values">
+            <el-tag
+              v-for="id in normalizeIDs(detail.exit_shop_action_ids)"
+              :key="`exit-shop-${id}`"
+              size="small"
+              effect="plain"
+              type="warning"
+            >
+              {{ resolveActionLabel(id, 'shop') }}
+            </el-tag>
+            <span v-if="normalizeIDs(detail.exit_shop_action_ids).length === 0" class="result-line-muted">-</span>
+          </div>
+        </div>
+        <div class="snapshot-group">
+          <div class="snapshot-label">触发时间</div>
+          <div class="snapshot-values">
+            <span>{{ detail.schedule_time || '-' }}</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <el-table v-if="detail" :data="detail.items || []" max-height="560" v-loading="loading">
@@ -107,7 +167,7 @@
           <el-tag :type="statusTagType(row.overall_status)">{{ statusLabel(row.overall_status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="初始活动" min-width="240">
+      <el-table-column label="默认活动" min-width="240">
         <template #default="{ row }">
           <div class="result-lines">
             <div class="result-line-muted">步骤状态: {{ statusLabel(row.initial_status) }}</div>
@@ -118,7 +178,7 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="退出其它活动" min-width="240">
+      <el-table-column label="退出活动" min-width="240">
         <template #default="{ row }">
           <div class="result-lines">
             <div class="result-line-muted">步骤状态: {{ statusLabel(row.exit_status) }}</div>
@@ -185,10 +245,14 @@ import {
   triggerModeLabel
 } from '@/views/promotions/search-cpo/ui'
 
-defineProps({
+const props = defineProps({
   visible: {
     type: Boolean,
     default: false
+  },
+  actions: {
+    type: Array,
+    default: () => []
   },
   detail: {
     type: Object,
@@ -201,6 +265,20 @@ defineProps({
 })
 
 const emit = defineEmits(['update:visible'])
+
+function normalizeIDs(ids) {
+  return Array.isArray(ids) ? ids : []
+}
+
+function resolveActionLabel(id, source) {
+  const numericID = Number(id)
+  const action = props.actions.find(item => item.id === numericID && item.source === source)
+  if (!action) {
+    return `活动 #${id}`
+  }
+  const sourceID = source === 'shop' ? action.source_action_id : action.action_id
+  return action.display_name || action.title || (sourceID ? `活动 #${sourceID}` : `活动 #${id}`)
+}
 </script>
 
 <style scoped>
@@ -213,6 +291,47 @@ const emit = defineEmits(['update:visible'])
 
 .detail-summary--wrap {
   flex-wrap: wrap;
+}
+
+.snapshot-panel {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(5, 150, 105, 0.12);
+  background: rgba(236, 253, 245, 0.45);
+}
+
+.snapshot-title {
+  margin-bottom: 10px;
+  font-family: 'Rubik', 'Nunito Sans', sans-serif;
+  font-size: 14px;
+  color: #065f46;
+}
+
+.snapshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+}
+
+.snapshot-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.snapshot-label {
+  font-size: 12px;
+  color: #0f766e;
+}
+
+.snapshot-values {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  font-size: 13px;
 }
 
 .availability-debug-panel {
@@ -283,6 +402,10 @@ const emit = defineEmits(['update:visible'])
 }
 
 @media (max-width: 900px) {
+  .snapshot-grid {
+    grid-template-columns: 1fr;
+  }
+
   .availability-debug-grid {
     grid-template-columns: 1fr;
   }

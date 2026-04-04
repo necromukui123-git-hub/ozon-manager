@@ -109,15 +109,19 @@ export function carrotsStatusTagType(status) {
 export function ruleStateLabel(state) {
   switch (state) {
     case 'state1':
-      return 'State 1'
+      return '状态1：推广已关闭'
     case 'state2':
-      return 'State 2（迁移触发）'
+      return '状态2：可加入推广'
+    case 'state3':
+      return '状态3：已加入推广，未加入 Morkovsk'
     case 'state3_trigger':
-      return 'State 3 兜底'
+      return '状态3：已加入推广，未加入 Morkovsk'
+    case 'state4':
+      return '状态4：已加入推广，已加入 Morkovsk'
     case 'morkovsk_joined':
-      return '已加入 Morkovsk'
+      return '状态4：已加入推广，已加入 Morkovsk'
     case 'other':
-      return '其它 / 未识别'
+      return '其它'
     default:
       return state || '-'
   }
@@ -129,8 +133,10 @@ export function ruleStateTagType(state) {
       return 'warning'
     case 'state2':
       return 'primary'
+    case 'state3':
     case 'state3_trigger':
-      return 'danger'
+      return 'info'
+    case 'state4':
     case 'morkovsk_joined':
       return 'success'
     default:

@@ -1,16 +1,25 @@
 # Ozon Manager 当前进度
 
 最后更新时间：2026-04-04
-状态：进行中（已完成协作文档对齐、开发启动命令与端口守卫收敛；业务主线继续推进真实环境回归、Search CPO 自动化收敛与 Chrome 商店上架准备）
+状态：进行中（Search CPO 单一自动化流程已完成开发与构建/测试校验；业务主线继续推进真实环境回归、Chrome 商店上架准备与执行引擎监控）
 
 ## 本次交付单元
-本次目标：同步收敛仓库协作文档，并修复 `start-dev.bat` 中两类开发启动问题：一是后端错误的 Go 单文件启动命令，二是重复执行时前后端端口已被占用却仍继续拉起新实例。
+本次目标：完成 Search CPO 从“双标签（商品池与手动报名 + 状态迁移自动化）”到“单一自动化页面”的整体收口；同时落地退出活动配置、状态1/2/3/4新口径、统一执行历史与退出失败后的跳过规则。
 
 ## 已完成（含关键文件）
+0. Search CPO 单一自动化流程已落地：
+   - 后端配置与测试：`backend/internal/model/search_cpo.go`、`backend/internal/dto/search_cpo.go`、`backend/internal/repository/search_cpo_repo.go`、`backend/internal/service/search_cpo_service.go`、`backend/internal/service/search_cpo_service_test.go` 已支持 `exit_official_action_ids/exit_shop_action_ids`；补齐了真实 `GetConfig/UpdateConfig` 读写链路测试与 source mismatch 校验覆盖。对应提交：`24294ae`、`29615c7`、`929d63d`。
+   - 后端状态与自动化链路：`backend/internal/model/search_cpo.go`、`backend/internal/dto/search_cpo_automation.go`、`backend/internal/service/search_cpo_automation.go`、`backend/internal/service/search_cpo_automation_test.go` 已把状态口径收口为状态1/2/3/4，兼容旧 `state3_trigger/morkovsk_joined` 值，并将自动化历史统计改为 `total_state3/total_state4`。对应提交：`261ca30`。
+   - 退出逻辑：`processMigrationItems()` 已改为只处理用户显式配置的退出活动；状态2/3/4 若退出失败，会显式把后续 `enable/Morkovsk` 标记为 `skipped`，并在详情消息写入“退出促销活动失败，跳过后续动作”；当次 run 配置快照会一并保存默认活动与退出活动。对应提交：`1f5a36e`。
+   - 前端单页收口：`frontend/src/views/promotions/SearchCPO.vue`、`frontend/src/views/promotions/search-cpo/SearchCPOAutomationTab.vue`、`frontend/src/views/promotions/search-cpo/SearchCPOAutomationDetailDialog.vue`、`frontend/src/views/promotions/search-cpo/ui.js` 已改为单一自动化工作面；`SearchCPOManualTab.vue` 与 `SearchCPORunDetailDialog.vue` 已删除，不再展示商品池筛选、手动报名按钮或旧手动报名历史。
+   - 数据库脚本：`backend/migrations/upgrade_20260404_search_cpo_automation_single_flow.sql` 已正式创建并回写 `backend/migrations/init_database.sql`。用途：为 `search_cpo_configs` 增加退出活动字段、把 `rule_state` 收口到 `state3/state4`、将自动化汇总字段收口到 `total_state3/total_state4`。执行条件：旧库需要从已包含 Search CPO 基础表结构的版本升级到本轮单一自动化流版本。执行结果：脚本已入库并通过代码侧回归验证，本次未直接在现有业务库执行。
+   - 验证：
+     - `cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./internal/service -count=1` 通过。
+     - `cd frontend && cmd /c npm run build` 通过。
 0. Search CPO 单一自动化流程的设计与实现计划已确认：
    - `docs/superpowers/specs/2026-04-04-search-cpo-automation-single-flow-design.md`：已确认 Search CPO 将从“商品池与手动报名 + 状态迁移自动化”双标签收口为单一自动化页面；保留“默认活动 + 退出活动”两组固定配置；状态定义重收口为状态1/2/3/4；退出失败时该商品后续动作必须显式跳过并在详情展示“退出促销活动失败，跳过后续动作”。
-   - `docs/superpowers/plans/2026-04-04-search-cpo-automation-single-flow.md`：已拆出后端配置扩展、状态重命名、退出逻辑改造、前端单页重构、统一历史展示、`dev-tracker` 与验证收尾六个实施任务；当前尚未开始代码实现。
-   - 计划中的数据库脚本：`backend/migrations/upgrade_20260404_search_cpo_automation_single_flow.sql`，用途为补充 `exit_official_action_ids/exit_shop_action_ids`、收口旧 `rule_state` 值并扩展自动化状态统计；当前状态：仅在 spec/plan 中确定，尚未创建、尚未执行。
+   - `docs/superpowers/plans/2026-04-04-search-cpo-automation-single-flow.md`：已拆出后端配置扩展、状态重命名、退出逻辑改造、前端单页重构、统一历史展示、`dev-tracker` 与验证收尾六个实施任务；本轮已按计划完成核心代码实现与验证。
+   - 相关数据库脚本：`backend/migrations/upgrade_20260404_search_cpo_automation_single_flow.sql` 已在本轮创建并纳入执行计划，详见上方“Search CPO 单一自动化流程已落地”条目。
 0. 开发启动命令收敛修复：
    - `start-dev.bat` 已将后端启动命令从 `go run cmd/server/main.go` 改为 `go run ./cmd/server`，`frontend_static.go` 等同包文件会随包一起编译，不再出现 `isAllowedOrigin`、`detectFrontendWebRoot`、`configureFrontendStatic` 未定义。
    - `AGENTS.md`、`CLAUDE.md` 已同步修正后端运行/构建示例，避免后续协作和手工命令继续按单文件方式启动或构建 `cmd/server`。

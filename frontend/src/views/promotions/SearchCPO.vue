@@ -4,7 +4,7 @@
       <div class="hero-copy">
         <h2 class="gradient">搜索推广商品</h2>
         <p class="hero-subtitle">
-          同一入口拆成两块工作面：前台商品池与人工批量报名，以及后台状态迁移自动化。
+          单一自动化工作面：统一配置默认活动与退出活动，按状态1/2/3/4规则推进迁移，并支持手动执行一次。
         </p>
       </div>
 
@@ -14,12 +14,12 @@
           <span class="metric-value">{{ products.length }}</span>
         </div>
         <div class="metric-pill">
-          <span class="metric-label">当前筛选</span>
-          <span class="metric-value">{{ filteredItems.length }}</span>
-        </div>
-        <div class="metric-pill">
           <span class="metric-label">默认活动</span>
           <span class="metric-value">{{ totalDefaultActions }}</span>
+        </div>
+        <div class="metric-pill">
+          <span class="metric-label">退出活动</span>
+          <span class="metric-value">{{ totalExitActions }}</span>
         </div>
         <div class="metric-pill">
           <span class="metric-label">最近同步</span>
@@ -32,56 +32,24 @@
       </div>
     </div>
 
-    <el-tabs v-model="activeTabName" class="search-cpo-tabs" @tab-change="handleTabChange">
-      <el-tab-pane label="商品池与手动报名" name="manual">
-        <SearchCPOManualTab
-          :actions="actions"
-          :actions-loading="actionsLoading"
-          :products-loading="productsLoading"
-          :runs-loading="runsLoading"
-          :saving-config="savingConfig"
-          :refreshing="refreshing"
-          :running="running"
-          :config="config"
-          :filters="filters"
-          :pager="pager"
-          :filtered-items="filteredItems"
-          :paged-items="pagedItems"
-          :runs="runs"
-          :last-synced="lastSynced"
-          @save-config="handleSaveDefaultActions"
-          @refresh-products="handleRefreshProducts"
-          @run-manual="handleRunNow"
-          @open-run-detail="openRunDetail"
-        />
-      </el-tab-pane>
-
-      <el-tab-pane label="状态迁移自动化" name="automation">
-        <SearchCPOAutomationTab
-          :actions="actions"
-          :saving-config="savingConfig"
-          :automation-running="automationRunning"
-          :automation-runs-loading="automationRunsLoading"
-          :config="config"
-          :products="products"
-          :automation-runs="automationRuns"
-          @save-automation="handleSaveAutomationSettings"
-          @start-run="handleStartAutomationRun"
-          @configure-actions="switchToTab('manual')"
-          @open-automation-detail="openAutomationRunDetail"
-        />
-      </el-tab-pane>
-    </el-tabs>
-
-    <SearchCPORunDetailDialog
-      v-model:visible="detailVisible"
-      :detail="detail"
-      :loading="detailLoading"
+    <SearchCPOAutomationTab
+      :actions="actions"
+      :actions-loading="actionsLoading"
+      :saving-config="savingConfig"
+      :automation-running="automationRunning"
+      :automation-runs-loading="automationRunsLoading"
+      :config="config"
+      :products="products"
+      :automation-runs="automationRuns"
+      @save-automation="handleSaveAutomationSettings"
+      @start-run="handleStartAutomationRun"
+      @open-automation-detail="openAutomationRunDetail"
     />
 
     <SearchCPOAutomationDetailDialog
       v-model:visible="automationDetailVisible"
       :detail="automationDetail"
+      :actions="actions"
       :loading="automationDetailLoading"
     />
   </div>
@@ -90,80 +58,51 @@
 <script setup>
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
   getActions,
   getSearchCPOAutomationRunDetail,
   getSearchCPOConfig,
-  getSearchCPORunDetail,
   listSearchCPOAutomationRuns,
   listSearchCPOProducts,
-  listSearchCPORuns,
-  refreshSearchCPOProducts,
   startSearchCPOAutomationRun,
-  startSearchCPORun,
   updateSearchCPOConfig
 } from '@/api/promotion'
 import SearchCPOAutomationDetailDialog from '@/views/promotions/search-cpo/SearchCPOAutomationDetailDialog.vue'
 import SearchCPOAutomationTab from '@/views/promotions/search-cpo/SearchCPOAutomationTab.vue'
-import SearchCPOManualTab from '@/views/promotions/search-cpo/SearchCPOManualTab.vue'
-import SearchCPORunDetailDialog from '@/views/promotions/search-cpo/SearchCPORunDetailDialog.vue'
 import { statusLabel } from '@/views/promotions/search-cpo/ui'
 
-const TAB_MANUAL = 'manual'
-const TAB_AUTOMATION = 'automation'
 const DEFAULT_SCHEDULE_TIME = '09:05'
 
-const route = useRoute()
-const router = useRouter()
 const userStore = useUserStore()
 
 const actions = ref([])
 const products = ref([])
-const runs = ref([])
 const automationRuns = ref([])
-const detail = ref(null)
 const automationDetail = ref(null)
-const detailVisible = ref(false)
 const automationDetailVisible = ref(false)
 
 const actionsLoading = ref(false)
 const productsLoading = ref(false)
-const runsLoading = ref(false)
 const automationRunsLoading = ref(false)
-const detailLoading = ref(false)
 const automationDetailLoading = ref(false)
 const savingConfig = ref(false)
-const refreshing = ref(false)
-const running = ref(false)
 const automationRunning = ref(false)
 
 const config = reactive({
   official_action_ids: [],
   shop_action_ids: [],
+  exit_official_action_ids: [],
+  exit_shop_action_ids: [],
   auto_enabled: false,
   schedule_time: DEFAULT_SCHEDULE_TIME
 })
 
-const filters = reactive({
-  keyword: '',
-  promoStatus: 'all',
-  ruleState: 'all',
-  stockStatus: 'all',
-  favoriteStatus: 'all'
-})
-
-const pager = reactive({
-  page: 1,
-  pageSize: 20
-})
-
 const lastSynced = ref('')
-const activeTabName = ref(normalizeTabName(route.query.tab))
 let runPollTimer = null
 
 const totalDefaultActions = computed(() => config.official_action_ids.length + config.shop_action_ids.length)
+const totalExitActions = computed(() => config.exit_official_action_ids.length + config.exit_shop_action_ids.length)
 const latestAutomationRun = computed(() => automationRuns.value[0] || null)
 const automationMetricText = computed(() => {
   const latest = latestAutomationRun.value
@@ -178,37 +117,6 @@ const automationMetricText = computed(() => {
   }
   return `未开启 / ${config.schedule_time || DEFAULT_SCHEDULE_TIME}`
 })
-
-const filteredItems = computed(() => {
-  const keyword = filters.keyword.trim().toLowerCase()
-  return products.value.filter(item => {
-    if (filters.promoStatus !== 'all' && item.search_promo_status !== filters.promoStatus) return false
-    if (filters.ruleState !== 'all' && (item.rule_state || 'other') !== filters.ruleState) return false
-    if (filters.stockStatus === 'in_stock' && !item.is_in_stock) return false
-    if (filters.stockStatus === 'out_of_stock' && item.is_in_stock) return false
-    if (filters.favoriteStatus === 'favorite' && !item.is_favorite) return false
-    if (filters.favoriteStatus === 'not_favorite' && item.is_favorite) return false
-    if (!keyword) return true
-    const blob = `${item.title || ''} ${item.source_sku || ''} ${item.sku || ''} ${item.category_name || ''}`.toLowerCase()
-    return blob.includes(keyword)
-  })
-})
-
-const pagedItems = computed(() => {
-  const start = (pager.page - 1) * pager.pageSize
-  return filteredItems.value.slice(start, start + pager.pageSize)
-})
-
-watch(filteredItems, () => {
-  pager.page = 1
-})
-
-watch(
-  () => route.query.tab,
-  value => {
-    activeTabName.value = normalizeTabName(value)
-  }
-)
 
 watch(
   () => userStore.currentShopId,
@@ -226,41 +134,16 @@ onUnmounted(() => {
   stopRunPolling()
 })
 
-function normalizeTabName(value) {
-  return value === TAB_AUTOMATION ? TAB_AUTOMATION : TAB_MANUAL
-}
-
-function updateRouteTab(name) {
-  const normalized = normalizeTabName(name)
-  activeTabName.value = normalized
-  if (route.query.tab === normalized) return
-  router.replace({
-    query: {
-      ...route.query,
-      tab: normalized
-    }
-  })
-}
-
-function handleTabChange(name) {
-  updateRouteTab(String(name || TAB_MANUAL))
-}
-
-function switchToTab(name) {
-  updateRouteTab(name)
-}
-
 function resetState() {
   products.value = []
-  runs.value = []
   automationRuns.value = []
   config.official_action_ids = []
   config.shop_action_ids = []
+  config.exit_official_action_ids = []
+  config.exit_shop_action_ids = []
   config.auto_enabled = false
   config.schedule_time = DEFAULT_SCHEDULE_TIME
-  detail.value = null
   automationDetail.value = null
-  detailVisible.value = false
   automationDetailVisible.value = false
   lastSynced.value = ''
   stopRunPolling()
@@ -274,7 +157,6 @@ async function loadPageData() {
       loadActions(),
       loadConfig(),
       loadProducts(),
-      loadRuns(),
       loadAutomationRuns()
     ])
   } catch (error) {
@@ -303,6 +185,8 @@ async function loadConfig() {
   const data = res.data || {}
   config.official_action_ids = Array.isArray(data.official_action_ids) ? data.official_action_ids : []
   config.shop_action_ids = Array.isArray(data.shop_action_ids) ? data.shop_action_ids : []
+  config.exit_official_action_ids = Array.isArray(data.exit_official_action_ids) ? data.exit_official_action_ids : []
+  config.exit_shop_action_ids = Array.isArray(data.exit_shop_action_ids) ? data.exit_shop_action_ids : []
   config.auto_enabled = Boolean(data.auto_enabled)
   config.schedule_time = data.schedule_time || DEFAULT_SCHEDULE_TIME
 }
@@ -319,20 +203,6 @@ async function loadProducts(silent = false) {
     lastSynced.value = data.last_synced || ''
   } finally {
     if (!silent) productsLoading.value = false
-  }
-}
-
-async function loadRuns(silent = false) {
-  const shopId = userStore.currentShopId
-  if (!shopId) return
-
-  if (!silent) runsLoading.value = true
-  try {
-    const res = await listSearchCPORuns({ shop_id: shopId, page: 1, page_size: 20 })
-    runs.value = res.data?.items || []
-    updateRunPollingState()
-  } finally {
-    if (!silent) runsLoading.value = false
   }
 }
 
@@ -363,6 +233,8 @@ async function saveConfig(successMessage) {
       shop_id: shopId,
       official_action_ids: config.official_action_ids,
       shop_action_ids: config.shop_action_ids,
+      exit_official_action_ids: config.exit_official_action_ids,
+      exit_shop_action_ids: config.exit_shop_action_ids,
       auto_enabled: config.auto_enabled,
       schedule_time: config.schedule_time || DEFAULT_SCHEDULE_TIME
     })
@@ -374,77 +246,8 @@ async function saveConfig(successMessage) {
   }
 }
 
-async function handleSaveDefaultActions() {
-  await saveConfig('默认活动已保存')
-}
-
 async function handleSaveAutomationSettings() {
   await saveConfig('自动化设置已保存')
-}
-
-async function handleRefreshProducts() {
-  const shopId = userStore.currentShopId
-  if (!shopId) {
-    ElMessage.warning('请先选择店铺')
-    return
-  }
-
-  refreshing.value = true
-  try {
-    await refreshSearchCPOProducts({ shop_id: shopId })
-    ElMessage.success('刷新完成')
-    await loadProducts()
-  } catch (error) {
-    ElMessage.error(error.response?.data?.message || '刷新失败')
-  } finally {
-    refreshing.value = false
-  }
-}
-
-async function handleRunNow() {
-  const shopId = userStore.currentShopId
-  if (!shopId) {
-    ElMessage.warning('请先选择店铺')
-    return
-  }
-  if (filteredItems.value.length === 0) {
-    ElMessage.warning('当前筛选结果为空')
-    return
-  }
-  if (totalDefaultActions.value === 0) {
-    ElMessage.warning('请先选择默认活动并保存')
-    return
-  }
-
-  try {
-    await ElMessageBox.confirm(
-      `将对当前筛选结果 ${filteredItems.value.length} 个商品执行报名，是否继续？`,
-      '确认执行',
-      {
-        confirmButtonText: '开始执行',
-        cancelButtonText: '取消',
-        type: 'warning'
-      }
-    )
-  } catch {
-    return
-  }
-
-  running.value = true
-  try {
-    await startSearchCPORun({
-      shop_id: shopId,
-      source_skus: filteredItems.value.map(item => item.source_sku).filter(Boolean),
-      official_action_ids: config.official_action_ids,
-      shop_action_ids: config.shop_action_ids
-    })
-    ElMessage.success('已创建搜索推广商品报名任务')
-    await loadRuns()
-  } catch (error) {
-    ElMessage.error(error.response?.data?.message || '创建任务失败')
-  } finally {
-    running.value = false
-  }
 }
 
 async function handleStartAutomationRun() {
@@ -454,13 +257,13 @@ async function handleStartAutomationRun() {
     return
   }
   if (totalDefaultActions.value === 0) {
-    ElMessage.warning('请先到“商品池与手动报名”配置默认活动')
+    ElMessage.warning('请先配置默认活动并保存')
     return
   }
 
   try {
     await ElMessageBox.confirm(
-      '自动化执行会刷新商品、同步可推进状态，并按 state1 / state2 / state3 规则推进迁移，是否继续？',
+      '自动化执行会刷新商品并按状态1/2/3/4推进迁移，是否继续？',
       '确认执行自动化',
       {
         confirmButtonText: '开始执行',
@@ -476,7 +279,7 @@ async function handleStartAutomationRun() {
   try {
     await startSearchCPOAutomationRun({ shop_id: shopId })
     ElMessage.success('已创建状态迁移自动化任务')
-    await Promise.all([loadAutomationRuns(), loadProducts()])
+    await Promise.all([loadAutomationRuns(), loadProducts(true)])
   } catch (error) {
     ElMessage.error(error.response?.data?.message || '创建自动化任务失败')
   } finally {
@@ -485,7 +288,7 @@ async function handleStartAutomationRun() {
 }
 
 function updateRunPollingState() {
-  const hasRunning = [...runs.value, ...automationRuns.value].some(row => ['pending', 'running'].includes(row.status))
+  const hasRunning = automationRuns.value.some(row => ['pending', 'running'].includes(row.status))
   if (hasRunning) {
     startRunPolling()
   } else {
@@ -497,7 +300,6 @@ function startRunPolling() {
   if (runPollTimer) return
   runPollTimer = setInterval(async () => {
     await Promise.allSettled([
-      loadRuns(true),
       loadAutomationRuns(true),
       loadProducts(true)
     ])
@@ -508,23 +310,6 @@ function stopRunPolling() {
   if (runPollTimer) {
     clearInterval(runPollTimer)
     runPollTimer = null
-  }
-}
-
-async function openRunDetail(row) {
-  const shopId = userStore.currentShopId
-  if (!shopId || !row?.id) return
-
-  detailVisible.value = true
-  detailLoading.value = true
-  detail.value = null
-  try {
-    const res = await getSearchCPORunDetail(row.id, shopId)
-    detail.value = res.data || null
-  } catch (error) {
-    ElMessage.error(error.response?.data?.message || '获取手动报名详情失败')
-  } finally {
-    detailLoading.value = false
   }
 }
 
@@ -624,22 +409,6 @@ async function openAutomationRunDetail(row) {
 .metric-time {
   font-size: 12px;
   line-height: 1.5;
-}
-
-.search-cpo-tabs {
-  padding-bottom: 8px;
-}
-
-.search-cpo-tabs :deep(.el-tabs__header) {
-  margin-bottom: 18px;
-}
-
-.search-cpo-tabs :deep(.el-tabs__nav-wrap::after) {
-  background-color: rgba(15, 118, 110, 0.12);
-}
-
-.search-cpo-tabs :deep(.el-tabs__item) {
-  font-weight: 600;
 }
 
 @media (max-width: 640px) {
