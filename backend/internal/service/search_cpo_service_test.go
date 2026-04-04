@@ -240,6 +240,43 @@ func TestSearchCPOServiceUpdateConfigRejectsInvalidExitActionIDs(t *testing.T) {
 	}
 }
 
+func TestSearchCPOServiceUpdateConfigRejectsExitActionSourceMismatch(t *testing.T) {
+	t.Parallel()
+
+	db := openSearchCPOServiceTestDB(t)
+	shop := createSearchCPOServiceTestShop(t, db)
+	service := newSearchCPOConfigTestService(db)
+
+	officialAction := createSearchCPOServiceTestAction(t, db, shop.ID, "official", 3101, "")
+	shopAction := createSearchCPOServiceTestAction(t, db, shop.ID, "shop", 4101, "shop-source")
+
+	_, err := service.UpdateConfig(&dto.SearchCPOConfigRequest{
+		ShopID:                shop.ID,
+		ExitOfficialActionIDs: []uint{shopAction.ID},
+		AutoEnabled:           boolPtr(true),
+		ScheduleTime:          "09:05",
+	})
+	if err == nil {
+		t.Fatal("UpdateConfig() error = nil, want official source validation error")
+	}
+	if !strings.Contains(err.Error(), "官方活动选择无效") {
+		t.Fatalf("UpdateConfig() error = %q, want official source validation message", err.Error())
+	}
+
+	_, err = service.UpdateConfig(&dto.SearchCPOConfigRequest{
+		ShopID:            shop.ID,
+		ExitShopActionIDs: []uint{officialAction.ID},
+		AutoEnabled:       boolPtr(true),
+		ScheduleTime:      "09:05",
+	})
+	if err == nil {
+		t.Fatal("UpdateConfig() error = nil, want shop source validation error")
+	}
+	if !strings.Contains(err.Error(), "店铺活动选择无效") {
+		t.Fatalf("UpdateConfig() error = %q, want shop source validation message", err.Error())
+	}
+}
+
 func TestResolveSearchCPOCatalogItem(t *testing.T) {
 	t.Parallel()
 
