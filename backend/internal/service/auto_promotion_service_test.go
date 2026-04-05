@@ -180,3 +180,11 @@ func TestSelectEligibleItemsRequiresAllChosenActions(t *testing.T) {
 		t.Fatalf("expected both official and shop results to be recorded")
 	}
 }
+
+func TestAutoPromotionShopCandidateWaitTimeoutAllowsSlowBrowserSync(t *testing.T) {
+	t.Parallel()
+
+	if autoPromotionShopCandidateWaitTimeout < 2*time.Minute {
+		t.Fatalf("autoPromotionShopCandidateWaitTimeout = %s, want at least %s", autoPromotionShopCandidateWaitTimeout, 2*time.Minute)
+	}
+}

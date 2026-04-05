@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -20,6 +21,8 @@ type AutomationService struct {
 }
 
 const extensionPollIntervalMS = 5000
+const automationArtifactWaitTimeout = 3 * time.Second
+const automationArtifactPollInterval = 100 * time.Millisecond
 
 func NewAutomationService(
 	automationRepo *repository.AutomationRepository,
@@ -255,7 +258,20 @@ func (s *AutomationService) WaitForJobCompletion(jobID uint, timeout time.Durati
 }
 
 func (s *AutomationService) GetLatestArtifact(jobID uint, artifactType string) (*model.AutomationArtifact, error) {
-	return s.automationRepo.FindLatestArtifactByJob(jobID, artifactType)
+	deadline := time.Now().Add(automationArtifactWaitTimeout)
+	for {
+		artifact, err := s.automationRepo.FindLatestArtifactByJob(jobID, artifactType)
+		if err == nil {
+			return artifact, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+		if time.Now().After(deadline) {
+			return nil, err
+		}
+		time.Sleep(automationArtifactPollInterval)
+	}
 }
 
 func (s *AutomationService) FindLatestCompletedSyncShopActionsJob(shopID uint) (*model.AutomationJob, error) {

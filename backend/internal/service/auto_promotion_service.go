@@ -22,7 +22,7 @@ const (
 	autoPromotionSchedulerInterval         = time.Minute
 	autoPromotionRunStaleAfter             = 2 * time.Hour
 	autoPromotionOfficialCandidatePageSize = 200
-	autoPromotionShopCandidateWaitTimeout  = 60 * time.Second
+	autoPromotionShopCandidateWaitTimeout  = 2 * time.Minute
 	autoPromotionShopActionWaitTimeout     = 5 * time.Minute
 )
 

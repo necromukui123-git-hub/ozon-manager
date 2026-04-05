@@ -2,10 +2,12 @@ package ozon
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,8 +15,10 @@ import (
 )
 
 const (
-	BaseURL            = "https://api-seller.ozon.ru"
-	DefaultAPILanguage = "ZH_HANS"
+	BaseURL                = "https://api-seller.ozon.ru"
+	DefaultAPILanguage     = "ZH_HANS"
+	readRequestMaxAttempts = 3
+	readRequestRetryDelay  = 400 * time.Millisecond
 )
 
 var ErrInvalidClientID = errors.New("client_id must be a positive integer")
@@ -87,6 +91,41 @@ func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error
 	}
 
 	return respBody, nil
+}
+
+func (c *Client) doReadRequest(method, path string, body interface{}) ([]byte, error) {
+	var lastErr error
+	for attempt := 1; attempt <= readRequestMaxAttempts; attempt++ {
+		respBody, err := c.doRequest(method, path, body)
+		if err == nil {
+			return respBody, nil
+		}
+		lastErr = err
+		if attempt == readRequestMaxAttempts || !isRetryableReadError(err) {
+			return nil, err
+		}
+		time.Sleep(readRequestRetryDelay)
+	}
+	return nil, lastErr
+}
+
+func isRetryableReadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "tls handshake timeout") ||
+		strings.Contains(message, "client.timeout") ||
+		strings.Contains(message, "context cancellation while reading body")
 }
 
 func normalizeClientID(clientID string) (string, error) {
@@ -168,7 +207,7 @@ func (c *Client) GetProductList(limit int, lastID string) (*ProductListResponse,
 		},
 	}
 
-	respBody, err := c.doRequest("POST", "/v2/product/list", req)
+	respBody, err := c.doReadRequest("POST", "/v2/product/list", req)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +253,7 @@ func (c *Client) GetProductInfo(productIDs []int64) (*ProductInfoResponse, error
 		ProductID: productIDs,
 	}
 
-	respBody, err := c.doRequest("POST", "/v3/product/info/list", req)
+	respBody, err := c.doReadRequest("POST", "/v3/product/info/list", req)
 	if err != nil {
 		return nil, err
 	}

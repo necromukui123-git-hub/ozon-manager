@@ -71,7 +71,7 @@ func (c *Client) GetProductListV3(limit int, lastID string, visibility string) (
 		},
 	}
 
-	respBody, err := c.doRequest("POST", "/v3/product/list", req)
+	respBody, err := c.doReadRequest("POST", "/v3/product/list", req)
 	if err != nil {
 		return nil, err
 	}
@@ -237,7 +237,7 @@ func (c *Client) GetProductInfoList(productIDs []int64, offerIDs []string) (*Pro
 		OfferID:   offerIDs,
 	}
 
-	respBody, err := c.doRequest("POST", "/v3/product/info/list", req)
+	respBody, err := c.doReadRequest("POST", "/v3/product/info/list", req)
 	if err != nil {
 		return nil, err
 	}
@@ -310,9 +310,9 @@ func (c *Client) GetProductStocks(productIDs []int64, offerIDs []string, limit i
 
 	// /v3/product/info/stocks has been deprecated by Ozon and replaced by /v4/product/info/stocks.
 	// Try v4 first and keep v3 as compatibility fallback for older environments.
-	respBody, err := c.doRequest("POST", "/v4/product/info/stocks", req)
+	respBody, err := c.doReadRequest("POST", "/v4/product/info/stocks", req)
 	if err != nil && isNotFoundAPIError(err) {
-		respBody, err = c.doRequest("POST", "/v3/product/info/stocks", req)
+		respBody, err = c.doReadRequest("POST", "/v3/product/info/stocks", req)
 	}
 	if err != nil {
 		return nil, err

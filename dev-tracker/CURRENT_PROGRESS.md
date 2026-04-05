@@ -452,6 +452,11 @@
 42. 执行结果：脚本已编写，`init_database.sql` 已同步回写；本轮未在当前会话直接执行数据库升级。
 43. 本次（开发启动脚本按包运行修复）无新增迁移脚本：仅调整 `start-dev.bat`、协作文档中的 Go 命令示例与一条轻量回归脚本，不涉及数据库结构变更。
 44. 本次（开发启动脚本端口守卫修复）无新增迁移脚本：仅调整 `start-dev.bat` 与一条轻量回归脚本，不涉及数据库结构变更。
+45. 本次（自动加促销稳定性补强）无新增迁移脚本：仅调整自动加促销/目录刷新/自动化产物读取的服务层时序与 Ozon 只读请求重试，不涉及数据库结构变更。
+46. 处理：`OzonCatalogService.RefreshShopCatalogSync` 遇到同店铺已有刷新进行中时，改为等待当前刷新完成并复用结果，不再直接报 `catalog refresh already running`。
+47. 处理：`AutomationService.GetLatestArtifact` 增加短暂轮询等待，消除 extension/agent 先报 job 成功、快照稍后落库导致的 `record not found` 竞态；同时为 `/v3/product/list`、`/v1/actions/candidates`、`/v1/actions/products` 等只读 Ozon 请求补充瞬时超时重试。
+48. 处理：自动加促销店铺活动候选同步等待窗口从 60 秒提升到 2 分钟，降低真实浏览器链路中的误报超时。
+49. 后端完整回归测试通过：`cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./...`。
 
 ## 遗留问题
 1. Chrome 商店上架材料与隐私文案尚未完成。

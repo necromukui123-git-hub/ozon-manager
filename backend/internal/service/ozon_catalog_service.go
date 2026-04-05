@@ -16,11 +16,13 @@ import (
 )
 
 const (
-	defaultOzonCatalogPageSize = 20
-	maxOzonCatalogPageSize     = 100
-	ozonCatalogRefreshThrottle = 120 * time.Second
-	ozonCatalogBatchSize       = 200
-	ozonCatalogRemotePageSize  = 1000
+	defaultOzonCatalogPageSize     = 20
+	maxOzonCatalogPageSize         = 100
+	ozonCatalogRefreshThrottle     = 120 * time.Second
+	ozonCatalogRefreshWaitTimeout  = 3 * time.Minute
+	ozonCatalogRefreshPollInterval = 200 * time.Millisecond
+	ozonCatalogBatchSize           = 200
+	ozonCatalogRemotePageSize      = 1000
 )
 
 type ozonCatalogCursor struct {
@@ -234,7 +236,7 @@ func (s *OzonCatalogService) RefreshShopCatalogSync(shopID uint) error {
 	}
 	if state.Running {
 		s.refreshMu.Unlock()
-		return fmt.Errorf("catalog refresh already running")
+		return s.waitForRefreshCompletion(shopID, ozonCatalogRefreshWaitTimeout)
 	}
 	state.Running = true
 	state.LastStartedAt = &now
@@ -250,6 +252,23 @@ func (s *OzonCatalogService) RefreshShopCatalogSync(shopID uint) error {
 	err := s.syncCatalogFromOzon(shopID)
 	s.updateRefreshState(shopID, err)
 	return err
+}
+
+func (s *OzonCatalogService) waitForRefreshCompletion(shopID uint, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		state := s.getRefreshState(shopID)
+		if !state.Running {
+			if trimmed := strings.TrimSpace(state.LastError); trimmed != "" {
+				return fmt.Errorf("%s", trimmed)
+			}
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("catalog refresh wait timeout")
+		}
+		time.Sleep(ozonCatalogRefreshPollInterval)
+	}
 }
 
 func (s *OzonCatalogService) refreshShopCatalog(shopID uint) {

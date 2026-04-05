@@ -30,7 +30,7 @@ type ActionsResponse struct {
 
 // GetActions 获取所有促销活动
 func (c *Client) GetActions() (*ActionsResponse, error) {
-	respBody, err := c.doRequest("GET", "/v1/actions", nil)
+	respBody, err := c.doReadRequest("GET", "/v1/actions", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func (c *Client) GetActionCandidates(actionID int64, limit int, lastID string) (
 		req.LastID = trimmed
 	}
 
-	respBody, err := c.doRequest("POST", "/v1/actions/candidates", req)
+	respBody, err := c.doReadRequest("POST", "/v1/actions/candidates", req)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,7 @@ func (c *Client) GetActionProducts(actionID int64, limit int, lastID string) (*A
 		LastID:   lastID,
 	}
 
-	respBody, err := c.doRequest("POST", "/v1/actions/products", req)
+	respBody, err := c.doReadRequest("POST", "/v1/actions/products", req)
 	if err != nil {
 		return nil, err
 	}

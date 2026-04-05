@@ -1198,3 +1198,30 @@ Search CPO 刷新范围改为拉取完整 CPO 商品集合，并同步收敛页�
 1. 后端测试：`cd backend && $env:GOCACHE=\"E:\\developcode\\ozon-manager\\backend\\.gocache\"; go test ./...` 通过。
 2. 前端构建：`cd frontend && cmd /c npm run build` 通过（非沙箱执行，规避 `spawn EPERM`）。
 
+## 2026-04-05
+### 主题
+修复自动加促销在真实环境中的三类稳定性问题：目录刷新并发失败、候选快照读取竞态，以及 Ozon 只读接口瞬时超时。
+
+### 关键变更
+1. `backend/internal/service/ozon_catalog_service.go`：
+   - `RefreshShopCatalogSync` 遇到同店铺已有刷新运行中时，改为等待当前刷新结束并复用结果，不再直接返回 `catalog refresh already running`。
+2. `backend/internal/service/automation_service.go`：
+   - `GetLatestArtifact` 对刚完成的自动化任务增加短暂轮询等待，避免 job 已成功但 `action_candidates_snapshot` / 其它快照尚未落库时立即读出 `record not found`。
+3. `backend/pkg/ozon/client.go`、`backend/pkg/ozon/catalog.go`、`backend/pkg/ozon/actions.go`：
+   - 为商品目录和活动候选/已报名等只读 Seller 请求增加有限次瞬时超时重试，覆盖 `context deadline exceeded`、`TLS handshake timeout` 一类网络抖动。
+4. `backend/internal/service/auto_promotion_service.go`：
+   - 自动加促销店铺活动候选同步等待窗口从 60 秒提升到 2 分钟，降低真实浏览器链路的误报超时。
+5. 新增回归测试：
+   - `backend/internal/service/automation_service_artifact_test.go`
+   - `backend/internal/service/ozon_catalog_service_refresh_test.go`
+   - `backend/pkg/ozon/catalog_retry_test.go`
+   - 并补充 `backend/internal/service/auto_promotion_service_test.go` 的候选同步等待窗口断言。
+
+### 影响范围
+1. 自动加促销与其它依赖 automation artifact 的链路，明显降低 `record not found` 竞态失败。
+2. 目录刷新与官方候选/已报名同步在遭遇瞬时网络抖动时，具备有限重试能力，减少偶发 `TLS handshake timeout` / `context deadline exceeded` 直接中断。
+3. 同店铺目录刷新并发时，后发请求改为等待已有刷新完成，避免自动加促销因为撞到后台刷新而直接失败。
+4. 无数据库结构变更，无新增迁移脚本。
+
+### 验证
+1. 后端完整回归：`cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./...` 通过。
