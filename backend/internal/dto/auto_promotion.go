@@ -5,7 +5,9 @@ type AutoPromotionConfigRequest struct {
 	Enabled           bool   `json:"enabled"`
 	ScheduleTime      string `json:"schedule_time"`
 	TargetDateMode    string `json:"target_date_mode"`
-	TargetDate        string `json:"target_date"`
+	TargetDateStart   string `json:"target_date_start"`
+	TargetDateEnd     string `json:"target_date_end"`
+	TargetDate        string `json:"target_date,omitempty"`
 	OfficialActionIDs []uint `json:"official_action_ids"`
 	ShopActionIDs     []uint `json:"shop_action_ids"`
 }
@@ -16,7 +18,8 @@ type AutoPromotionConfigResponse struct {
 	Enabled           bool   `json:"enabled"`
 	ScheduleTime      string `json:"schedule_time"`
 	TargetDateMode    string `json:"target_date_mode"`
-	TargetDate        string `json:"target_date"`
+	TargetDateStart   string `json:"target_date_start"`
+	TargetDateEnd     string `json:"target_date_end"`
 	OfficialActionIDs []uint `json:"official_action_ids"`
 	ShopActionIDs     []uint `json:"shop_action_ids"`
 	UpdatedAt         string `json:"updated_at,omitempty"`
@@ -25,7 +28,9 @@ type AutoPromotionConfigResponse struct {
 type AutoPromotionRunRequest struct {
 	ShopID            uint   `json:"shop_id" binding:"required"`
 	TargetDateMode    string `json:"target_date_mode"`
-	TargetDate        string `json:"target_date"`
+	TargetDateStart   string `json:"target_date_start"`
+	TargetDateEnd     string `json:"target_date_end"`
+	TargetDate        string `json:"target_date,omitempty"`
 	OfficialActionIDs []uint `json:"official_action_ids"`
 	ShopActionIDs     []uint `json:"shop_action_ids"`
 }
@@ -67,7 +72,8 @@ type AutoPromotionRunSummaryResponse struct {
 	TriggerMode     string `json:"trigger_mode"`
 	TriggerDate     string `json:"trigger_date"`
 	TargetDateMode  string `json:"target_date_mode"`
-	TargetDate      string `json:"target_date"`
+	TargetDateStart string `json:"target_date_start"`
+	TargetDateEnd   string `json:"target_date_end"`
 	Status          string `json:"status"`
 	TotalCandidates int    `json:"total_candidates"`
 	TotalSelected   int    `json:"total_selected"`

@@ -26,21 +26,24 @@
             <el-radio-group v-model="form.target_date_mode" class="target-date-mode-group">
               <el-radio-button label="yesterday">昨天</el-radio-button>
               <el-radio-button label="today">今天</el-radio-button>
-              <el-radio-button label="custom">自定义日期</el-radio-button>
+              <el-radio-button label="custom">自定义日期段</el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-if="isCustomTargetDateMode" label="自定义日期">
+          <el-form-item v-if="isCustomTargetDateMode" label="自定义日期段">
             <el-date-picker
-              v-model="form.target_date"
-              type="date"
+              v-model="form.target_date_range"
+              type="daterange"
+              unlink-panels
               value-format="YYYY-MM-DD"
               format="YYYY-MM-DD"
-              placeholder="选择日期"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
             />
           </el-form-item>
           <el-form-item>
             <div class="form-tip">
-              定时任务会按所选规则动态计算执行日期；只有“自定义日期”模式才会保存固定日期。
+              定时任务会按所选规则动态计算执行日期段；只有“自定义日期段”模式才会保存固定日期范围。
             </div>
           </el-form-item>
         </el-form>
@@ -48,7 +51,7 @@
 
       <BentoCard title="执行说明" :icon="InfoFilled" size="1x1">
         <div class="hint-list">
-          <div>1. 执行前会强制刷新 Ozon 商品目录，并按本次解析出的上架日期筛选商品。</div>
+          <div>1. 执行前会强制刷新 Ozon 商品目录，并按本次解析出的上架日期段筛选商品。</div>
           <div>2. 官方活动会先执行，只有成功的商品才会继续进入店铺活动。</div>
           <div>3. 历史记录会保留逐商品失败原因，不会在商品列表主表打额外标签。</div>
         </div>
@@ -113,7 +116,11 @@
             {{ targetDateModeLabel(row.target_date_mode) }}
           </template>
         </el-table-column>
-        <el-table-column prop="target_date" label="实际日期" width="120" />
+        <el-table-column label="实际日期段" width="200">
+          <template #default="{ row }">
+            {{ formatTargetDateRange(row) }}
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="140">
           <template #default="{ row }">
             <el-tag :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
@@ -143,7 +150,7 @@
       <div v-if="detail" class="detail-summary">
         <el-tag :type="statusTagType(detail.status)">{{ statusLabel(detail.status) }}</el-tag>
         <span>日期规则：{{ targetDateModeLabel(detail.target_date_mode) }}</span>
-        <span>实际日期：{{ detail.target_date }}</span>
+        <span>实际日期段：{{ formatTargetDateRange(detail) }}</span>
         <span>成功 {{ detail.success_items }} / 失败 {{ detail.failed_items }} / 跳过 {{ detail.skipped_items }}</span>
       </div>
 
@@ -213,7 +220,7 @@ const form = reactive({
   enabled: false,
   schedule_time: '09:05',
   target_date_mode: 'yesterday',
-  target_date: '',
+  target_date_range: [],
   official_action_ids: [],
   shop_action_ids: []
 })
@@ -242,7 +249,7 @@ function resetForm() {
   form.enabled = false
   form.schedule_time = '09:05'
   form.target_date_mode = 'yesterday'
-  form.target_date = ''
+  form.target_date_range = []
   form.official_action_ids = []
   form.shop_action_ids = []
 }
@@ -279,8 +286,8 @@ async function loadConfig() {
   const data = res.data || {}
   form.enabled = !!data.enabled
   form.schedule_time = data.schedule_time || '09:05'
-  form.target_date_mode = normalizeTargetDateMode(data.target_date_mode, data.target_date)
-  form.target_date = data.target_date || ''
+  form.target_date_mode = normalizeTargetDateMode(data.target_date_mode, data.target_date_start, data.target_date_end, data.target_date)
+  form.target_date_range = extractTargetDateRange(data)
   form.official_action_ids = Array.isArray(data.official_action_ids) ? data.official_action_ids : []
   form.shop_action_ids = Array.isArray(data.shop_action_ids) ? data.shop_action_ids : []
 }
@@ -306,10 +313,12 @@ async function handleSaveConfig() {
     ElMessage.warning('请先选择店铺')
     return
   }
-  if (isCustomTargetDateMode.value && !form.target_date) {
-    ElMessage.warning('自定义日期模式下请先选择日期')
+  if (isCustomTargetDateMode.value && form.target_date_range.length !== 2) {
+    ElMessage.warning('自定义日期段模式下请先选择开始和结束日期')
     return
   }
+
+  const [targetDateStart, targetDateEnd] = normalizeTargetDateRange(form.target_date_range)
 
   saving.value = true
   try {
@@ -318,7 +327,8 @@ async function handleSaveConfig() {
       enabled: form.enabled,
       schedule_time: form.schedule_time,
       target_date_mode: form.target_date_mode,
-      target_date: isCustomTargetDateMode.value ? form.target_date : '',
+      target_date_start: isCustomTargetDateMode.value ? targetDateStart : '',
+      target_date_end: isCustomTargetDateMode.value ? targetDateEnd : '',
       official_action_ids: form.official_action_ids,
       shop_action_ids: form.shop_action_ids
     })
@@ -337,10 +347,12 @@ async function handleRunNow() {
     ElMessage.warning('请先选择店铺')
     return
   }
-  if (isCustomTargetDateMode.value && !form.target_date) {
-    ElMessage.warning('自定义日期模式下请先选择日期')
+  if (isCustomTargetDateMode.value && form.target_date_range.length !== 2) {
+    ElMessage.warning('自定义日期段模式下请先选择开始和结束日期')
     return
   }
+
+  const [targetDateStart, targetDateEnd] = normalizeTargetDateRange(form.target_date_range)
 
   try {
     await ElMessageBox.confirm(
@@ -357,7 +369,8 @@ async function handleRunNow() {
     await startAutoPromotionRun({
       shop_id: shopId,
       target_date_mode: form.target_date_mode,
-      target_date: isCustomTargetDateMode.value ? form.target_date : '',
+      target_date_start: isCustomTargetDateMode.value ? targetDateStart : '',
+      target_date_end: isCustomTargetDateMode.value ? targetDateEnd : '',
       official_action_ids: form.official_action_ids,
       shop_action_ids: form.shop_action_ids
     })
@@ -407,12 +420,12 @@ function stopPolling() {
   }
 }
 
-function normalizeTargetDateMode(mode, targetDate) {
+function normalizeTargetDateMode(mode, targetDateStart, targetDateEnd, legacyTargetDate) {
   const normalized = String(mode || '').trim().toLowerCase()
   if (['yesterday', 'today', 'custom'].includes(normalized)) {
     return normalized
   }
-  return targetDate ? 'custom' : 'yesterday'
+  return targetDateStart || targetDateEnd || legacyTargetDate ? 'custom' : 'yesterday'
 }
 
 function targetDateModeLabel(mode) {
@@ -422,10 +435,38 @@ function targetDateModeLabel(mode) {
     case 'today':
       return '今天'
     case 'custom':
-      return '自定义日期'
+      return '自定义日期段'
     default:
       return '-'
   }
+}
+
+function extractTargetDateRange(data) {
+  const start = data?.target_date_start || data?.target_date || ''
+  const end = data?.target_date_end || data?.target_date || ''
+  if (!start || !end) {
+    return []
+  }
+  return [start, end]
+}
+
+function normalizeTargetDateRange(value) {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return ['', '']
+  }
+  return [value[0] || '', value[1] || '']
+}
+
+function formatTargetDateRange(row) {
+  const start = row?.target_date_start || row?.target_date || ''
+  const end = row?.target_date_end || row?.target_date || ''
+  if (!start && !end) {
+    return '-'
+  }
+  if (start && end && start !== end) {
+    return `${start} ~ ${end}`
+  }
+  return start || end || '-'
 }
 
 function statusLabel(status) {

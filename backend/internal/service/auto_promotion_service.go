@@ -40,7 +40,8 @@ type AutoPromotionService struct {
 type autoPromotionConfigSnapshot struct {
 	ScheduleTime      string `json:"schedule_time,omitempty"`
 	TargetDateMode    string `json:"target_date_mode,omitempty"`
-	TargetDate        string `json:"target_date,omitempty"`
+	TargetDateStart   string `json:"target_date_start,omitempty"`
+	TargetDateEnd     string `json:"target_date_end,omitempty"`
 	OfficialActionIDs []uint `json:"official_action_ids"`
 	ShopActionIDs     []uint `json:"shop_action_ids"`
 }
@@ -69,7 +70,8 @@ type autoPromotionRunInput struct {
 	TriggerMode       string
 	TriggerDate       time.Time
 	TargetDateMode    string
-	TargetDate        time.Time
+	TargetDateStart   time.Time
+	TargetDateEnd     time.Time
 	ScheduleTime      string
 	OfficialActionIDs []uint
 	ShopActionIDs     []uint
@@ -129,7 +131,8 @@ func (s *AutoPromotionService) GetConfig(shopID uint) (*dto.AutoPromotionConfigR
 				Enabled:           false,
 				ScheduleTime:      autoPromotionDefaultScheduleTime,
 				TargetDateMode:    model.AutoPromotionTargetDateModeYesterday,
-				TargetDate:        "",
+				TargetDateStart:   "",
+				TargetDateEnd:     "",
 				OfficialActionIDs: []uint{},
 				ShopActionIDs:     []uint{},
 			}, nil
@@ -140,7 +143,7 @@ func (s *AutoPromotionService) GetConfig(shopID uint) (*dto.AutoPromotionConfigR
 }
 
 func (s *AutoPromotionService) UpdateConfig(req *dto.AutoPromotionConfigRequest) (*dto.AutoPromotionConfigResponse, error) {
-	targetDateMode, targetDate, err := validateAutoPromotionConfigTargetDate(req.TargetDateMode, req.TargetDate)
+	targetDateMode, targetDateStart, targetDateEnd, err := validateAutoPromotionConfigTargetDateRange(req.TargetDateMode, req.TargetDateStart, req.TargetDateEnd, req.TargetDate)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +171,8 @@ func (s *AutoPromotionService) UpdateConfig(req *dto.AutoPromotionConfigRequest)
 		Enabled:           req.Enabled,
 		ScheduleTime:      scheduleTime,
 		TargetDateMode:    targetDateMode,
-		TargetDate:        targetDate,
+		TargetDate:        targetDateStart,
+		TargetDateEnd:     targetDateEnd,
 		OfficialActionIDs: officialBytes,
 		ShopActionIDs:     shopBytes,
 	}
@@ -185,7 +189,7 @@ func (s *AutoPromotionService) UpdateConfig(req *dto.AutoPromotionConfigRequest)
 
 func (s *AutoPromotionService) StartManualRun(userID uint, req *dto.AutoPromotionRunRequest) (*dto.AutoPromotionRunSummaryResponse, error) {
 	now := time.Now()
-	targetDateMode, targetDate, err := resolveAutoPromotionTargetDate(req.TargetDateMode, req.TargetDate, now)
+	targetDateMode, targetDateStart, targetDateEnd, err := resolveAutoPromotionTargetDateRange(req.TargetDateMode, req.TargetDateStart, req.TargetDateEnd, req.TargetDate, now)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +215,8 @@ func (s *AutoPromotionService) StartManualRun(userID uint, req *dto.AutoPromotio
 		TriggerMode:       model.AutoPromotionTriggerModeManual,
 		TriggerDate:       dateOnlyValue(now),
 		TargetDateMode:    targetDateMode,
-		TargetDate:        targetDate,
+		TargetDateStart:   targetDateStart,
+		TargetDateEnd:     targetDateEnd,
 		OfficialActionIDs: officialIDs,
 		ShopActionIDs:     shopIDs,
 	}
@@ -305,9 +310,15 @@ func (s *AutoPromotionService) scanDueConfigs(now time.Time) {
 			continue
 		}
 
-		targetDateMode, targetDate, err := resolveAutoPromotionTargetDate(
+		legacyTargetDate := ""
+		if config.TargetDate != nil && (config.TargetDateEnd == nil || config.TargetDateEnd.IsZero()) {
+			legacyTargetDate = formatOptionalDate(config.TargetDate)
+		}
+		targetDateMode, targetDateStart, targetDateEnd, err := resolveAutoPromotionTargetDateRange(
 			config.TargetDateMode,
 			formatOptionalDate(config.TargetDate),
+			formatOptionalDate(config.TargetDateEnd),
+			legacyTargetDate,
 			now,
 		)
 		if err != nil {
@@ -320,7 +331,8 @@ func (s *AutoPromotionService) scanDueConfigs(now time.Time) {
 			TriggerMode:       model.AutoPromotionTriggerModeScheduled,
 			TriggerDate:       triggerDate,
 			TargetDateMode:    targetDateMode,
-			TargetDate:        targetDate,
+			TargetDateStart:   targetDateStart,
+			TargetDateEnd:     targetDateEnd,
 			ScheduleTime:      strings.TrimSpace(config.ScheduleTime),
 			OfficialActionIDs: decodeActionIDs(config.OfficialActionIDs),
 			ShopActionIDs:     decodeActionIDs(config.ShopActionIDs),
@@ -339,7 +351,8 @@ func (s *AutoPromotionService) createRun(input autoPromotionRunInput) (*model.Au
 	snapshotBytes, _ := json.Marshal(autoPromotionConfigSnapshot{
 		ScheduleTime:      input.ScheduleTime,
 		TargetDateMode:    input.TargetDateMode,
-		TargetDate:        input.TargetDate.Format("2006-01-02"),
+		TargetDateStart:   input.TargetDateStart.Format("2006-01-02"),
+		TargetDateEnd:     input.TargetDateEnd.Format("2006-01-02"),
 		OfficialActionIDs: input.OfficialActionIDs,
 		ShopActionIDs:     input.ShopActionIDs,
 	})
@@ -351,7 +364,8 @@ func (s *AutoPromotionService) createRun(input autoPromotionRunInput) (*model.Au
 		TriggerMode:    input.TriggerMode,
 		TriggerDate:    input.TriggerDate,
 		TargetDateMode: input.TargetDateMode,
-		TargetDate:     input.TargetDate,
+		TargetDate:     input.TargetDateStart,
+		TargetDateEnd:  input.TargetDateEnd,
 		Status:         model.AutoPromotionRunStatusPending,
 		ConfigSnapshot: snapshotBytes,
 	}
@@ -421,9 +435,9 @@ func (s *AutoPromotionService) runExecution(run *model.AutoPromotionRun, input a
 		}
 	}
 
-	catalogItems, err := s.ozonCatalogRepo.ListByListingDate(input.ShopID, input.TargetDate)
+	catalogItems, err := s.ozonCatalogRepo.ListByListingDateRange(input.ShopID, input.TargetDateStart, input.TargetDateEnd)
 	if err != nil {
-		return fmt.Errorf("按日期查询目录商品失败: %w", err)
+		return fmt.Errorf("按日期段查询目录商品失败: %w", err)
 	}
 
 	localProducts, err := s.productRepo.FindByOzonProductIDs(input.ShopID, collectCatalogProductIDs(catalogItems))
@@ -1030,14 +1044,15 @@ func toAutoPromotionConfigDTO(config *model.AutoPromotionConfig) (*dto.AutoPromo
 	if config == nil {
 		return nil, fmt.Errorf("config is nil")
 	}
-	targetDateMode := defaultAutoPromotionTargetDateMode(config.TargetDateMode, config.TargetDate != nil)
+	targetDateMode := defaultAutoPromotionTargetDateMode(config.TargetDateMode, config.TargetDate != nil || config.TargetDateEnd != nil)
 	return &dto.AutoPromotionConfigResponse{
 		ID:                config.ID,
 		ShopID:            config.ShopID,
 		Enabled:           config.Enabled,
 		ScheduleTime:      strings.TrimSpace(config.ScheduleTime),
 		TargetDateMode:    targetDateMode,
-		TargetDate:        formatOptionalDate(config.TargetDate),
+		TargetDateStart:   formatOptionalDate(config.TargetDate),
+		TargetDateEnd:     formatOptionalDate(config.TargetDateEnd),
 		OfficialActionIDs: decodeActionIDs(config.OfficialActionIDs),
 		ShopActionIDs:     decodeActionIDs(config.ShopActionIDs),
 		UpdatedAt:         config.UpdatedAt.Format("2006-01-02 15:04:05"),
@@ -1048,7 +1063,7 @@ func toAutoPromotionRunSummaryDTO(run *model.AutoPromotionRun) *dto.AutoPromotio
 	if run == nil {
 		return nil
 	}
-	targetDateMode := defaultAutoPromotionTargetDateMode(run.TargetDateMode, !run.TargetDate.IsZero())
+	targetDateMode := defaultAutoPromotionTargetDateMode(run.TargetDateMode, !run.TargetDate.IsZero() || !run.TargetDateEnd.IsZero())
 
 	startedAt := ""
 	if formatted := FormatAutomationTime(run.StartedAt); formatted != nil {
@@ -1064,7 +1079,8 @@ func toAutoPromotionRunSummaryDTO(run *model.AutoPromotionRun) *dto.AutoPromotio
 		TriggerMode:     run.TriggerMode,
 		TriggerDate:     run.TriggerDate.Format("2006-01-02"),
 		TargetDateMode:  targetDateMode,
-		TargetDate:      run.TargetDate.Format("2006-01-02"),
+		TargetDateStart: run.TargetDate.Format("2006-01-02"),
+		TargetDateEnd:   run.TargetDateEnd.Format("2006-01-02"),
 		Status:          run.Status,
 		TotalCandidates: run.TotalCandidates,
 		TotalSelected:   run.TotalSelected,
@@ -1161,42 +1177,85 @@ func parseAutoPromotionTargetDateMode(value string, hasTargetDate bool) (string,
 	}
 }
 
+func normalizeAutoPromotionTargetDateInputs(targetDateStartRaw string, targetDateEndRaw string, legacyTargetDateRaw string) (string, string) {
+	start := strings.TrimSpace(targetDateStartRaw)
+	end := strings.TrimSpace(targetDateEndRaw)
+	legacy := strings.TrimSpace(legacyTargetDateRaw)
+	if start == "" && end == "" && legacy != "" {
+		return legacy, legacy
+	}
+	return start, end
+}
+
+func validateAutoPromotionConfigTargetDateRange(mode string, targetDateStartRaw string, targetDateEndRaw string, legacyTargetDateRaw string) (string, *time.Time, *time.Time, error) {
+	targetDateStartRaw, targetDateEndRaw = normalizeAutoPromotionTargetDateInputs(targetDateStartRaw, targetDateEndRaw, legacyTargetDateRaw)
+	targetDateMode, err := parseAutoPromotionTargetDateMode(mode, targetDateStartRaw != "" || targetDateEndRaw != "")
+	if err != nil {
+		return "", nil, nil, err
+	}
+	if targetDateMode != model.AutoPromotionTargetDateModeCustom {
+		return targetDateMode, nil, nil, nil
+	}
+
+	targetDateStart, err := parseDateOnly(targetDateStartRaw)
+	if err != nil || targetDateStart == nil {
+		return "", nil, nil, fmt.Errorf("invalid target_date_start, expected YYYY-MM-DD")
+	}
+	targetDateEnd, err := parseDateOnly(targetDateEndRaw)
+	if err != nil || targetDateEnd == nil {
+		return "", nil, nil, fmt.Errorf("invalid target_date_end, expected YYYY-MM-DD")
+	}
+
+	startValue := dateOnlyValue(*targetDateStart)
+	endValue := dateOnlyValue(*targetDateEnd)
+	if startValue.After(endValue) {
+		return "", nil, nil, fmt.Errorf("invalid target_date range, start must be before or equal to end")
+	}
+	return targetDateMode, &startValue, &endValue, nil
+}
+
+func resolveAutoPromotionTargetDateRange(mode string, targetDateStartRaw string, targetDateEndRaw string, legacyTargetDateRaw string, reference time.Time) (string, time.Time, time.Time, error) {
+	targetDateStartRaw, targetDateEndRaw = normalizeAutoPromotionTargetDateInputs(targetDateStartRaw, targetDateEndRaw, legacyTargetDateRaw)
+	targetDateMode, err := parseAutoPromotionTargetDateMode(mode, targetDateStartRaw != "" || targetDateEndRaw != "")
+	if err != nil {
+		return "", time.Time{}, time.Time{}, err
+	}
+
+	switch targetDateMode {
+	case model.AutoPromotionTargetDateModeYesterday:
+		targetDate := dateOnlyValue(reference.AddDate(0, 0, -1))
+		return targetDateMode, targetDate, targetDate, nil
+	case model.AutoPromotionTargetDateModeToday:
+		targetDate := dateOnlyValue(reference)
+		return targetDateMode, targetDate, targetDate, nil
+	case model.AutoPromotionTargetDateModeCustom:
+		targetDateMode, targetDateStart, targetDateEnd, err := validateAutoPromotionConfigTargetDateRange(targetDateMode, targetDateStartRaw, targetDateEndRaw, "")
+		if err != nil || targetDateStart == nil || targetDateEnd == nil {
+			if err != nil {
+				return "", time.Time{}, time.Time{}, err
+			}
+			return "", time.Time{}, time.Time{}, fmt.Errorf("invalid target_date range")
+		}
+		return targetDateMode, *targetDateStart, *targetDateEnd, nil
+	default:
+		return "", time.Time{}, time.Time{}, fmt.Errorf("invalid target_date_mode, expected yesterday|today|custom")
+	}
+}
+
 func validateAutoPromotionConfigTargetDate(mode string, targetDateRaw string) (string, *time.Time, error) {
-	targetDateMode, err := parseAutoPromotionTargetDateMode(mode, strings.TrimSpace(targetDateRaw) != "")
+	targetDateMode, targetDate, _, err := validateAutoPromotionConfigTargetDateRange(mode, "", "", targetDateRaw)
 	if err != nil {
 		return "", nil, err
 	}
-	if targetDateMode != model.AutoPromotionTargetDateModeCustom {
-		return targetDateMode, nil, nil
-	}
-
-	targetDate, err := parseDateOnly(targetDateRaw)
-	if err != nil || targetDate == nil {
-		return "", nil, fmt.Errorf("invalid target_date, expected YYYY-MM-DD")
-	}
-	value := dateOnlyValue(*targetDate)
-	return targetDateMode, &value, nil
+	return targetDateMode, targetDate, nil
 }
 
 func resolveAutoPromotionTargetDate(mode string, targetDateRaw string, reference time.Time) (string, time.Time, error) {
-	targetDateMode, err := parseAutoPromotionTargetDateMode(mode, strings.TrimSpace(targetDateRaw) != "")
+	targetDateMode, targetDate, _, err := resolveAutoPromotionTargetDateRange(mode, "", "", targetDateRaw, reference)
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	switch targetDateMode {
-	case model.AutoPromotionTargetDateModeYesterday:
-		return targetDateMode, dateOnlyValue(reference.AddDate(0, 0, -1)), nil
-	case model.AutoPromotionTargetDateModeToday:
-		return targetDateMode, dateOnlyValue(reference), nil
-	case model.AutoPromotionTargetDateModeCustom:
-		targetDate, err := parseDateOnly(targetDateRaw)
-		if err != nil || targetDate == nil {
-			return "", time.Time{}, fmt.Errorf("invalid target_date, expected YYYY-MM-DD")
-		}
-		return targetDateMode, dateOnlyValue(*targetDate), nil
-	default:
-		return "", time.Time{}, fmt.Errorf("invalid target_date_mode, expected yesterday|today|custom")
-	}
+	return targetDateMode, targetDate, nil
 }
 
 func uniqueUints(values []uint) []uint {

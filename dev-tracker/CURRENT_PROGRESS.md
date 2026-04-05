@@ -1,12 +1,18 @@
 # Ozon Manager 当前进度
 
-最后更新时间：2026-04-04
-状态：进行中（Search CPO 单一自动化流程已完成开发与构建/测试校验；业务主线继续推进真实环境回归、Chrome 商店上架准备与执行引擎监控）
+最后更新时间：2026-04-05
+状态：进行中（自动加促销“自定义日期段”已完成开发与验证；业务主线继续推进真实环境回归、Chrome 商店上架准备与执行引擎监控）
 
 ## 本次交付单元
-本次目标：完成 Search CPO 从“双标签（商品池与手动报名 + 状态迁移自动化）”到“单一自动化页面”的整体收口；同时落地退出活动配置、状态1/2/3/4新口径、统一执行历史与退出失败后的跳过规则。
+本次目标：将“自动加促销”的上架时间规则从“昨天 / 今天 / 自定义日期”升级为“昨天 / 今天 / 自定义日期段”，并同步收口后端日期段解析、目录筛选、运行历史展示与数据库迁移。
 
 ## 已完成（含关键文件）
+0. 自动加促销已支持“自定义日期段”：
+   - 后端模型 / DTO / 服务：`backend/internal/model/auto_promotion.go`、`backend/internal/dto/auto_promotion.go`、`backend/internal/service/auto_promotion_service.go` 已把 `custom` 模式从单日升级为闭区间日期段；请求与历史改为 `target_date_start/target_date_end`，同时对旧 `target_date` 单日期请求保留兼容兜底。
+   - 目录筛选：`backend/internal/repository/ozon_catalog_repo.go` 新增 `ListByListingDateRange()`，自动加促销执行改为按 `listing_date >= start && listing_date <= end` 的闭区间筛选目录商品。
+   - 前端页面：`frontend/src/views/promotions/AutoAdd.vue` 已改为“昨天 / 今天 / 自定义日期段”三种规则；自定义模式使用日期范围控件，并在历史列表/详情中展示“实际日期段”。
+   - 数据库脚本：`backend/migrations/init_database.sql` 已补齐 `auto_promotion_configs.target_date_end` 与 `auto_promotion_runs.target_date_end`；新增 `backend/migrations/upgrade_20260405_auto_promotion_date_range.sql`，把旧单日数据回填为“开始=结束”的日期段。
+   - 测试：新增日期段解析、DTO 映射、目录日期段查询与 migration 基线断言，覆盖昨天/今天/自定义同日/跨日、非法区间、旧 `target_date` 兼容与闭区间边界行为。
 0. Search CPO 单一自动化流程已落地：
    - 后端配置与测试：`backend/internal/model/search_cpo.go`、`backend/internal/dto/search_cpo.go`、`backend/internal/repository/search_cpo_repo.go`、`backend/internal/service/search_cpo_service.go`、`backend/internal/service/search_cpo_service_test.go` 已支持 `exit_official_action_ids/exit_shop_action_ids`；补齐了真实 `GetConfig/UpdateConfig` 读写链路测试与 source mismatch 校验覆盖。对应提交：`24294ae`、`29615c7`、`929d63d`。
    - 后端状态与自动化链路：`backend/internal/model/search_cpo.go`、`backend/internal/dto/search_cpo_automation.go`、`backend/internal/service/search_cpo_automation.go`、`backend/internal/service/search_cpo_automation_test.go` 已把状态口径收口为状态1/2/3/4，兼容旧 `state3_trigger/morkovsk_joined` 值，并将自动化历史统计改为 `total_state3/total_state4`。对应提交：`261ca30`。
@@ -400,8 +406,15 @@
 51. 前端构建通过（含 Search CPO 页面现有自动化入口回归）：`cd frontend && cmd /c npm run build`。
 52. 后端回归测试通过（含自动加促销相对日期规则）：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./...`。
 53. 前端构建通过（含 `/promotions/auto-add` 日期规则切换与历史展示调整）：`cd frontend && cmd /c npm run build`.
+54. 后端定向测试通过（含自动加促销日期段解析、DTO 映射与目录闭区间查询）：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./internal/service ./internal/repository -run "TestResolveAutoPromotionTargetDateRange|TestResolveAutoPromotionTargetDateRangeErrors|TestValidateAutoPromotionConfigTargetDateRange|TestToAutoPromotionConfigDTOUsesDateRange|TestToAutoPromotionRunSummaryDTOUsesDateRange|TestOzonCatalogRepositoryListByListingDateRangeIncludesBothBoundaries" -count=1`。
+55. migration 基线测试通过（含 `target_date_end` 列断言）：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache"; go test ./migrations -count=1`。
+56. 后端全量回归测试通过（含自动加促销日期段改造）：`cd backend && $env:GOCACHE="$env:TEMP\ozon-manager-gocache-full"; go test ./...`。
+57. 前端构建通过（含 `/promotions/auto-add` 自定义日期段 UI 与历史展示）：`cd frontend && cmd /c npm run build`。
 
 ## 数据库执行记录
+50. 本次新增可执行升级脚本：`backend/migrations/upgrade_20260405_auto_promotion_date_range.sql`（自动加促销日期段）。
+51. 用途：为 `auto_promotion_configs`、`auto_promotion_runs` 补充 `target_date_end`，把原有单日 `target_date` 回填成“开始=结束”的日期段，支撑“自定义日期段”规则与实际运行历史展示。
+52. 执行条件：目标库已存在 `auto_promotion_configs` 与 `auto_promotion_runs`；脚本支持幂等重复执行。执行结果：脚本已编写，`init_database.sql` 已同步回写；本轮未在当前会话直接执行数据库升级。
 0. 本次新增可执行升级脚本：`backend/migrations/upgrade_20260319_search_cpo_morkovsk_automation.sql`（Search CPO Morkovsk 自动化第一批）。
 1. 用途：扩展 `search_cpo_configs` 自动化配置字段、扩展 `search_cpo_products` 规则状态字段，并新增 `search_cpo_auto_runs`、`search_cpo_auto_run_items` 两张自动化运行表。
 2. 执行条件：目标库已存在 `search_cpo_configs`、`search_cpo_products`、`promotion_actions`、`shops` 等基础表；脚本支持幂等重复执行。

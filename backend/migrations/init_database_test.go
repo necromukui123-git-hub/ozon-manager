@@ -81,3 +81,29 @@ func TestInitDatabaseIncludesUserRefreshTokensTable(t *testing.T) {
 		t.Fatal("user_refresh_tokens.family_id index is missing in init_database.sql")
 	}
 }
+
+func TestInitDatabaseIncludesAutoPromotionDateRangeColumns(t *testing.T) {
+	content, err := os.ReadFile("init_database.sql")
+	if err != nil {
+		t.Fatalf("read init_database.sql: %v", err)
+	}
+
+	sql := string(content)
+	configPattern := regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS auto_promotion_configs \((.*?)\);`)
+	configMatch := configPattern.FindStringSubmatch(sql)
+	if len(configMatch) != 2 {
+		t.Fatal("failed to locate auto_promotion_configs table definition in init_database.sql")
+	}
+	if !strings.Contains(configMatch[1], "target_date_end     DATE") {
+		t.Fatal("auto_promotion_configs.target_date_end column is missing in init_database.sql")
+	}
+
+	runPattern := regexp.MustCompile(`(?s)CREATE TABLE IF NOT EXISTS auto_promotion_runs \((.*?)\);`)
+	runMatch := runPattern.FindStringSubmatch(sql)
+	if len(runMatch) != 2 {
+		t.Fatal("failed to locate auto_promotion_runs table definition in init_database.sql")
+	}
+	if !strings.Contains(runMatch[1], "target_date_end     DATE NOT NULL") {
+		t.Fatal("auto_promotion_runs.target_date_end column is missing in init_database.sql")
+	}
+}

@@ -190,8 +190,12 @@ func (r *OzonCatalogRepository) GetLatestSyncedAt(shopID uint) (*time.Time, erro
 }
 
 func (r *OzonCatalogRepository) ListByListingDate(shopID uint, targetDate time.Time) ([]model.OzonProductCatalogItem, error) {
-	start := time.Date(targetDate.Year(), targetDate.Month(), targetDate.Day(), 0, 0, 0, 0, targetDate.Location())
-	end := start.Add(24 * time.Hour)
+	return r.ListByListingDateRange(shopID, targetDate, targetDate)
+}
+
+func (r *OzonCatalogRepository) ListByListingDateRange(shopID uint, targetDateStart time.Time, targetDateEnd time.Time) ([]model.OzonProductCatalogItem, error) {
+	start := time.Date(targetDateStart.Year(), targetDateStart.Month(), targetDateStart.Day(), 0, 0, 0, 0, targetDateStart.Location())
+	end := time.Date(targetDateEnd.Year(), targetDateEnd.Month(), targetDateEnd.Day(), 0, 0, 0, 0, targetDateEnd.Location()).Add(24 * time.Hour)
 
 	items := make([]model.OzonProductCatalogItem, 0)
 	err := r.db.Where("shop_id = ? AND listing_date >= ? AND listing_date < ?", shopID, start, end).

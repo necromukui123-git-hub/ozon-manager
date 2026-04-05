@@ -1,11 +1,24 @@
 package service
 
 import (
+	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 
+	"gorm.io/datatypes"
 	"ozon-manager/internal/model"
 )
+
+func mustAutoPromotionJSON[T any](t *testing.T, value T) datatypes.JSON {
+	t.Helper()
+
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	return raw
+}
 
 func TestChooseOfficialActionPrice(t *testing.T) {
 	t.Parallel()
@@ -36,22 +49,26 @@ func TestChooseOfficialActionPrice(t *testing.T) {
 	}
 }
 
-func TestResolveAutoPromotionTargetDate(t *testing.T) {
+func TestResolveAutoPromotionTargetDateRange(t *testing.T) {
 	t.Parallel()
 
 	reference := time.Date(2026, 3, 22, 15, 30, 0, 0, time.FixedZone("CST", 8*3600))
 	tests := []struct {
-		name       string
-		mode       string
-		targetDate string
-		wantMode   string
-		wantDate   string
+		name        string
+		mode        string
+		targetStart string
+		targetEnd   string
+		legacyDate  string
+		wantMode    string
+		wantStart   string
+		wantEnd     string
 	}{
-		{name: "yesterday mode", mode: model.AutoPromotionTargetDateModeYesterday, wantMode: model.AutoPromotionTargetDateModeYesterday, wantDate: "2026-03-21"},
-		{name: "today mode", mode: model.AutoPromotionTargetDateModeToday, wantMode: model.AutoPromotionTargetDateModeToday, wantDate: "2026-03-22"},
-		{name: "custom mode", mode: model.AutoPromotionTargetDateModeCustom, targetDate: "2026-03-05", wantMode: model.AutoPromotionTargetDateModeCustom, wantDate: "2026-03-05"},
-		{name: "legacy request without mode falls back to custom", mode: "", targetDate: "2026-03-09", wantMode: model.AutoPromotionTargetDateModeCustom, wantDate: "2026-03-09"},
-		{name: "empty request falls back to yesterday", mode: "", targetDate: "", wantMode: model.AutoPromotionTargetDateModeYesterday, wantDate: "2026-03-21"},
+		{name: "yesterday mode", mode: model.AutoPromotionTargetDateModeYesterday, wantMode: model.AutoPromotionTargetDateModeYesterday, wantStart: "2026-03-21", wantEnd: "2026-03-21"},
+		{name: "today mode", mode: model.AutoPromotionTargetDateModeToday, wantMode: model.AutoPromotionTargetDateModeToday, wantStart: "2026-03-22", wantEnd: "2026-03-22"},
+		{name: "custom same day range", mode: model.AutoPromotionTargetDateModeCustom, targetStart: "2026-03-05", targetEnd: "2026-03-05", wantMode: model.AutoPromotionTargetDateModeCustom, wantStart: "2026-03-05", wantEnd: "2026-03-05"},
+		{name: "custom multi day range", mode: model.AutoPromotionTargetDateModeCustom, targetStart: "2026-03-05", targetEnd: "2026-03-08", wantMode: model.AutoPromotionTargetDateModeCustom, wantStart: "2026-03-05", wantEnd: "2026-03-08"},
+		{name: "legacy request without mode falls back to custom single day", mode: "", legacyDate: "2026-03-09", wantMode: model.AutoPromotionTargetDateModeCustom, wantStart: "2026-03-09", wantEnd: "2026-03-09"},
+		{name: "empty request falls back to yesterday", mode: "", wantMode: model.AutoPromotionTargetDateModeYesterday, wantStart: "2026-03-21", wantEnd: "2026-03-21"},
 	}
 
 	for _, tt := range tests {
@@ -59,32 +76,39 @@ func TestResolveAutoPromotionTargetDate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotMode, gotDate, err := resolveAutoPromotionTargetDate(tt.mode, tt.targetDate, reference)
+			gotMode, gotStart, gotEnd, err := resolveAutoPromotionTargetDateRange(tt.mode, tt.targetStart, tt.targetEnd, tt.legacyDate, reference)
 			if err != nil {
-				t.Fatalf("resolveAutoPromotionTargetDate() error = %v", err)
+				t.Fatalf("resolveAutoPromotionTargetDateRange() error = %v", err)
 			}
 			if gotMode != tt.wantMode {
-				t.Fatalf("resolveAutoPromotionTargetDate() mode = %s, want %s", gotMode, tt.wantMode)
+				t.Fatalf("resolveAutoPromotionTargetDateRange() mode = %s, want %s", gotMode, tt.wantMode)
 			}
-			if got := gotDate.Format("2006-01-02"); got != tt.wantDate {
-				t.Fatalf("resolveAutoPromotionTargetDate() date = %s, want %s", got, tt.wantDate)
+			if got := gotStart.Format("2006-01-02"); got != tt.wantStart {
+				t.Fatalf("resolveAutoPromotionTargetDateRange() start = %s, want %s", got, tt.wantStart)
+			}
+			if got := gotEnd.Format("2006-01-02"); got != tt.wantEnd {
+				t.Fatalf("resolveAutoPromotionTargetDateRange() end = %s, want %s", got, tt.wantEnd)
 			}
 		})
 	}
 }
 
-func TestResolveAutoPromotionTargetDateErrors(t *testing.T) {
+func TestResolveAutoPromotionTargetDateRangeErrors(t *testing.T) {
 	t.Parallel()
 
 	reference := time.Date(2026, 3, 22, 15, 30, 0, 0, time.UTC)
 	tests := []struct {
-		name       string
-		mode       string
-		targetDate string
+		name        string
+		mode        string
+		targetStart string
+		targetEnd   string
+		legacyDate  string
 	}{
-		{name: "invalid mode", mode: "weekly", targetDate: ""},
-		{name: "custom without date", mode: model.AutoPromotionTargetDateModeCustom, targetDate: ""},
-		{name: "custom invalid date", mode: model.AutoPromotionTargetDateModeCustom, targetDate: "2026/03/05"},
+		{name: "invalid mode", mode: "weekly"},
+		{name: "custom without start", mode: model.AutoPromotionTargetDateModeCustom, targetEnd: "2026-03-05"},
+		{name: "custom without end", mode: model.AutoPromotionTargetDateModeCustom, targetStart: "2026-03-05"},
+		{name: "custom invalid start", mode: model.AutoPromotionTargetDateModeCustom, targetStart: "2026/03/05", targetEnd: "2026-03-08"},
+		{name: "custom end before start", mode: model.AutoPromotionTargetDateModeCustom, targetStart: "2026-03-08", targetEnd: "2026-03-05"},
 	}
 
 	for _, tt := range tests {
@@ -92,27 +116,31 @@ func TestResolveAutoPromotionTargetDateErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			if _, _, err := resolveAutoPromotionTargetDate(tt.mode, tt.targetDate, reference); err == nil {
-				t.Fatalf("resolveAutoPromotionTargetDate() expected error")
+			if _, _, _, err := resolveAutoPromotionTargetDateRange(tt.mode, tt.targetStart, tt.targetEnd, tt.legacyDate, reference); err == nil {
+				t.Fatalf("resolveAutoPromotionTargetDateRange() expected error")
 			}
 		})
 	}
 }
 
-func TestValidateAutoPromotionConfigTargetDate(t *testing.T) {
+func TestValidateAutoPromotionConfigTargetDateRange(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		mode       string
-		targetDate string
-		wantMode   string
-		wantDate   string
+		name        string
+		mode        string
+		targetStart string
+		targetEnd   string
+		legacyDate  string
+		wantMode    string
+		wantStart   string
+		wantEnd     string
+		wantNil     bool
 	}{
-		{name: "yesterday keeps nil target date", mode: model.AutoPromotionTargetDateModeYesterday, wantMode: model.AutoPromotionTargetDateModeYesterday},
-		{name: "today keeps nil target date", mode: model.AutoPromotionTargetDateModeToday, wantMode: model.AutoPromotionTargetDateModeToday},
-		{name: "custom stores explicit date", mode: model.AutoPromotionTargetDateModeCustom, targetDate: "2026-03-05", wantMode: model.AutoPromotionTargetDateModeCustom, wantDate: "2026-03-05"},
-		{name: "legacy config without mode stays custom", mode: "", targetDate: "2026-03-09", wantMode: model.AutoPromotionTargetDateModeCustom, wantDate: "2026-03-09"},
+		{name: "yesterday keeps nil target range", mode: model.AutoPromotionTargetDateModeYesterday, wantMode: model.AutoPromotionTargetDateModeYesterday, wantNil: true},
+		{name: "today keeps nil target range", mode: model.AutoPromotionTargetDateModeToday, wantMode: model.AutoPromotionTargetDateModeToday, wantNil: true},
+		{name: "custom stores explicit range", mode: model.AutoPromotionTargetDateModeCustom, targetStart: "2026-03-05", targetEnd: "2026-03-08", wantMode: model.AutoPromotionTargetDateModeCustom, wantStart: "2026-03-05", wantEnd: "2026-03-08"},
+		{name: "legacy config without mode stays custom single day", mode: "", legacyDate: "2026-03-09", wantMode: model.AutoPromotionTargetDateModeCustom, wantStart: "2026-03-09", wantEnd: "2026-03-09"},
 	}
 
 	for _, tt := range tests {
@@ -120,26 +148,95 @@ func TestValidateAutoPromotionConfigTargetDate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotMode, gotDate, err := validateAutoPromotionConfigTargetDate(tt.mode, tt.targetDate)
+			gotMode, gotStart, gotEnd, err := validateAutoPromotionConfigTargetDateRange(tt.mode, tt.targetStart, tt.targetEnd, tt.legacyDate)
 			if err != nil {
-				t.Fatalf("validateAutoPromotionConfigTargetDate() error = %v", err)
+				t.Fatalf("validateAutoPromotionConfigTargetDateRange() error = %v", err)
 			}
 			if gotMode != tt.wantMode {
-				t.Fatalf("validateAutoPromotionConfigTargetDate() mode = %s, want %s", gotMode, tt.wantMode)
+				t.Fatalf("validateAutoPromotionConfigTargetDateRange() mode = %s, want %s", gotMode, tt.wantMode)
 			}
-			if tt.wantDate == "" {
-				if gotDate != nil {
-					t.Fatalf("validateAutoPromotionConfigTargetDate() date = %v, want nil", gotDate)
+			if tt.wantNil {
+				if gotStart != nil || gotEnd != nil {
+					t.Fatalf("validateAutoPromotionConfigTargetDateRange() start/end = %v/%v, want nil/nil", gotStart, gotEnd)
 				}
 				return
 			}
-			if gotDate == nil {
-				t.Fatalf("validateAutoPromotionConfigTargetDate() date = nil, want %s", tt.wantDate)
+			if gotStart == nil || gotEnd == nil {
+				t.Fatalf("validateAutoPromotionConfigTargetDateRange() start/end = %v/%v, want %s/%s", gotStart, gotEnd, tt.wantStart, tt.wantEnd)
 			}
-			if got := gotDate.Format("2006-01-02"); got != tt.wantDate {
-				t.Fatalf("validateAutoPromotionConfigTargetDate() date = %s, want %s", got, tt.wantDate)
+			if got := gotStart.Format("2006-01-02"); got != tt.wantStart {
+				t.Fatalf("validateAutoPromotionConfigTargetDateRange() start = %s, want %s", got, tt.wantStart)
+			}
+			if got := gotEnd.Format("2006-01-02"); got != tt.wantEnd {
+				t.Fatalf("validateAutoPromotionConfigTargetDateRange() end = %s, want %s", got, tt.wantEnd)
 			}
 		})
+	}
+}
+
+func TestToAutoPromotionConfigDTOUsesDateRange(t *testing.T) {
+	t.Parallel()
+
+	start := time.Date(2026, 3, 5, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC)
+	config := &model.AutoPromotionConfig{
+		ID:                1,
+		ShopID:            9,
+		Enabled:           true,
+		ScheduleTime:      "09:05",
+		TargetDateMode:    model.AutoPromotionTargetDateModeCustom,
+		TargetDate:        &start,
+		TargetDateEnd:     &end,
+		OfficialActionIDs: mustAutoPromotionJSON(t, []uint{11}),
+		ShopActionIDs:     mustAutoPromotionJSON(t, []uint{22}),
+		UpdatedAt:         time.Date(2026, 4, 5, 10, 30, 0, 0, time.UTC),
+	}
+
+	got, err := toAutoPromotionConfigDTO(config)
+	if err != nil {
+		t.Fatalf("toAutoPromotionConfigDTO() error = %v", err)
+	}
+	if got.TargetDateStart != "2026-03-05" {
+		t.Fatalf("TargetDateStart = %s, want 2026-03-05", got.TargetDateStart)
+	}
+	if got.TargetDateEnd != "2026-03-08" {
+		t.Fatalf("TargetDateEnd = %s, want 2026-03-08", got.TargetDateEnd)
+	}
+	if !reflect.DeepEqual(got.OfficialActionIDs, []uint{11}) {
+		t.Fatalf("OfficialActionIDs = %#v, want %#v", got.OfficialActionIDs, []uint{11})
+	}
+	if !reflect.DeepEqual(got.ShopActionIDs, []uint{22}) {
+		t.Fatalf("ShopActionIDs = %#v, want %#v", got.ShopActionIDs, []uint{22})
+	}
+}
+
+func TestToAutoPromotionRunSummaryDTOUsesDateRange(t *testing.T) {
+	t.Parallel()
+
+	startedAt := time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)
+	completedAt := time.Date(2026, 4, 5, 10, 5, 0, 0, time.UTC)
+	run := &model.AutoPromotionRun{
+		ID:             7,
+		TriggerMode:    model.AutoPromotionTriggerModeManual,
+		TriggerDate:    time.Date(2026, 4, 5, 0, 0, 0, 0, time.UTC),
+		TargetDateMode: model.AutoPromotionTargetDateModeCustom,
+		TargetDate:     time.Date(2026, 3, 5, 0, 0, 0, 0, time.UTC),
+		TargetDateEnd:  time.Date(2026, 3, 8, 0, 0, 0, 0, time.UTC),
+		Status:         model.AutoPromotionRunStatusSuccess,
+		StartedAt:      &startedAt,
+		CompletedAt:    &completedAt,
+		CreatedAt:      time.Date(2026, 4, 5, 9, 55, 0, 0, time.UTC),
+	}
+
+	got := toAutoPromotionRunSummaryDTO(run)
+	if got == nil {
+		t.Fatal("toAutoPromotionRunSummaryDTO() = nil")
+	}
+	if got.TargetDateStart != "2026-03-05" {
+		t.Fatalf("TargetDateStart = %s, want 2026-03-05", got.TargetDateStart)
+	}
+	if got.TargetDateEnd != "2026-03-08" {
+		t.Fatalf("TargetDateEnd = %s, want 2026-03-08", got.TargetDateEnd)
 	}
 }
 

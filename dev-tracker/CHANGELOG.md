@@ -1,5 +1,39 @@
 # Ozon Manager 变更日志
 
+## 2026-04-05
+### 主题
+将“自动加促销”的上架时间规则从“自定义单日”升级为“自定义日期段”，并同步收口后端日期段解析、目录筛选、运行历史展示与数据库迁移。
+
+### 关键变更
+1. 后端日期规则与历史：
+   - `backend/internal/model/auto_promotion.go`、`backend/internal/dto/auto_promotion.go`、`backend/internal/service/auto_promotion_service.go` 已为自动加促销配置和运行历史补充 `target_date_end` / `target_date_start` / `target_date_end` 口径。
+   - `custom` 模式现在按闭区间日期段解析；`yesterday`、`today` 继续保留，但会在执行时统一落成“开始=结束”的实际日期段。
+   - 服务端保留对旧 `target_date` 单日期请求的兼容兜底，旧客户端短暂混发时仍可按单日处理。
+2. 目录筛选与执行：
+   - `backend/internal/repository/ozon_catalog_repo.go` 新增 `ListByListingDateRange()`，自动加促销执行从“按某一天筛选目录商品”改为“按上架日期段闭区间筛选目录商品”。
+   - 自动加促销 run 快照、列表和详情统一展示“实际日期段”，不再只记录单个 `target_date`。
+3. 前端页面：
+   - `frontend/src/views/promotions/AutoAdd.vue` 已改为“昨天 / 今天 / 自定义日期段”三种规则。
+   - 自定义模式改用日期范围选择器；历史列表和详情弹窗展示“实际日期段”，同一天压缩显示为单个日期，跨天显示为 `开始 ~ 结束`。
+4. 数据库脚本：
+   - `backend/migrations/init_database.sql` 已回写 `auto_promotion_configs.target_date_end` 与 `auto_promotion_runs.target_date_end`。
+   - 新增 `backend/migrations/upgrade_20260405_auto_promotion_date_range.sql`，把旧单日数据回填成“开始=结束”的日期段。
+5. 测试：
+   - `backend/internal/service/auto_promotion_service_test.go` 新增日期段解析、配置校验与 DTO 映射测试。
+   - `backend/internal/repository/ozon_catalog_repo_test.go` 新增目录日期段闭区间查询测试。
+   - `backend/migrations/init_database_test.go` 新增 `target_date_end` 列基线断言。
+
+### 影响范围
+1. 自动加促销现在可以按一段上架日期批量处理商品，不再局限于“某一天”。
+2. 旧配置和旧运行历史升级后会自然表现为“开始=结束”的日期段，不改变原有业务语义。
+3. 本次包含数据库结构变更，旧库需要执行 `backend/migrations/upgrade_20260405_auto_promotion_date_range.sql`。
+
+### 验证
+1. `cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./internal/service ./internal/repository -run "TestResolveAutoPromotionTargetDateRange|TestResolveAutoPromotionTargetDateRangeErrors|TestValidateAutoPromotionConfigTargetDateRange|TestToAutoPromotionConfigDTOUsesDateRange|TestToAutoPromotionRunSummaryDTOUsesDateRange|TestOzonCatalogRepositoryListByListingDateRangeIncludesBothBoundaries" -count=1` 通过。
+2. `cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache"; go test ./migrations -count=1` 通过。
+3. `cd backend && $env:GOCACHE="$env:TEMP\\ozon-manager-gocache-full"; go test ./...` 通过。
+4. `cd frontend && cmd /c npm run build` 通过。
+
 ## 2026-04-04（补充四）
 ### 主题
 完成 Search CPO 单一自动化流程落地：后端补齐退出活动配置、状态1/2/3/4 与退出失败跳过规则，前端从双标签收口为单一自动化页面，并统一执行历史与详情展示。

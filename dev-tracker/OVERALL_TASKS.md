@@ -1,6 +1,6 @@
 # Ozon Manager 开发总任务
 
-最后更新时间：2026-04-04  
+最后更新时间：2026-04-05  
 负责人：团队 + Codex  
 范围：统一官方促销与店铺促销的一套业务流程，并让店铺促销在浏览器登录态下低打扰执行。
 
@@ -37,7 +37,7 @@
 | T12 | Ozon 商品接口标准说明文档沉淀（`/v3/product/list` + `/v3/product/info/list`） | done | 在 `doc/` 产出工程可用版接口文档，覆盖鉴权、请求参数、分页、响应结构、错误处理与示例 | 依赖 Ozon 官方文档持续更新，需定期回看 |
 | T13 | `/v3/product/list` 响应字段对齐与目录可见性推导修复 | done | 客户端可解析 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`；目录刷新不再依赖 list 响应 `visibility`，改为优先 `info.visible`，其次 `archived`，最后 `ALL` | 依赖 Seller v3 列表/详情字段稳定 |
 | T14 | 官方促销接口标准说明文档沉淀（`/v1/actions/candidates` + `/v1/actions/products/activate`） | done | 在 `doc/` 产出一份人读版 Markdown 与一份机读版 YAML，覆盖鉴权、分页、请求/响应结构、示例与弃用说明 | 依赖 Ozon 官方文档持续更新，需定期回看 |
-| T15 | 自动添加商品至促销活动（配置 + 调度 + 执行历史） | done | 新增“自动加促销”页面；支持保存昨天/今天/自定义日期规则、手动执行、官方/店铺活动候选刷新、按上架日期筛商品、执行历史与逐商品失败明细 | 依赖 Ozon 目录刷新、官方候选接口与浏览器插件执行链稳定 |
+| T15 | 自动添加商品至促销活动（配置 + 调度 + 执行历史） | done | 新增“自动加促销”页面；支持保存昨天/今天/自定义日期段规则、手动执行、官方/店铺活动候选刷新、按上架日期段筛商品、执行历史与逐商品失败明细 | 依赖 Ozon 目录刷新、官方候选接口与浏览器插件执行链稳定 |
 | T16 | 搜索推广自动化单一工作面 | done | `/promotions/search-cpo` 已收口为单一自动化页面；保留“默认活动 + 退出活动”两组固定配置，支持自动执行与手动触发一次共用同一条自动化链路，统一查看执行历史与详情；旧“商品池与手动报名”工作面已移除 | 依赖现有 Search CPO 商品刷新、availability、enable、Morkovsk job 链路继续稳定 |
 | T17 | 插件登录态自动连接主流程收敛 | done | popup 默认展示管理端连接状态，普通用户无需手填 token；非 localhost 首次可按提示授权，手填配置仅保留高级设置兜底 | 依赖管理端 `localStorage.token/currentShopId` 继续稳定 |
 | T18 | Search CPO 单一自动化规则与退出活动配置 | done | 自动化状态定义已收口为：状态1=推广已关闭，状态2=可加入推广，状态3=已加入推广未加入 Morkovsk，状态4=已加入推广且已加入 Morkovsk；状态1 仅加入“默认活动”，状态2/3/4 仅从用户配置的“退出活动”集合里退出，退出失败则该商品后续动作显式跳过并在详情记录“退出促销活动失败，跳过后续动作”；定时执行与手动触发一次统一写入自动化历史 | 依赖 Seller 私有 `search_promo_availability` / `product/enable` / `carrots/batch_enable` / 店铺活动 `deactivate` 接口结构稳定，以及现有 Search CPO 配置/历史表可平滑扩展退出活动字段与状态统计 |
@@ -63,7 +63,7 @@
 16. 商品同步链路已补齐 `/v3/product/info/list` 响应兼容（`items/result.items`）与失败语义收敛：批次失败不再假成功，且先落基础数据避免整表为空。
 17. `/v3/product/list` 客户端响应结构已对齐实测字段（含 `has_fbo_stocks/has_fbs_stocks/archived/is_discounted/quants`），目录缓存可见性改为“优先 `info.visible`，其次 `archived`，最后 `ALL`”。
 18. 已新增 `doc/ozon-promos-candidates-activate-standard.md` 与 `doc/ozon-promos-candidates-activate.openapi.yaml`，沉淀官方促销候选商品查询与商品加入促销两个接口的标准说明，明确 `last_id` 分页替代 `offset`，并补齐 `result.rejected` 结构。
-19. 已新增“自动加促销”完整链路：后端新增配置/运行历史/候选缓存表与调度器，插件支持 `sync_action_candidates` 任务，前端新增 `/promotions/auto-add` 页面，当前支持保存“昨天/今天/自定义日期”规则、手动执行和逐商品历史查看。
+19. 已新增“自动加促销”完整链路：后端新增配置/运行历史/候选缓存表与调度器，插件支持 `sync_action_candidates` 任务，前端新增 `/promotions/auto-add` 页面，当前支持保存“昨天/今天/自定义日期段”规则、手动执行和逐商品历史查看。
 20. 已新增“搜索推广商品”页面与后端链路：支持通过 Seller CPO 接口同步商品、在本地筛选后按“当前筛选结果”执行报名、并查看运行历史与逐商品详情。
 21. Search CPO 报名链路已补强：页面将 `SEARCH_PROMO_STATUS_DISABLED` 明确展示为“已关闭”；官方活动报名新增 Ozon 目录缓存兜底（`offer_id/sku -> ozon_product_id`），且官方失败不再自动跳过同商品的店铺活动。
 

@@ -6,6 +6,7 @@ backend/.dist/
 browser-extension/ozon-shop-bridge/dist/
 release/
 .tmp/
+.worktrees/
 agent/node_modules/**/*.ps1
 
 # IDE 和编辑器
